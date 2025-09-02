@@ -105,6 +105,49 @@ const SettingsView: React.FC = () => {
     link.download = `gestor-autonomo-backup-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
   };
+  
+  const handleImportData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result;
+          if (typeof text !== 'string') {
+              throw new Error("Error de lectura del archivo.");
+          }
+          const importedData = JSON.parse(text);
+          
+          const requiredKeys = ['incomes', 'expenses', 'settings', 'personalCategories', 'professionalCategories', 'transfers'];
+          const hasAllKeys = requiredKeys.every(key => key in importedData);
+
+          if (!hasAllKeys) {
+            alert('El archivo no parece tener el formato correcto. Importación cancelada.');
+            return;
+          }
+          
+          if (window.confirm('¿Estás seguro? Al importar se sobrescribirán TODOS tus datos actuales. Esta acción es irreversible.')) {
+            setData(importedData);
+            alert('Datos importados correctamente.');
+          }
+
+        } catch (error) {
+          console.error("Error al importar datos:", error);
+          alert('Error al procesar el archivo. Asegúrate de que es un archivo de backup válido.');
+        }
+      };
+      reader.onerror = () => {
+          alert('No se pudo leer el archivo.');
+      }
+      reader.readAsText(file);
+    };
+    input.click();
+  };
 
   const handleDeleteAllData = () => {
     if(window.confirm('¡ATENCIÓN! ESTA ACCIÓN ES IRREVERSIBLE.\n¿Estás absolutamente seguro de que quieres borrar TODOS tus datos?')) {
@@ -197,6 +240,9 @@ const SettingsView: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-4">
               <Button onClick={handleExportData} variant="secondary">
                   <Icon name="download" className="w-5 h-5"/> Exportar Todos Mis Datos (JSON)
+              </Button>
+               <Button onClick={handleImportData} variant="secondary">
+                  <Icon name="upload" className="w-5 h-5"/> Importar Todos Mis Datos (JSON)
               </Button>
           </div>
        </Card>
