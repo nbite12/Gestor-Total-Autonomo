@@ -28,6 +28,7 @@ const App: React.FC = () => {
         transfers: [],
         savingsGoals: [],
         potentialIncomes: [],
+        potentialExpenses: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
         settings: {

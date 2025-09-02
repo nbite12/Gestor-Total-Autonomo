@@ -113,6 +113,15 @@ export interface PotentialIncome {
     irpfRate?: number;
 }
 
+export interface PotentialExpense {
+  id: string;
+  concept: string;
+  type: 'monthly' | 'one-off';
+  date?: string; // ISO string, for one-off type
+  amount: number;
+  categoryId: string;
+}
+
 export interface UserSettings {
   nif: string;
   fullName: string;
@@ -130,6 +139,7 @@ export interface AppData {
   transfers: Transfer[];
   savingsGoals: SavingsGoal[];
   potentialIncomes: PotentialIncome[];
+  potentialExpenses: PotentialExpense[];
   professionalCategories: Category[];
   personalCategories: Category[];
   settings: UserSettings;

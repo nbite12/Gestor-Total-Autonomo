@@ -1,9 +1,8 @@
-
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification } from '../types';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense } from '../types';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -134,6 +133,70 @@ const PotentialIncomeForm: React.FC<{
     )
 };
 
+// --- Potential Expense Form Modal ---
+const PotentialExpenseForm: React.FC<{
+    onClose: () => void;
+    expenseToEdit: PotentialExpense | null;
+}> = ({ onClose, expenseToEdit }) => {
+    const { data: { personalCategories }, setData } = useContext(AppContext)!;
+    
+    const [formData, setFormData] = useState<Partial<PotentialExpense>>({
+        id: expenseToEdit?.id || `pe-${Date.now()}`,
+        concept: expenseToEdit?.concept || '',
+        type: expenseToEdit?.type || 'monthly',
+        date: expenseToEdit?.date ? formatDateForInput(expenseToEdit.date) : new Date().toISOString().split('T')[0],
+        amount: expenseToEdit?.amount || 0,
+        categoryId: expenseToEdit?.categoryId || (personalCategories[0]?.id || ''),
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({...prev, [name]: name === 'amount' ? parseFloat(value) : value}));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const finalExpense: PotentialExpense = {
+            id: formData.id!,
+            concept: formData.concept!,
+            type: formData.type!,
+            amount: formData.amount!,
+            categoryId: formData.categoryId!,
+            date: formData.type === 'one-off' ? new Date(formData.date!).toISOString() : undefined,
+        };
+        
+        setData(prev => ({
+            ...prev,
+            potentialExpenses: expenseToEdit 
+                ? prev.potentialExpenses.map(pe => pe.id === expenseToEdit.id ? finalExpense : pe)
+                : [...prev.potentialExpenses, finalExpense],
+        }));
+        onClose();
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
+            <Input label="Importe (€)" name="amount" type="number" min="0" step="0.01" value={formData.amount} onChange={handleChange} required />
+            <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
+                {personalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+            </Select>
+            <Select label="Tipo de Gasto" name="type" value={formData.type} onChange={handleChange}>
+                <option value="monthly">Mensual</option>
+                <option value="one-off">Puntual</option>
+            </Select>
+            {formData.type === 'one-off' && (
+                <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
+            )}
+            <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">{expenseToEdit ? 'Guardar Cambios' : 'Añadir Gasto'}</Button>
+            </div>
+        </form>
+    );
+};
+
+
 // --- Transfer Form Modal ---
 const TransferForm: React.FC<{
     onClose: () => void;
@@ -221,7 +284,7 @@ const GlobalView: React.FC = () => {
     if (!context) return <div>Cargando...</div>;
 
     const { data, setData, formatCurrency } = context;
-    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, transfers } = data;
+    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, potentialExpenses, transfers, personalCategories } = data;
 
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const end = new Date();
@@ -231,8 +294,12 @@ const GlobalView: React.FC = () => {
     
     const [includeSavings, setIncludeSavings] = useState(true);
     const [includePotentialIncome, setIncludePotentialIncome] = useState(true);
+    const [includePotentialExpenses, setIncludePotentialExpenses] = useState(true);
+
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
     const [incomeToEdit, setIncomeToEdit] = useState<PotentialIncome | null>(null);
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+    const [expenseToEdit, setExpenseToEdit] = useState<PotentialExpense | null>(null);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [transferToEdit, setTransferToEdit] = useState<Transfer | null>(null);
 
@@ -347,20 +414,35 @@ const GlobalView: React.FC = () => {
         return monthly + oneOff;
     }, [includePotentialIncome, potentialIncomes, monthsInPeriod, period]);
     
+    const projectedExpenses = useMemo(() => {
+        if (!includePotentialExpenses) return 0;
+        
+        const monthly = potentialExpenses
+            .filter(pe => pe.type === 'monthly')
+            .reduce((sum, pe) => sum + pe.amount, 0) * monthsInPeriod;
+            
+        const oneOff = potentialExpenses
+            .filter(pe => pe.type === 'one-off' && pe.date && new Date(pe.date) >= period.startDate && new Date(pe.date) <= period.endDate)
+            .reduce((sum, pe) => sum + pe.amount, 0);
+
+        return monthly + oneOff;
+    }, [includePotentialExpenses, potentialExpenses, monthsInPeriod, period]);
+
     const summary = useMemo(() => {
         const totalProjectedIncome = actualMovements.totalActualIncome + projectedIncome;
-        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings;
+        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings + projectedExpenses;
         const netProjectedCashFlow = totalProjectedIncome - totalProjectedExpense;
 
         return {
             ...actualMovements,
             projectedIncome,
             projectedSavings,
+            projectedExpenses,
             totalProjectedIncome,
             totalProjectedExpense,
             netProjectedCashFlow,
         }
-    }, [actualMovements, projectedIncome, projectedSavings]);
+    }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses]);
 
     // --- Handlers ---
     const handleGoalContributionChange = (goalId: string, value: string) => {
@@ -382,6 +464,17 @@ const GlobalView: React.FC = () => {
         }
     };
     
+     const handleOpenExpenseModal = (expense?: PotentialExpense) => {
+        setExpenseToEdit(expense || null);
+        setIsExpenseModalOpen(true);
+    };
+
+    const handleDeletePotentialExpense = (id: string) => {
+        if (window.confirm('¿Seguro que quieres eliminar este gasto potencial?')) {
+            setData(prev => ({...prev, potentialExpenses: prev.potentialExpenses.filter(pe => pe.id !== id)}));
+        }
+    };
+
     const handleOpenTransferModal = (transfer?: Transfer) => {
         setTransferToEdit(transfer || null);
         setIsTransferModalOpen(true);
@@ -405,6 +498,11 @@ const GlobalView: React.FC = () => {
         [MoneyLocation.CASH]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
         [MoneyLocation.OTHER]: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300',
     };
+    const categoryColors: { [key: string]: string } = personalCategories.reduce((acc, cat, index) => {
+        const colors = ['bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300', 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300', 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300'];
+        acc[cat.id] = colors[index % colors.length];
+        return acc;
+    }, {} as { [key: string]: string });
 
 
     return (
@@ -496,12 +594,12 @@ const GlobalView: React.FC = () => {
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Ingresos Proyectados</h4>
                         <p className="text-3xl font-bold text-green-500">{formatCurrency(summary.totalProjectedIncome)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualIncome)} reales + {formatCurrency(summary.projectedIncome)} potenciales)</p>
+                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualIncome)} reales + {formatCurrency(summary.projectedIncome)} pot.)</p>
                     </div>
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Gastos Proyectados</h4>
                         <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalProjectedExpense)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro)</p>
+                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot.)</p>
                     </div>
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Flujo de Caja Neto Proyectado</h4>
@@ -518,6 +616,7 @@ const GlobalView: React.FC = () => {
                     <div className="space-y-4">
                         <Switch label="Incluir Ahorro Planificado" checked={includeSavings} onChange={setIncludeSavings} />
                         <Switch label="Incluir Ingresos Potenciales" checked={includePotentialIncome} onChange={setIncludePotentialIncome} />
+                        <Switch label="Incluir Gastos Potenciales" checked={includePotentialExpenses} onChange={setIncludePotentialExpenses} />
                     </div>
                 </Card>
                  <Card>
@@ -549,6 +648,35 @@ const GlobalView: React.FC = () => {
                 </Card>
             </div>
             
+            <Card>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold">Gastos Potenciales</h3>
+                    <Button size="sm" onClick={() => handleOpenExpenseModal()}> <Icon name="plus" className="w-4 h-4" /> Añadir</Button>
+                </div>
+                <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
+                    {potentialExpenses.length > 0 ? potentialExpenses.map(pe => {
+                        const category = personalCategories.find(c => c.id === pe.categoryId);
+                        return (
+                       <div key={pe.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700 rounded-md">
+                           <div className="flex justify-between items-start">
+                               <div>
+                                   <p className="font-semibold">{pe.concept}</p>
+                                   <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(pe.amount)}</p>
+                               </div>
+                               <div className="flex-shrink-0">
+                                   <Button variant="ghost" size="sm" onClick={() => handleOpenExpenseModal(pe)}><Icon name="pencil" className="w-4 h-4" /></Button>
+                                   <Button variant="ghost" size="sm" onClick={() => handleDeletePotentialExpense(pe.id)}><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                               </div>
+                           </div>
+                           <div className="flex flex-wrap gap-2 mt-1">
+                               {category && <span className={`px-2 py-1 rounded-full text-xs font-medium ${categoryColors[category.id] || 'bg-gray-100 text-gray-800'}`}>{category.name}</span>}
+                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{pe.type === 'monthly' ? 'Mensual' : `Puntual`}</span>
+                           </div>
+                       </div>
+                    )}) : <p className="text-sm text-center text-slate-500">Añade gastos futuros (suscripciones, etc.) para una proyección más precisa.</p>}
+                </div>
+            </Card>
+
             <Card>
                 <h3 className="text-xl font-bold mb-4">Planificación de Ahorro</h3>
                 <div className="space-y-4">
@@ -624,6 +752,10 @@ const GlobalView: React.FC = () => {
                 <PotentialIncomeForm onClose={() => setIsIncomeModalOpen(false)} incomeToEdit={incomeToEdit} />
             </Modal>
             
+             <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title={expenseToEdit ? "Editar Gasto Potencial" : "Añadir Gasto Potencial"}>
+                <PotentialExpenseForm onClose={() => setIsExpenseModalOpen(false)} expenseToEdit={expenseToEdit} />
+            </Modal>
+
             <Modal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} title={transferToEdit ? "Editar Transferencia" : "Nueva Transferencia"}>
                 <TransferForm onClose={() => setIsTransferModalOpen(false)} transferToEdit={transferToEdit} />
             </Modal>
