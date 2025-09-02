@@ -144,6 +144,9 @@ export interface UserSettings {
   defaultIrpfRate: number;
   monthlyAutonomoFee: number;
   geminiApiKey: string;
+  initialBalances?: {
+      [key in MoneyLocation]?: number;
+  };
 }
 
 export interface AppData {

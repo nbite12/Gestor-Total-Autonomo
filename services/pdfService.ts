@@ -1,4 +1,4 @@
-import { Income, UserSettings, Expense, Transfer } from './types';
+import { Income, UserSettings, Expense, Transfer, InvestmentGood } from './types';
 
 declare global {
   interface Window {
@@ -6,12 +6,14 @@ declare global {
   }
 }
 
+// --- Shared Helpers ---
+const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
+const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+
+
 export const generateInvoicePDF = (income: Income, settings: UserSettings) => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-
-  const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString('es-ES');
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
   // Header
   doc.setFontSize(20);
@@ -111,9 +113,6 @@ export const generateQuarterlySummaryPDF = (
 ) => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-
-    const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
     // --- HEADER ---
     doc.setFontSize(18);
@@ -287,4 +286,109 @@ export const generateQuarterlySummaryPDF = (
     const quarter = Math.floor(period.startDate.getMonth() / 3) + 1;
     const year = period.startDate.getFullYear();
     doc.save(`resumen-fiscal-${year}-T${quarter}.pdf`);
+};
+
+
+export const generateIncomesPDF = (incomes: Income[]) => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Libro de Registro de Facturas Emitidas', 14, 22);
+
+  const tableColumn = ["Fecha", "Nº Factura", "Cliente", "NIF", "Base", "IVA %", "IVA €", "IRPF %", "IRPF €", "Total"];
+  const tableRows = incomes.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(inc => {
+      const vatAmount = (inc.baseAmount * inc.vatRate) / 100;
+      const irpfAmount = (inc.baseAmount * inc.irpfRate) / 100;
+      const total = inc.baseAmount + vatAmount - irpfAmount;
+      return [
+        formatDate(inc.date),
+        inc.invoiceNumber,
+        inc.clientName,
+        inc.clientNif || '-',
+        formatCurrency(inc.baseAmount),
+        `${inc.vatRate}%`,
+        formatCurrency(vatAmount),
+        `${inc.irpfRate}%`,
+        formatCurrency(irpfAmount),
+        formatCurrency(total)
+      ];
+  });
+
+  doc.autoTable({
+    head: [tableColumn],
+    body: tableRows,
+    startY: 35,
+    theme: 'grid',
+    headStyles: { fillColor: [249, 115, 22] }
+  });
+
+  doc.save(`libro-facturas-emitidas-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+export const generateExpensesPDF = (expenses: Expense[]) => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Libro de Registro de Facturas Recibidas', 14, 22);
+
+  const tableColumn = ["Fecha", "Nº Factura", "Proveedor", "NIF", "Concepto", "Base", "IVA %", "IVA €", "Total", "Deducible"];
+  const tableRows = expenses.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(exp => {
+      const vatAmount = (exp.baseAmount * exp.vatRate) / 100;
+      const total = exp.baseAmount + vatAmount;
+      return [
+          formatDate(exp.date),
+          exp.invoiceNumber || '-',
+          exp.providerName,
+          exp.providerNif || '-',
+          exp.concept,
+          formatCurrency(exp.baseAmount),
+          `${exp.vatRate}%`,
+          formatCurrency(vatAmount),
+          formatCurrency(total),
+          exp.isDeductible ? 'Sí' : 'No'
+      ];
+  });
+
+  doc.autoTable({
+    head: [tableColumn],
+    body: tableRows,
+    startY: 35,
+    theme: 'grid',
+    headStyles: { fillColor: [239, 68, 68] }
+  });
+
+  doc.save(`libro-facturas-recibidas-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+export const generateInvestmentGoodsPDF = (goods: InvestmentGood[]) => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Libro de Registro de Bienes de Inversión', 14, 22);
+    
+    const tableColumn = ["Fecha Compra", "Descripción", "Proveedor NIF", "Nº Factura", "Valor Adquisición", "Vida Útil", "Amortización Anual"];
+    const tableRows = goods.sort((a,b) => new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime()).map(good => {
+        return [
+            formatDate(good.purchaseDate),
+            good.description,
+            good.providerNif || '-',
+            good.invoiceNumber || '-',
+            formatCurrency(good.acquisitionValue),
+            `${good.usefulLife} años`,
+            formatCurrency(good.acquisitionValue / good.usefulLife)
+        ];
+    });
+
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 35,
+      theme: 'grid',
+      headStyles: { fillColor: [100, 116, 139] }
+    });
+
+    doc.save(`libro-bienes-inversion-${new Date().toISOString().split('T')[0]}.pdf`);
 };

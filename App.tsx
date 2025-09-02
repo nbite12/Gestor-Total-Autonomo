@@ -35,6 +35,7 @@ const AppContainer: React.FC = () => {
             nif: '', fullName: '', address: '',
             defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 300,
             geminiApiKey: '',
+            initialBalances: {},
         },
     }), []);
 

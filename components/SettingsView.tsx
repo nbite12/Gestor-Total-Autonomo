@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
-import { UserSettings, Category, Income, Expense } from '../types';
+import { UserSettings, Category, Income, Expense, MoneyLocation } from '../types';
 import { Card, Button, Input, Icon } from './ui';
 
 declare const JSZip: any;
@@ -64,6 +64,17 @@ const SettingsView: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSettings(prev => ({...prev, [name]: name.includes('Rate') || name.includes('Fee') ? parseFloat(value) : value }));
+  };
+
+  const handleBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setSettings(prev => ({
+        ...prev,
+        initialBalances: {
+            ...(prev.initialBalances || {}),
+            [name]: parseFloat(value) || 0
+        }
+    }));
   };
   
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -210,21 +221,67 @@ const SettingsView: React.FC = () => {
 
       {/* Fiscal & App Settings */}
       <Card>
-        <form onSubmit={handleSaveSettings} className="space-y-4">
-          <h3 className="text-lg font-bold">Datos Fiscales y Preferencias</h3>
-          <p className="text-sm text-slate-500">Esta información se usará para generar tus facturas.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Nombre Completo" name="fullName" value={settings.fullName} onChange={handleChange} />
-              <Input label="NIF / CIF" name="nif" value={settings.nif} onChange={handleChange} />
-          </div>
-          <Input label="Domicilio Fiscal" name="address" value={settings.address} onChange={handleChange} />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             <Input label="IVA por defecto (%)" name="defaultVatRate" type="number" value={settings.defaultVatRate} onChange={handleChange} />
-             <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
-             <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit">Guardar Ajustes</Button>
+        <form onSubmit={handleSaveSettings} className="space-y-6">
+            <div>
+                <h3 className="text-lg font-bold">Datos Fiscales y Preferencias</h3>
+                <p className="text-sm text-slate-500 mt-1">Esta información se usará para generar tus facturas.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <Input label="Nombre Completo" name="fullName" value={settings.fullName} onChange={handleChange} />
+                    <Input label="NIF / CIF" name="nif" value={settings.nif} onChange={handleChange} />
+                </div>
+                <Input label="Domicilio Fiscal" name="address" value={settings.address} onChange={handleChange} containerClassName="mt-4" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <Input label="IVA por defecto (%)" name="defaultVatRate" type="number" value={settings.defaultVatRate} onChange={handleChange} />
+                    <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
+                    <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
+                </div>
+            </div>
+            
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                <h3 className="text-lg font-bold">Saldos Iniciales</h3>
+                <p className="text-sm text-slate-500 mt-1">Establece el valor inicial de cada cuenta para un cálculo de saldos preciso.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <Input 
+                        label="Efectivo (€)" 
+                        name={MoneyLocation.CASH}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.CASH] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                    <Input 
+                        label="Banco Profesional (€)" 
+                        name={MoneyLocation.PRO_BANK}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.PRO_BANK] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                    <Input 
+                        label="Banco Personal (€)" 
+                        name={MoneyLocation.PERS_BANK}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.PERS_BANK] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                    <Input 
+                        label="Otros (Crypto, etc.) (€)" 
+                        name={MoneyLocation.OTHER}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.OTHER] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                </div>
+            </div>
+
+          <div className="flex justify-end pt-4">
+            <Button type="submit">Guardar Todos los Ajustes</Button>
           </div>
         </form>
       </Card>

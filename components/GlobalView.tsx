@@ -310,10 +310,10 @@ const GlobalView: React.FC = () => {
 
     const moneyDistribution = useMemo(() => {
         const balances: { [key in MoneyLocation]: number } = {
-            [MoneyLocation.CASH]: 0,
-            [MoneyLocation.PRO_BANK]: 0,
-            [MoneyLocation.PERS_BANK]: 0,
-            [MoneyLocation.OTHER]: 0,
+            [MoneyLocation.CASH]: data.settings.initialBalances?.[MoneyLocation.CASH] || 0,
+            [MoneyLocation.PRO_BANK]: data.settings.initialBalances?.[MoneyLocation.PRO_BANK] || 0,
+            [MoneyLocation.PERS_BANK]: data.settings.initialBalances?.[MoneyLocation.PERS_BANK] || 0,
+            [MoneyLocation.OTHER]: data.settings.initialBalances?.[MoneyLocation.OTHER] || 0,
         };
 
         // Process paid professional incomes
@@ -350,7 +350,7 @@ const GlobalView: React.FC = () => {
         });
 
         return balances;
-    }, [data.incomes, data.expenses, data.personalMovements, data.transfers]);
+    }, [data.incomes, data.expenses, data.personalMovements, data.transfers, data.settings.initialBalances]);
 
 
     const actualMovements = useMemo(() => {

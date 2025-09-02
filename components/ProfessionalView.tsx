@@ -1,9 +1,10 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, Attachment, InvestmentGood, AppData } from '../types';
+import { Income, Expense, Attachment, InvestmentGood, AppData, MoneyLocation } from '../types';
 import { Card, Button, Modal, Input, Select, Icon, HelpTooltip, Switch } from './ui';
 import { IRPF_BRACKETS } from '../constants';
 import { extractInvoiceData } from '../services/geminiService';
+import { generateIncomesPDF, generateExpensesPDF, generateInvestmentGoodsPDF } from '../services/pdfService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 // FIX: Imported PeriodSelector component to fix 'Cannot find name' error.
 import { PeriodSelector } from './PeriodSelector';
@@ -88,6 +89,7 @@ const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income>
     vatRate: incomeToEdit?.vatRate ?? data.settings.defaultVatRate,
     irpfRate: incomeToEdit?.irpfRate ?? data.settings.defaultIrpfRate,
     isPaid: incomeToEdit?.isPaid || false,
+    location: incomeToEdit?.location || MoneyLocation.PRO_BANK,
     attachment: incomeToEdit?.attachment,
   });
 
@@ -142,6 +144,9 @@ const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income>
             <option value="15">15% (General)</option><option value="7">7% (Nuevos autónomos)</option><option value="0">0% (Sin retención)</option>
         </Select>
       </div>
+      <Select label="Ubicación del Dinero (si está pagada)" name="location" value={formData.location} onChange={handleChange}>
+        {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
+      </Select>
       <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
       <Switch label="Marcar como Pagada" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
       <div className="flex justify-end gap-2 pt-4">
@@ -164,6 +169,7 @@ const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expen
         baseAmount: expenseToEdit?.baseAmount || 0,
         vatRate: expenseToEdit?.vatRate ?? data.settings.defaultVatRate,
         categoryId: expenseToEdit?.categoryId || (data.professionalCategories[0]?.id || ''),
+        location: expenseToEdit?.location || MoneyLocation.PRO_BANK,
         isDeductible: expenseToEdit?.isDeductible ?? true,
         attachment: expenseToEdit?.attachment,
     });
@@ -212,6 +218,9 @@ const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expen
             </div>
             <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+            </Select>
+            <Select label="Ubicación del Gasto" name="location" value={formData.location} onChange={handleChange}>
+                {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
             </Select>
             <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
             <Switch label="Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
@@ -368,17 +377,35 @@ const LibrosRegistroView: React.FC<{
     return (
         <div className="space-y-8">
             <Card>
-                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">Libro de Registro de Facturas Emitidas</h3><Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button></div>
+                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Libro de Registro de Facturas Emitidas</h3>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                        <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
+                    </div>
+                </div>
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">IRPF</th><th className="px-4 py-2 text-right">Total</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
                         <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditIncome(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('income', inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
             </Card>
             <Card>
-                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">Libro de Registro de Facturas Recibidas</h3><Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button></div>
+                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Libro de Registro de Facturas Recibidas</h3>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses)} disabled={expenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                        <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
+                    </div>
+                </div>
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Deducible</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
                         <tbody>{expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(exp => (<tr key={exp.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(exp.date)}</td><td className="px-4 py-2">{exp.providerName}</td><td className="px-4 py-2">{exp.concept}</td><td className="px-4 py-2 text-right">{formatCurrency(exp.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(exp.baseAmount, exp.vatRate))} ({exp.vatRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaRecibida(exp))}</td><td className="px-4 py-2 text-center">{exp.isDeductible ? 'Sí' : 'No'}</td><td className="px-2 py-2 text-center">{exp.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(exp.attachment!)} title={exp.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditExpense(exp)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('expense', exp.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
             </Card>
              <Card>
-                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">Libro de Registro de Bienes de Inversión</h3><Button onClick={() => onEditInvestment()}><Icon name="plus" /> Añadir Bien</Button></div>
+                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Libro de Registro de Bienes de Inversión</h3>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => generateInvestmentGoodsPDF(investmentGoods)} disabled={investmentGoods.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                        <Button onClick={() => onEditInvestment()}><Icon name="plus" /> Añadir Bien</Button>
+                    </div>
+                </div>
                 <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha Compra</th><th className="px-4 py-2">Descripción</th><th className="px-4 py-2 text-right">Valor Adquisición</th><th className="px-4 py-2 text-center">Vida Útil</th><th className="px-4 py-2 text-right">Amortización Anual</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
                         <tbody>{investmentGoods.sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(good => (<tr key={good.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(good.purchaseDate)}</td><td className="px-4 py-2">{good.description}</td><td className="px-4 py-2 text-right">{formatCurrency(good.acquisitionValue)}</td><td className="px-4 py-2 text-center">{good.usefulLife} años</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(good.acquisitionValue / good.usefulLife)}</td><td className="px-2 py-2 text-center">{good.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(good.attachment!)} title={good.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditInvestment(good)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('investment', good.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
             </Card>
