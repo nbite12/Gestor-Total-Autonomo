@@ -161,10 +161,14 @@ export const generateQuarterlySummaryPDF = (
     }
 
     // --- EXPENSES TABLE ---
-    if (expenses.length > 0) {
+    // Calculate autonomo fee explicitly
+    const months = (period.endDate.getFullYear() - period.startDate.getFullYear()) * 12 + period.endDate.getMonth() - period.startDate.getMonth() + 1;
+    const totalAutonomoFee = settings.monthlyAutonomoFee * months;
+
+    if (expenses.length > 0 || totalAutonomoFee > 0) {
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text('Gastos Deducibles (Facturas Recibidas)', 14, finalY);
+        doc.text('Gastos Deducibles', 14, finalY);
         finalY += 8;
 
         const expenseColumns = ["Fecha", "Proveedor", "Concepto", "Base", "IVA", "Total"];
@@ -180,6 +184,18 @@ export const generateQuarterlySummaryPDF = (
                 formatCurrency(total)
             ];
         });
+        
+        // Add the autonomo fee as an expense row in the table
+        if (totalAutonomoFee > 0) {
+            expenseRows.push([
+                `Periodo (${months} mes${months > 1 ? 'es' : ''})`,
+                'Seguridad Social',
+                'Cuota de Autónomo',
+                formatCurrency(totalAutonomoFee),
+                formatCurrency(0),
+                formatCurrency(totalAutonomoFee)
+            ]);
+        }
 
         doc.autoTable({
             head: [expenseColumns],
@@ -250,7 +266,6 @@ export const generateQuarterlySummaryPDF = (
     finalY += 7;
     
     doc.setFont('helvetica', 'normal');
-    const totalAutonomoFee = (summary.totalGrossInvoiced - summary.totalExpenses - summary.netProfit);
     doc.text(`Total Ingresos Computables (Base Imponible):`, 20, finalY);
     doc.text(formatCurrency(summary.totalGrossInvoiced), 195, finalY, { align: 'right' });
     finalY += 6;
