@@ -22,7 +22,9 @@ export const Icon: React.FC<{ name: string; className?: string }> = ({ name, cla
     'office-building': <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6h1.5m-1.5 3h1.5m-1.5 3h1.5M6.75 21v-2.25a2.25 2.25 0 012.25-2.25h3a2.25 2.25 0 012.25 2.25V21m-8.25-18h8.25a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0117.25 21h-8.25a2.25 2.25 0 01-2.25-2.25V5.25A2.25 2.25 0 016.75 3z" />,
     'user-circle': <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />,
     'globe': <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 010-18h.01a9 9 0 010 18h-.01zM3.75 9.75h16.5M3.75 14.25h16.5" />,
-    'switch-horizontal': <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+    'switch-horizontal': <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />,
+    'eye': <><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 10.224 7.31 6 12 6c4.69 0 8.577 4.224 9.964 5.683a1.012 1.012 0 010 .639C20.577 13.776 16.69 18 12 18c-4.69 0-8.577-4.224-9.964-5.683z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></>,
+    'eye-off': <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 14.334 7.21 18 12 18a10.477 10.477 0 007.456-2.986l-1.524-1.524A3.375 3.375 0 0112 15.75a3.375 3.375 0 01-2.932-1.524L3.98 8.223zM15.75 12c0 .269-.022.533-.064.79l-1.4-1.4a2.25 2.25 0 00-3.182-3.182l-1.4-1.4A9.452 9.452 0 0112 4.5c4.79 0 8.774 3.666 9.994 8.25a.375.375 0 01-.486.486l-1.332-.89a11.169 11.169 0 00-2.413-1.61z" />
   };
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
