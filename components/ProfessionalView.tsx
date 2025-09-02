@@ -3,7 +3,7 @@ import { AppContext } from '../App';
 import { Income, Expense, MoneySource, Attachment, UserSettings, MoneyLocation, Transfer } from '../types';
 import { Card, Button, Modal, Input, Select, Icon, HelpTooltip } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { IRPF_MODELO_130_RATE } from '../constants';
+import { IRPF_BRACKETS } from '../constants';
 import { generateInvoicePDF, generateQuarterlySummaryPDF } from '../services/pdfService';
 import { extractInvoiceData } from '../services/geminiService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -26,6 +26,23 @@ const getCurrentQuarterInfo = () => {
     if (month < 6) return { startDate: new Date(year, 3, 1), endDate: new Date(year, 5, 30, 23, 59, 59, 999) };
     if (month < 9) return { startDate: new Date(year, 6, 1), endDate: new Date(year, 8, 30, 23, 59, 59, 999) };
     return { startDate: new Date(year, 9, 1), endDate: new Date(year, 11, 31, 23, 59, 59, 999) };
+};
+
+const calculateAnnualIRPF = (annualIncome: number): number => {
+    let tax = 0;
+    let lastLimit = 0;
+
+    for (const bracket of IRPF_BRACKETS) {
+        if (annualIncome > lastLimit) {
+            const taxableAmount = Math.min(annualIncome, bracket.limit) - lastLimit;
+            tax += taxableAmount * bracket.rate;
+        } else {
+            break;
+        }
+        lastLimit = bracket.limit;
+    }
+
+    return tax;
 };
 
 
@@ -426,7 +443,7 @@ const FinancialSummary: React.FC<{
         { title: "Beneficio Neto", value: formatCurrency(summary.netProfit), tooltip: "Ingresos (Base Imponible) - Gastos (Base Imponible) - Cuota de Autónomo. Es la base para calcular el IRPF.", className: summary.netProfit >= 0 ? 'text-green-500' : 'text-red-500' },
         { title: "Total Neto Recibido", value: formatCurrency(summary.totalNetReceived), tooltip: "Total facturado (IVA incluido) menos las retenciones de IRPF que te han practicado." },
         { title: "Resultado IVA (Mod. 303)", value: formatCurrency(summary.vatResult), tooltip: "IVA Repercutido (cobrado) - IVA Soportado (pagado). Si es positivo, es a pagar. Si es negativo, a compensar/devolver.", className: summary.vatResult >= 0 ? 'text-red-500' : 'text-green-500' },
-        { title: "IRPF a Pagar (Mod. 130)", value: formatCurrency(summary.irpfToPay), tooltip: `Estimación del 20% sobre el Beneficio Neto. Se paga trimestralmente.`, className: 'text-red-500' },
+        { title: "IRPF a Pagar (Mod. 130)", value: formatCurrency(summary.irpfToPay), tooltip: "Estimación del pago a cuenta trimestral (Mod. 130) calculada progresivamente según los tramos de IRPF. El cálculo final se regulariza en la declaración anual.", className: 'text-red-500' },
     ];
     
     const handleExport = () => {
@@ -499,7 +516,19 @@ const ProfessionalView: React.FC = () => {
 
     const netProfit = totalGrossInvoiced - totalExpenses - totalAutonomoFee;
     const vatResult = totalVatRepercutido - totalVatSoportado;
-    const irpfToPay = Math.max(0, netProfit * IRPF_MODELO_130_RATE);
+
+    // New IRPF calculation based on progressive brackets
+    const daysInPeriod = (period.endDate.getTime() - period.startDate.getTime()) / (1000 * 3600 * 24) + 1;
+    const annualizationFactor = 365.25 / daysInPeriod;
+    
+    const annualizedNetProfit = netProfit * annualizationFactor;
+    const annualizedIrpfSoportado = totalIrpfSoportado * annualizationFactor;
+
+    const annualIrpf = calculateAnnualIRPF(annualizedNetProfit);
+    const annualNetTaxDue = annualIrpf - annualizedIrpfSoportado;
+    
+    const irpfToPay = Math.max(0, annualNetTaxDue / annualizationFactor);
+
     const totalNetReceived = totalGrossInvoiced + totalVatRepercutido - totalIrpfSoportado;
 
     return { totalGrossInvoiced, totalExpenses, netProfit, vatResult, irpfToPay, totalNetReceived };

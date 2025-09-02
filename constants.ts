@@ -1,7 +1,15 @@
 
+
 import { Category } from './types';
 
-export const IRPF_MODELO_130_RATE = 0.20;
+export const IRPF_BRACKETS: { limit: number, rate: number }[] = [
+    { limit: 12450, rate: 0.19 },
+    { limit: 20200, rate: 0.24 },
+    { limit: 35200, rate: 0.30 },
+    { limit: 60000, rate: 0.37 },
+    { limit: 300000, rate: 0.45 },
+    { limit: Infinity, rate: 0.47 },
+];
 
 export const DEFAULT_PROFESSIONAL_CATEGORIES: Category[] = [
     { id: 'cat-pro-1', name: 'Software y suscripciones' },

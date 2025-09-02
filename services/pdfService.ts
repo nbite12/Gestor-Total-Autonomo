@@ -276,7 +276,7 @@ export const generateQuarterlySummaryPDF = (
     doc.text(formatCurrency(summary.netProfit), 195, finalY, { align: 'right' });
     finalY += 8;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Pago a Cuenta (20% s/ Rendimiento Neto):`, 20, finalY);
+    doc.text(`Pago a Cuenta (Estimación Mod. 130):`, 20, finalY);
     doc.text(formatCurrency(summary.irpfToPay), 195, finalY, { align: 'right' });
     
     // --- FOOTER ---
