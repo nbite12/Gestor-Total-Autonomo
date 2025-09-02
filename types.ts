@@ -59,13 +59,26 @@ export interface Income {
 export interface Expense {
   id: string;
   date: string; // ISO string
+  invoiceNumber?: string;
   providerName: string;
+  providerNif?: string;
   concept: string;
   baseAmount: number;
   vatRate: number; // percentage
   categoryId: string;
   location: MoneyLocation;
   attachment?: Attachment;
+  isDeductible: boolean;
+}
+
+export interface InvestmentGood {
+    id: string;
+    purchaseDate: string; // ISO string
+    description: string;
+    providerNif?: string;
+    invoiceNumber?: string;
+    acquisitionValue: number; // Base imponible
+    usefulLife: number; // in years
 }
 
 export interface PersonalMovement {
@@ -135,6 +148,7 @@ export interface UserSettings {
 export interface AppData {
   incomes: Income[];
   expenses: Expense[];
+  investmentGoods: InvestmentGood[];
   personalMovements: PersonalMovement[];
   transfers: Transfer[];
   savingsGoals: SavingsGoal[];

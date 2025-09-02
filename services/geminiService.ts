@@ -31,8 +31,10 @@ const incomeSchema = {
 const expenseSchema = {
     type: Type.OBJECT,
     properties: {
+        invoiceNumber: { type: Type.STRING, description: "Número de la factura, si aparece" },
         date: { type: Type.STRING, description: "Fecha de la factura en formato YYYY-MM-DD" },
         providerName: { type: Type.STRING, description: "Nombre completo o razón social del proveedor" },
+        providerNif: { type: Type.STRING, description: "NIF o CIF del proveedor, si aparece" },
         concept: { type: Type.STRING, description: "Descripción del gasto" },
         baseAmount: { type: Type.NUMBER, description: "Importe base antes de impuestos" },
         vatRate: { type: Type.NUMBER, description: "Porcentaje de IVA soportado" },

@@ -27,6 +27,7 @@ const AppContainer: React.FC = () => {
 
     const initialData: AppData = useMemo(() => ({
         incomes: [], expenses: [], personalMovements: [], transfers: [],
+        investmentGoods: [],
         savingsGoals: [], potentialIncomes: [], potentialExpenses: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
