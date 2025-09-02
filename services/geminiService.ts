@@ -1,5 +1,5 @@
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { Income, Expense } from './types';
+import { GoogleGenAI, Type } from "@google/genai";
+import { Income, Expense, InvestmentGood } from './types';
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -42,12 +42,25 @@ const expenseSchema = {
     required: ["date", "providerName", "concept", "baseAmount", "vatRate"]
 };
 
+const investmentGoodSchema = {
+    type: Type.OBJECT,
+    properties: {
+        purchaseDate: { type: Type.STRING, description: "Fecha de la compra del bien en formato YYYY-MM-DD" },
+        description: { type: Type.STRING, description: "Descripción clara y concisa del bien de inversión (ej: 'Ordenador Portátil MacBook Pro 14 pulgadas')" },
+        providerNif: { type: Type.STRING, description: "NIF o CIF del proveedor, si aparece" },
+        invoiceNumber: { type: Type.STRING, description: "Número de la factura de compra, si aparece" },
+        acquisitionValue: { type: Type.NUMBER, description: "Valor de adquisición, que es la base imponible de la compra" },
+        usefulLife: { type: Type.NUMBER, description: "Vida útil en años. Si no se especifica, usa 4 para equipos informáticos, 10 para mobiliario, 8 para maquinaria." },
+    },
+    required: ["purchaseDate", "description", "acquisitionValue", "usefulLife"]
+};
+
 
 export const extractInvoiceData = async (
     file: File, 
-    invoiceType: 'income' | 'expense', 
+    invoiceType: 'income' | 'expense' | 'investment', 
     apiKey: string
-): Promise<Partial<Income> | Partial<Expense>> => {
+): Promise<Partial<Income> | Partial<Expense> | Partial<InvestmentGood>> => {
 
     if (!apiKey) {
         throw new Error("API Key de Gemini no configurada.");
@@ -56,8 +69,24 @@ export const extractInvoiceData = async (
     const ai = new GoogleGenAI({ apiKey });
     
     const base64Data = await fileToBase64(file);
-    const schema = invoiceType === 'income' ? incomeSchema : expenseSchema;
-    const typeText = invoiceType === 'income' ? 'emitida (un ingreso)' : 'recibida (un gasto)';
+    
+    let schema;
+    let typeText;
+
+    switch (invoiceType) {
+        case 'income':
+            schema = incomeSchema;
+            typeText = 'emitida (un ingreso)';
+            break;
+        case 'expense':
+            schema = expenseSchema;
+            typeText = 'recibida (un gasto)';
+            break;
+        case 'investment':
+            schema = investmentGoodSchema;
+            typeText = 'de un bien de inversión';
+            break;
+    }
 
     const filePart = {
         inlineData: {
@@ -83,10 +112,10 @@ export const extractInvoiceData = async (
         const jsonString = response.text.trim();
         const extractedData = JSON.parse(jsonString);
         
-        // Ensure date is valid, otherwise default to today
-        if (extractedData.date && isNaN(new Date(extractedData.date).getTime())) {
-            console.warn("Invalid date from AI, defaulting to today:", extractedData.date);
-            extractedData.date = new Date().toISOString().split('T')[0];
+        const dateKey = invoiceType === 'investment' ? 'purchaseDate' : 'date';
+        if (extractedData[dateKey] && isNaN(new Date(extractedData[dateKey]).getTime())) {
+            console.warn("Invalid date from AI, defaulting to today:", extractedData[dateKey]);
+            extractedData[dateKey] = new Date().toISOString().split('T')[0];
         }
 
         return extractedData;

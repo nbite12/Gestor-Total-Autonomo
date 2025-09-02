@@ -79,6 +79,7 @@ export interface InvestmentGood {
     invoiceNumber?: string;
     acquisitionValue: number; // Base imponible
     usefulLife: number; // in years
+    attachment?: Attachment;
 }
 
 export interface PersonalMovement {
