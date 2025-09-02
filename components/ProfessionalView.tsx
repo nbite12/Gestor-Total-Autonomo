@@ -475,20 +475,19 @@ const MisImpuestosView: React.FC = () => {
         const incomesInPeriod = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
         const expensesInPeriod = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
         const transfersInPeriod = data.transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
-        const investmentGoodsInPeriod = data.investmentGoods.filter(g => new Date(g.purchaseDate) <= endDate);
-
-
+        
         const totalGrossInvoiced = incomesInPeriod.reduce((sum, i) => sum + i.baseAmount, 0);
         const totalExpensesFromInvoices = expensesInPeriod.reduce((sum, e) => sum + e.baseAmount, 0);
         const cuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * 3;
-        const totalAmortization = investmentGoodsInPeriod.reduce((sum, good) => {
+        
+        const totalAmortization = data.investmentGoods.reduce((sum, good) => {
              const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
              const goodStartDate = new Date(good.purchaseDate);
              const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
              const effectiveStartDate = goodStartDate > startDate ? goodStartDate : startDate;
              const effectiveEndDate = goodEndDate < endDate ? goodEndDate : endDate;
              if(effectiveEndDate > effectiveStartDate) {
-                const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24);
+                const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
                 return sum + (daysInPeriod * dailyAmortization);
              }
              return sum;
@@ -500,18 +499,19 @@ const MisImpuestosView: React.FC = () => {
         const ivaRepercutido = incomesInPeriod.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
         const ivaSoportado = expensesInPeriod.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
         const vatResult = ivaRepercutido - ivaSoportado;
-
         const irpfToPay = netProfit * 0.2;
 
         const summary = {
             totalGrossInvoiced,
             totalExpenses: totalDeductibleExpenses,
             netProfit,
+            ivaRepercutido,
+            ivaSoportado,
             vatResult,
             irpfToPay: Math.max(0, irpfToPay)
         };
         
-        generateComprehensivePeriodPDF(incomesInPeriod, expensesInPeriod, investmentGoodsInPeriod, transfersInPeriod, data.settings, { startDate, endDate }, summary);
+        generateComprehensivePeriodPDF(incomesInPeriod, expensesInPeriod, data.investmentGoods, transfersInPeriod, data.settings, { startDate, endDate }, summary);
     };
 
     const calculateAnnualModels = () => {

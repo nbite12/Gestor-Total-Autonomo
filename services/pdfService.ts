@@ -7,7 +7,7 @@ declare global {
 }
 
 // --- Shared Helpers ---
-const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleString('es-ES');
+const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
 const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
 // --- Individual Invoice PDF (remains unchanged) ---
@@ -119,6 +119,8 @@ export const generateComprehensivePeriodPDF = (
         netProfit: number;
         vatResult: number;
         irpfToPay: number;
+        ivaRepercutido: number;
+        ivaSoportado: number;
     }
 ) => {
     const { jsPDF } = window.jspdf;
@@ -151,75 +153,84 @@ export const generateComprehensivePeriodPDF = (
     doc.autoTable({
         startY: 108,
         theme: 'plain',
+        styles: { cellPadding: 2 },
         body: [
             ['Total Ingresos (Base Imponible)', formatCurrency(summary.totalGrossInvoiced)],
             ['Total Gastos Deducibles', formatCurrency(summary.totalExpenses)],
             ['Rendimiento Neto', { content: formatCurrency(summary.netProfit), styles: { fontStyle: 'bold' } }],
-            [''], // spacer
-            ['IVA Repercutido', formatCurrency(summary.vatResult + expenses.reduce((acc, exp) => acc + (exp.baseAmount * exp.vatRate / 100), 0))],
-            ['IVA Soportado Deducible', formatCurrency(expenses.reduce((acc, exp) => acc + (exp.baseAmount * exp.vatRate / 100), 0))],
+            ['', ''], // spacer
+            ['IVA Repercutido', formatCurrency(summary.ivaRepercutido)],
+            ['IVA Soportado Deducible', formatCurrency(summary.ivaSoportado)],
             ['Resultado IVA (Mod. 303)', { content: formatCurrency(summary.vatResult), styles: { fontStyle: 'bold' } }],
-            [''], // spacer
+            ['', ''], // spacer
             ['Pago a Cuenta IRPF (Mod. 130)', { content: formatCurrency(summary.irpfToPay), styles: { fontStyle: 'bold' } }],
         ]
     });
 
     // --- PAGE 2: INCOMES ---
-    doc.addPage();
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Libro de Registro de Facturas Emitidas', 14, 22);
-    doc.autoTable({
-        head: [["Fecha", "Nº Factura", "Cliente", "Base", "IVA", "IRPF", "Total"]],
-        body: incomes.map(inc => {
-            const vat = inc.baseAmount * inc.vatRate / 100;
-            const irpf = inc.baseAmount * inc.irpfRate / 100;
-            return [formatDate(inc.date), inc.invoiceNumber, inc.clientName, formatCurrency(inc.baseAmount), formatCurrency(vat), formatCurrency(-irpf), formatCurrency(inc.baseAmount + vat - irpf)];
-        }),
-        startY: 30, theme: 'grid', headStyles: { fillColor: [34, 197, 94] }
-    });
+    if (incomes.length > 0) {
+        doc.addPage();
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Libro de Registro de Facturas Emitidas', 14, 22);
+        doc.autoTable({
+            head: [["Fecha", "Nº Factura", "Cliente", "Base", "IVA", "IRPF", "Total"]],
+            body: incomes.map(inc => {
+                const vat = inc.baseAmount * inc.vatRate / 100;
+                const irpf = inc.baseAmount * inc.irpfRate / 100;
+                return [formatDate(inc.date), inc.invoiceNumber, inc.clientName, formatCurrency(inc.baseAmount), formatCurrency(vat), formatCurrency(-irpf), formatCurrency(inc.baseAmount + vat - irpf)];
+            }),
+            startY: 30, theme: 'grid', headStyles: { fillColor: [34, 197, 94] }
+        });
+    }
     
     // --- PAGE 3: EXPENSES ---
-    doc.addPage();
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Libro de Registro de Gastos Deducibles', 14, 22);
-    const months = (period.endDate.getFullYear() - period.startDate.getFullYear()) * 12 + period.endDate.getMonth() - period.startDate.getMonth() + 1;
-    const totalAutonomoFee = settings.monthlyAutonomoFee * months;
-    const expenseRows = expenses.map(exp => [formatDate(exp.date), exp.providerName, exp.concept, formatCurrency(exp.baseAmount), formatCurrency(exp.baseAmount * exp.vatRate / 100), formatCurrency(exp.baseAmount * (1 + exp.vatRate / 100))]);
-    if(totalAutonomoFee > 0) expenseRows.push(['Periodo', 'Seguridad Social', 'Cuota de Autónomo', formatCurrency(totalAutonomoFee), formatCurrency(0), formatCurrency(totalAutonomoFee)]);
-    doc.autoTable({
-        head: [["Fecha", "Proveedor", "Concepto", "Base", "IVA", "Total"]],
-        body: expenseRows,
-        startY: 30, theme: 'grid', headStyles: { fillColor: [239, 68, 68] }
-    });
+    if (expenses.length > 0) {
+        doc.addPage();
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Libro de Registro de Gastos Deducibles', 14, 22);
+        doc.autoTable({
+            head: [["Fecha", "Proveedor", "Concepto", "Base", "IVA", "Total"]],
+            body: expenses.map(exp => [formatDate(exp.date), exp.providerName, exp.concept, formatCurrency(exp.baseAmount), formatCurrency(exp.baseAmount * exp.vatRate / 100), formatCurrency(exp.baseAmount * (1 + exp.vatRate / 100))]),
+            startY: 30, theme: 'grid', headStyles: { fillColor: [239, 68, 68] }
+        });
+    }
 
     // --- PAGE 4: INVESTMENT GOODS ---
-    doc.addPage();
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Libro de Bienes de Inversión (Amortización del Periodo)', 14, 22);
-    const investmentRows = investmentGoods.map(good => {
-        const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
-        const goodStartDate = new Date(good.purchaseDate);
-        const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
-        
-        const effectiveStartDate = goodStartDate > period.startDate ? goodStartDate : period.startDate;
-        const effectiveEndDate = goodEndDate < period.endDate ? goodEndDate : period.endDate;
-        
-        let periodAmortization = 0;
-        if (effectiveEndDate > effectiveStartDate) {
-            const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24);
-            periodAmortization = daysInPeriod * dailyAmortization;
+    if (investmentGoods.length > 0) {
+        doc.addPage();
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Libro de Bienes de Inversión (Amortización del Periodo)', 14, 22);
+        const investmentRows = investmentGoods.map(good => {
+            const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+            const goodStartDate = new Date(good.purchaseDate);
+            const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+            
+            const effectiveStartDate = goodStartDate > period.startDate ? goodStartDate : period.startDate;
+            const effectiveEndDate = goodEndDate < period.endDate ? goodEndDate : period.endDate;
+            
+            let periodAmortization = 0;
+            if (effectiveEndDate > effectiveStartDate) {
+                const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+                periodAmortization = daysInPeriod * dailyAmortization;
+            }
+            
+            return [formatDate(good.purchaseDate), good.description, formatCurrency(good.acquisitionValue), `${good.usefulLife} años`, formatCurrency(periodAmortization)];
+        }).filter(row => row[4] !== formatCurrency(0)); // Only show goods that amortized in the period
+
+        if (investmentRows.length > 0) {
+            doc.autoTable({
+                head: [["Fecha Compra", "Descripción", "Valor", "Vida Útil", "Amortización en Periodo"]],
+                body: investmentRows,
+                startY: 30, theme: 'grid', headStyles: { fillColor: [100, 116, 139] }
+            });
+        } else {
+            doc.setFontSize(12);
+            doc.text('No hay bienes de inversión con amortización computable en este periodo.', 14, 35);
         }
-        
-        return [formatDate(good.purchaseDate), good.description, formatCurrency(good.acquisitionValue), `${good.usefulLife} años`, formatCurrency(periodAmortization)];
-    });
-    doc.autoTable({
-        head: [["Fecha Compra", "Descripción", "Valor", "Vida Útil", "Amortización en Periodo"]],
-        body: investmentRows,
-        startY: 30, theme: 'grid', headStyles: { fillColor: [100, 116, 139] }
-    });
+    }
 
     // --- PAGE 5: TRANSFERS ---
     if(transfers.length > 0) {
