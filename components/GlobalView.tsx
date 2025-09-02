@@ -30,7 +30,10 @@ const getMonthsRemaining = (deadline: string): number => {
     return months <= 0 ? 1 : months;
 };
 
-const formatDateForInput = (isoDate: string) => isoDate.split('T')[0];
+const formatDateForInput = (isoDate: string | Date | undefined) => {
+    if (!isoDate) return new Date().toISOString().split('T')[0];
+    return new Date(isoDate).toISOString().split('T')[0];
+}
 
 
 // --- Potential Income Form Modal ---
@@ -277,94 +280,168 @@ const TransferForm: React.FC<{
     )
 };
 
-// --- FIX: Defined missing PendingTransactions component ---
-const PendingTransactions: React.FC = () => {
-    const context = useContext(AppContext);
-    if (!context) return null;
+// --- Contabilize Modal ---
+const ContabilizeModal: React.FC<{
+    item: Income | Expense;
+    onClose: () => void;
+    onSave: (id: string, paymentDate: string, location: MoneyLocation) => void;
+}> = ({ item, onClose, onSave }) => {
+    const [paymentDate, setPaymentDate] = useState(formatDateForInput(new Date()));
+    const [location, setLocation] = useState(item.location || MoneyLocation.PRO_BANK);
 
-    const { data, setData, formatCurrency } = context;
-
-    const pendingIncomes = data.incomes.filter(i => !i.isPaid);
-    const pendingExpenses = data.expenses.filter(e => !e.isPaid);
-
-    if (pendingIncomes.length === 0 && pendingExpenses.length === 0) {
-        return null; // Don't render the card if there's nothing to show
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(item.id, new Date(paymentDate).toISOString(), location);
+        onClose();
     }
 
-    const handleMarkAsPaid = (type: 'income' | 'expense', id: string) => {
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <p>Contabilizar: <strong>{item.concept}</strong></p>
+            <Input 
+                label="Fecha de Pago/Cobro"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                required
+            />
+            <Select
+                label="Ubicación del Dinero"
+                value={location}
+                onChange={(e) => setLocation(e.target.value as MoneyLocation)}
+            >
+                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+            </Select>
+            <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">Confirmar Pago</Button>
+            </div>
+        </form>
+    )
+};
+
+// --- Periodize Modal ---
+const PeriodizeExpenseModal: React.FC<{
+    expense: Expense;
+    onClose: () => void;
+}> = ({ expense, onClose }) => {
+    const { setData } = useContext(AppContext)!;
+    const [paymentDate, setPaymentDate] = useState(formatDateForInput(expense.date));
+    const [location, setLocation] = useState(expense.location || MoneyLocation.PRO_BANK);
+    const [periodStartDate, setPeriodStartDate] = useState(formatDateForInput(expense.date));
+    const [periodEndDate, setPeriodEndDate] = useState(() => {
+        const date = new Date(expense.date);
+        date.setFullYear(date.getFullYear() + 1);
+        date.setDate(date.getDate() - 1);
+        return formatDateForInput(date);
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const pStartDate = new Date(periodStartDate);
+        const pEndDate = new Date(periodEndDate);
+
+        if (pEndDate <= pStartDate) {
+            alert("La fecha de fin debe ser posterior a la fecha de inicio.");
+            return;
+        }
+
         setData(prev => {
-            if (type === 'income') {
-                return {
-                    ...prev,
-                    incomes: prev.incomes.map(i => i.id === id ? { ...i, isPaid: true, paymentDate: new Date().toISOString() } : i),
+            const months = getMonthsInRange(pStartDate, pEndDate);
+            if (months <= 0) return prev;
+
+            const monthlyBase = expense.baseAmount / months;
+            
+            const paymentExpense: Expense = {
+                ...expense,
+                id: `exp-pmt-${Date.now()}`,
+                date: new Date(paymentDate).toISOString(),
+                isPaid: true,
+                paymentDate: new Date(paymentDate).toISOString(),
+                location: location,
+                isDeductible: false,
+                concept: `${expense.concept} (Pago Periodificado)`
+            };
+
+            const periodizedExpenses: Expense[] = [];
+            for (let i = 0; i < months; i++) {
+                const monthDate = new Date(pStartDate);
+                monthDate.setMonth(monthDate.getMonth() + i);
+
+                const newMonthlyExpense: Expense = {
+                    ...expense,
+                    id: `exp-prd-${Date.now()}-${i}`,
+                    date: monthDate.toISOString(),
+                    baseAmount: monthlyBase,
+                    isPaid: false, // These are accounting entries, not cash flow
+                    location: undefined,
+                    paymentDate: undefined,
+                    isDeductible: true,
+                    concept: `${expense.concept} (Mes ${i+1}/${months})`,
+                    attachment: undefined, // Attachment stays with payment record
                 };
-            } else { // expense
-                return {
-                    ...prev,
-                    expenses: prev.expenses.map(e => e.id === id ? { ...e, isPaid: true, paymentDate: new Date().toISOString() } : e),
-                };
+                periodizedExpenses.push(newMonthlyExpense);
             }
+
+            const updatedExpenses = prev.expenses
+                .filter(e => e.id !== expense.id) // Remove original
+                .concat([paymentExpense, ...periodizedExpenses]); // Add new ones
+            
+            return { ...prev, expenses: updatedExpenses };
         });
+
+        onClose();
     };
 
-    const getTotalIncomeAmount = (income: Income) => {
-        return income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
-    };
-    
-    const getTotalExpenseAmount = (expense: Expense) => {
-        return expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
-    };
 
     return (
-        <Card>
-            <h3 className="text-xl font-bold mb-4">Transacciones Pendientes de Pago</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                    <h4 className="font-semibold mb-2">Cobros Pendientes</h4>
-                    {pendingIncomes.length > 0 ? (
-                        <ul className="space-y-2 max-h-64 overflow-y-auto">
-                            {pendingIncomes.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(income => (
-                                <li key={income.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
-                                    <div>
-                                        <p>{income.concept}</p>
-                                        <p className="text-xs text-slate-500">{income.clientName} - {new Date(income.date).toLocaleDateString('es-ES')}</p>
-                                    </div>
-                                    <div className="text-right flex-shrink-0 ml-2">
-                                        <p className="font-semibold text-green-500">{formatCurrency(getTotalIncomeAmount(income))}</p>
-                                        <Button size="sm" variant="ghost" onClick={() => handleMarkAsPaid('income', income.id)}>Marcar Pagada</Button>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <p className="text-sm text-slate-500">No hay cobros pendientes.</p>
-                    )}
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-2">Pagos Pendientes</h4>
-                     {pendingExpenses.length > 0 ? (
-                        <ul className="space-y-2 max-h-64 overflow-y-auto">
-                            {pendingExpenses.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(expense => (
-                                <li key={expense.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
-                                    <div>
-                                        <p>{expense.concept}</p>
-                                        <p className="text-xs text-slate-500">{expense.providerName} - {new Date(expense.date).toLocaleDateString('es-ES')}</p>
-                                    </div>
-                                    <div className="text-right flex-shrink-0 ml-2">
-                                        <p className="font-semibold text-red-500">{formatCurrency(getTotalExpenseAmount(expense))}</p>
-                                         <Button size="sm" variant="ghost" onClick={() => handleMarkAsPaid('expense', expense.id)}>Marcar Pagado</Button>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <p className="text-sm text-slate-500">No hay pagos pendientes.</p>
-                    )}
-                </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+             <p>Periodizar: <strong>{expense.concept}</strong></p>
+             <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
+                <legend className="text-sm font-medium px-2">Detalles del Pago Real</legend>
+                 <Input 
+                    label="Fecha de Pago"
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    required
+                />
+                <Select
+                    label="Pagado Desde"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value as MoneyLocation)}
+                >
+                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                </Select>
+             </fieldset>
+
+             <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
+                <legend className="text-sm font-medium px-2">Periodo a Cubrir</legend>
+                 <Input 
+                    label="Fecha de Inicio del Gasto"
+                    type="date"
+                    value={periodStartDate}
+                    onChange={(e) => setPeriodStartDate(e.target.value)}
+                    required
+                />
+                <Input 
+                    label="Fecha de Fin del Gasto"
+                    type="date"
+                    value={periodEndDate}
+                    onChange={(e) => setPeriodEndDate(e.target.value)}
+                    required
+                />
+             </fieldset>
+
+             <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">Confirmar y Periodizar</Button>
             </div>
-        </Card>
-    );
-};
+        </form>
+    )
+}
+
 
 
 // --- Global View ---
@@ -391,6 +468,10 @@ const GlobalView: React.FC = () => {
     const [expenseToEdit, setExpenseToEdit] = useState<PotentialExpense | null>(null);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [transferToEdit, setTransferToEdit] = useState<Transfer | null>(null);
+
+    // State for pending transaction modals
+    const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | null>(null);
+    const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
 
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
 
@@ -532,8 +613,22 @@ const GlobalView: React.FC = () => {
             netProjectedCashFlow,
         }
     }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses]);
+    
+    const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
+    const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
 
     // --- Handlers ---
+    const handleSaveContabilizar = (id: string, paymentDate: string, location: MoneyLocation) => {
+        setData(prev => {
+            const isIncome = prev.incomes.some(i => i.id === id);
+            if (isIncome) {
+                return { ...prev, incomes: prev.incomes.map(i => i.id === id ? { ...i, isPaid: true, paymentDate, location } : i) };
+            } else {
+                return { ...prev, expenses: prev.expenses.map(e => e.id === id ? { ...e, isPaid: true, paymentDate, location } : e) };
+            }
+        });
+    };
+
     const handleGoalContributionChange = (goalId: string, value: string) => {
         const amount = parseFloat(value);
         setData(prev => ({
@@ -637,7 +732,48 @@ const GlobalView: React.FC = () => {
                 </div>
             </Card>
 
-            <PendingTransactions />
+            {(pendingIncomes.length > 0 || pendingExpenses.length > 0) && (
+                <Card>
+                    <h3 className="text-xl font-bold mb-4">Transacciones Pendientes</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                        <div>
+                            <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro</h4>
+                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
+                                <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p>{income.concept}</p>
+                                            <p className="text-xs text-slate-500">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                        </div>
+                                        <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-1">
+                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
+                                    </div>
+                                </li>
+                            ))}</ul>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago</h4>
+                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
+                                <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p>{expense.concept}</p>
+                                            <p className="text-xs text-slate-500">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                        </div>
+                                        <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-1">
+                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setExpenseToPeriodize(expense)}>Periodizar</Button>
+                                    </div>
+                                </li>
+                             ))}</ul>
+                        </div>
+                    </div>
+                </Card>
+            )}
 
             <Card>
                  <h3 className="text-xl font-bold mb-4">Historial de Transferencias</h3>
@@ -839,17 +975,26 @@ const GlobalView: React.FC = () => {
                 </div>
             </Card>
 
+            {/* Modals for this view */}
             <Modal isOpen={isIncomeModalOpen} onClose={() => setIsIncomeModalOpen(false)} title={incomeToEdit ? "Editar Ingreso Potencial" : "Añadir Ingreso Potencial"}>
                 <PotentialIncomeForm onClose={() => setIsIncomeModalOpen(false)} incomeToEdit={incomeToEdit} />
             </Modal>
-            
              <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title={expenseToEdit ? "Editar Gasto Potencial" : "Añadir Gasto Potencial"}>
                 <PotentialExpenseForm onClose={() => setIsExpenseModalOpen(false)} expenseToEdit={expenseToEdit} />
             </Modal>
-
             <Modal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} title={transferToEdit ? "Editar Transferencia" : "Nueva Transferencia"}>
                 <TransferForm onClose={() => setIsTransferModalOpen(false)} transferToEdit={transferToEdit} />
             </Modal>
+            {itemToContabilize && (
+                 <Modal isOpen={true} onClose={() => setItemToContabilize(null)} title="Contabilizar Transacción">
+                    <ContabilizeModal item={itemToContabilize} onClose={() => setItemToContabilize(null)} onSave={handleSaveContabilizar} />
+                 </Modal>
+            )}
+            {expenseToPeriodize && (
+                 <Modal isOpen={true} onClose={() => setExpenseToPeriodize(null)} title="Periodizar Gasto">
+                    <PeriodizeExpenseModal expense={expenseToPeriodize} onClose={() => setExpenseToPeriodize(null)} />
+                 </Modal>
+            )}
         </div>
     );
 };
