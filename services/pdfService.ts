@@ -1,0 +1,248 @@
+import { Income, UserSettings, Expense } from './types';
+
+declare global {
+  interface Window {
+    jspdf: any;
+  }
+}
+
+export const generateInvoicePDF = (income: Income, settings: UserSettings) => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString('es-ES');
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+
+  // Header
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('FACTURA', 14, 22);
+
+  // Payment Status
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  if (income.isPaid) {
+      doc.setTextColor(34, 197, 94); // green-500
+      doc.text('PAGADA', 195, 22, { align: 'right' });
+  } else {
+      doc.setTextColor(239, 68, 68); // red-500
+      doc.text('PENDIENTE', 195, 22, { align: 'right' });
+  }
+  doc.setTextColor(0, 0, 0); // Reset color
+
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Nº Factura: ${income.invoiceNumber}`, 14, 30);
+  doc.text(`Fecha: ${formatDate(income.date)}`, 14, 35);
+
+  // Emitter info
+  doc.setFont('helvetica', 'bold');
+  doc.text(settings.fullName, 14, 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(settings.nif, 14, 55);
+  doc.text(settings.address, 14, 60);
+
+  // Client info
+  doc.setFont('helvetica', 'bold');
+  doc.text('Cliente:', 130, 50);
+  doc.setFont('helvetica', 'normal');
+  doc.text(income.clientName, 130, 55);
+  if(income.clientNif) doc.text(income.clientNif, 130, 60);
+  if(income.clientAddress) doc.text(income.clientAddress, 130, 65);
+
+
+  // Table
+  const vatAmount = (income.baseAmount * income.vatRate) / 100;
+  const irpfAmount = (income.baseAmount * income.irpfRate) / 100;
+  const total = income.baseAmount + vatAmount - irpfAmount;
+
+  const tableColumn = ["Concepto", "Base Imponible", "IVA (%)", "IRPF (%)", "Total"];
+  const tableRows = [[
+    income.concept,
+    formatCurrency(income.baseAmount),
+    `${income.vatRate}%`,
+    `${income.irpfRate}%`,
+    formatCurrency(income.baseAmount + vatAmount)
+  ]];
+
+  doc.autoTable({
+    head: [tableColumn],
+    body: tableRows,
+    startY: 80,
+    theme: 'grid',
+    headStyles: { fillColor: [249, 115, 22] } // Orange accent
+  });
+
+  // Totals
+  const finalY = doc.lastAutoTable.finalY || 120;
+  doc.setFontSize(12);
+  doc.text(`Base Imponible: ${formatCurrency(income.baseAmount)}`, 130, finalY + 10);
+  doc.text(`IVA (${income.vatRate}%): ${formatCurrency(vatAmount)}`, 130, finalY + 17);
+  if (irpfAmount > 0) {
+    doc.text(`Retención IRPF (${income.irpfRate}%): -${formatCurrency(irpfAmount)}`, 130, finalY + 24);
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.text(`TOTAL: ${formatCurrency(total)}`, 130, finalY + 31);
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text('Factura generada con Gestor Total Autónomo', 14, 280);
+
+  doc.save(`factura-${income.invoiceNumber}.pdf`);
+};
+
+
+export const generateQuarterlySummaryPDF = (
+    incomes: Income[],
+    expenses: Expense[],
+    settings: UserSettings,
+    period: { startDate: Date; endDate: Date },
+    summary: {
+        totalGrossInvoiced: number;
+        totalExpenses: number;
+        netProfit: number;
+        vatResult: number;
+        irpfToPay: number;
+    }
+) => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+
+    // --- HEADER ---
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Resumen Fiscal Trimestral', 105, 20, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${settings.fullName || 'No especificado'} - ${settings.nif || 'No especificado'}`, 14, 30);
+    doc.text(`Periodo: ${formatDate(period.startDate)} - ${formatDate(period.endDate)}`, 14, 35);
+
+    let finalY = 45;
+
+    // --- INCOMES TABLE ---
+    if (incomes.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Ingresos (Facturas Emitidas)', 14, finalY);
+        finalY += 8;
+
+        const incomeColumns = ["Nº Factura", "Fecha", "Cliente", "Base", "IVA", "IRPF", "Total"];
+        const incomeRows = incomes.map(inc => {
+            const vatAmount = inc.baseAmount * (inc.vatRate / 100);
+            const irpfAmount = inc.baseAmount * (inc.irpfRate / 100);
+            const total = inc.baseAmount + vatAmount - irpfAmount;
+            return [
+                inc.invoiceNumber,
+                formatDate(inc.date),
+                inc.clientName,
+                formatCurrency(inc.baseAmount),
+                formatCurrency(vatAmount),
+                formatCurrency(-irpfAmount),
+                formatCurrency(total)
+            ];
+        });
+
+        doc.autoTable({
+            head: [incomeColumns],
+            body: incomeRows,
+            startY: finalY,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 197, 94] }
+        });
+        finalY = doc.lastAutoTable.finalY + 15;
+    }
+
+    // --- EXPENSES TABLE ---
+    if (expenses.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Gastos Deducibles (Facturas Recibidas)', 14, finalY);
+        finalY += 8;
+
+        const expenseColumns = ["Fecha", "Proveedor", "Concepto", "Base", "IVA", "Total"];
+        const expenseRows = expenses.map(exp => {
+            const vatAmount = exp.baseAmount * (exp.vatRate / 100);
+            const total = exp.baseAmount + vatAmount;
+            return [
+                formatDate(exp.date),
+                exp.providerName,
+                exp.concept,
+                formatCurrency(exp.baseAmount),
+                formatCurrency(vatAmount),
+                formatCurrency(total)
+            ];
+        });
+
+        doc.autoTable({
+            head: [expenseColumns],
+            body: expenseRows,
+            startY: finalY,
+            theme: 'grid',
+            headStyles: { fillColor: [239, 68, 68] }
+        });
+        finalY = doc.lastAutoTable.finalY + 15;
+    }
+
+    // --- TAX SUMMARY ---
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Liquidación de Impuestos', 14, finalY);
+    finalY += 10;
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('IVA (Modelo 303)', 14, finalY);
+    finalY += 7;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const totalVatRepercutido = incomes.reduce((acc, inc) => acc + (inc.baseAmount * inc.vatRate / 100), 0);
+    const totalVatSoportado = expenses.reduce((acc, exp) => acc + (exp.baseAmount * exp.vatRate / 100), 0);
+
+    doc.text(`Total IVA Repercutido (Cobrado):`, 20, finalY);
+    doc.text(formatCurrency(totalVatRepercutido), 195, finalY, { align: 'right' });
+    finalY += 6;
+    doc.text(`Total IVA Soportado (Pagado):`, 20, finalY);
+    doc.text(formatCurrency(totalVatSoportado), 195, finalY, { align: 'right' });
+    finalY += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Resultado (A Pagar / Compensar):`, 20, finalY);
+    doc.text(formatCurrency(summary.vatResult), 195, finalY, { align: 'right' });
+    finalY += 12;
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('IRPF (Modelo 130)', 14, finalY);
+    finalY += 7;
+    
+    doc.setFont('helvetica', 'normal');
+    const totalAutonomoFee = (summary.totalGrossInvoiced - summary.totalExpenses - summary.netProfit);
+    doc.text(`Total Ingresos Computables (Base Imponible):`, 20, finalY);
+    doc.text(formatCurrency(summary.totalGrossInvoiced), 195, finalY, { align: 'right' });
+    finalY += 6;
+    doc.text(`Total Gastos Deducibles (Facturas + Cuota Autónomo):`, 20, finalY);
+    doc.text(formatCurrency(summary.totalExpenses + totalAutonomoFee), 195, finalY, { align: 'right' });
+    finalY += 6;
+    doc.text(`Rendimiento Neto:`, 20, finalY);
+    doc.text(formatCurrency(summary.netProfit), 195, finalY, { align: 'right' });
+    finalY += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Pago a Cuenta (20% s/ Rendimiento Neto):`, 20, finalY);
+    doc.text(formatCurrency(summary.irpfToPay), 195, finalY, { align: 'right' });
+    
+    // --- FOOTER ---
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text('Informe generado con Gestor Total Autónomo', 14, doc.internal.pageSize.height - 10);
+
+    const quarter = Math.floor(period.startDate.getMonth() / 3) + 1;
+    const year = period.startDate.getFullYear();
+    doc.save(`resumen-fiscal-${year}-T${quarter}.pdf`);
+};

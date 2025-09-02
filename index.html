@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestor Total Autónomo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: 'hsl(25, 95%, 53%)',
+                '50': 'hsl(25, 95%, 95%)',
+                '100': 'hsl(25, 95%, 85%)',
+                '200': 'hsl(25, 95%, 75%)',
+                '300': 'hsl(25, 95%, 65%)',
+                '400': 'hsl(25, 95%, 55%)',
+                '500': 'hsl(25, 95%, 53%)',
+                '600': 'hsl(25, 95%, 48%)',
+                '700': 'hsl(25, 95%, 42%)',
+                '800': 'hsl(25, 95%, 36%)',
+                '900': 'hsl(25, 95%, 30%)',
+                '950': 'hsl(25, 95%, 20%)',
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.1.2",
+    "@google/genai": "https://esm.run/@google/genai"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 transition-colors duration-300">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
