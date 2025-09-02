@@ -1,82 +1,96 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { AppView, Theme, AppData, UserSettings, Category, Income, Expense, PersonalMovement, SavingsGoal, PotentialIncome } from './types';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import React, { useState, useEffect, useMemo, createContext } from 'react';
+import { AppView, Theme, AppData } from './types';
 import { Icon, Button } from './components/ui';
 import ProfessionalView from './components/ProfessionalView';
 import PersonalView from './components/PersonalView';
 import SettingsView from './components/SettingsView';
 import GlobalView from './components/GlobalView';
 import { DEFAULT_PROFESSIONAL_CATEGORIES, DEFAULT_PERSONAL_CATEGORIES } from './constants';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Auth from './components/Auth';
+import { api } from './services/api';
 
-// AppContext for global state management
+// --- AppContext for global state management ---
 interface AppContextType {
     data: AppData;
-    setData: React.Dispatch<React.SetStateAction<AppData>>;
+    setData: (value: AppData | ((prevState: AppData) => AppData)) => void;
     formatCurrency: (amount: number) => string;
 }
+export const AppContext = createContext<AppContextType | null>(null);
 
-export const AppContext = React.createContext<AppContextType | null>(null);
-
-const App: React.FC = () => {
+// --- Main Application Component (Protected) ---
+const AppContainer: React.FC = () => {
     const [theme, setTheme] = useLocalStorage<Theme>('app-theme', Theme.LIGHT);
     const [currentView, setCurrentView] = useState<AppView>(AppView.GLOBAL);
+    const { logout, user } = useAuth();
 
     const initialData: AppData = useMemo(() => ({
-        incomes: [],
-        expenses: [],
-        personalMovements: [],
-        transfers: [],
-        savingsGoals: [],
-        potentialIncomes: [],
-        potentialExpenses: [],
+        incomes: [], expenses: [], personalMovements: [], transfers: [],
+        savingsGoals: [], potentialIncomes: [], potentialExpenses: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
         settings: {
-            nif: '',
-            fullName: '',
-            address: '',
-            defaultVatRate: 21,
-            defaultIrpfRate: 15,
-            monthlyAutonomoFee: 300,
+            nif: '', fullName: '', address: '',
+            defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 300,
             geminiApiKey: '',
         },
     }), []);
-    
-    const [data, setData] = useLocalStorage<AppData>('app-data', initialData);
 
-    // Data migration logic has been moved into the useLocalStorage hook
-    // for a more robust and safe initialization, preventing render crashes.
+    const [data, setDataState] = useState<AppData>(initialData);
+    const [isDataLoading, setIsDataLoading] = useState(true);
 
     useEffect(() => {
-        if (theme === Theme.DARK) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        const fetchAllData = async () => {
+            try {
+                setIsDataLoading(true);
+                // This endpoint should return the entire AppData object for the logged-in user
+                const remoteData = await api<AppData>('/data'); 
+                // Merge remote data with initial data to ensure all keys are present
+                setDataState({
+                    ...initialData,
+                    ...remoteData,
+                    settings: {
+                        ...initialData.settings,
+                        ...(remoteData.settings || {}),
+                    },
+                });
+            } catch (error) {
+                console.error("Failed to fetch user data:", error);
+            } finally {
+                setIsDataLoading(false);
+            }
+        };
+        fetchAllData();
+    }, [initialData]);
+
+    const setData = (value: AppData | ((prevState: AppData) => AppData)) => {
+        const updater = (prev: AppData) => {
+            const newState = typeof value === 'function' ? value(prev) : value;
+            api('/data', { method: 'POST', body: newState })
+                .catch(err => {
+                    console.error("Failed to save data:", err);
+                    alert("Error: No se pudieron guardar los cambios en el servidor. Revisa tu conexión.");
+                });
+            return newState;
+        };
+        setDataState(updater);
+    };
+
+    useEffect(() => {
+        document.documentElement.classList.toggle('dark', theme === Theme.DARK);
     }, [theme]);
 
-    const toggleTheme = () => {
-        setTheme(theme === Theme.LIGHT ? Theme.DARK : Theme.LIGHT);
-    };
+    const toggleTheme = () => setTheme(theme === Theme.LIGHT ? Theme.DARK : Theme.LIGHT);
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-    };
-
-    const contextValue = { data, setData, formatCurrency };
-    
     const renderView = () => {
         switch (currentView) {
-            case AppView.PROFESSIONAL:
-                return <ProfessionalView />;
-            case AppView.GLOBAL:
-                return <GlobalView />;
-            case AppView.PERSONAL:
-                return <PersonalView />;
-            case AppView.SETTINGS:
-                return <SettingsView />;
-            default:
-                return <ProfessionalView />;
+            case AppView.PROFESSIONAL: return <ProfessionalView />;
+            case AppView.GLOBAL: return <GlobalView />;
+            case AppView.PERSONAL: return <PersonalView />;
+            case AppView.SETTINGS: return <SettingsView />;
+            default: return <ProfessionalView />;
         }
     };
     
@@ -92,8 +106,16 @@ const App: React.FC = () => {
         </Button>
     );
 
+    if (isDataLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <p>Cargando tus datos...</p>
+            </div>
+        );
+    }
+    
     return (
-        <AppContext.Provider value={contextValue}>
+        <AppContext.Provider value={{ data, setData, formatCurrency }}>
             <div className="min-h-screen flex flex-col">
                 <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-40">
                     <div className="container mx-auto flex justify-between items-center">
@@ -101,8 +123,12 @@ const App: React.FC = () => {
                            Gestor Total Autónomo
                         </h1>
                         <div className="flex items-center gap-2">
-                             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Cambiar tema">
+                            <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">Hola, {user?.username}</span>
+                            <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Cambiar tema">
                                 <Icon name={theme === 'light' ? 'moon' : 'sun'} className="w-6 h-6" />
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={logout}>
+                                Cerrar Sesión
                             </Button>
                         </div>
                     </div>
@@ -133,4 +159,26 @@ const App: React.FC = () => {
     );
 };
 
-export default App;
+// --- App Wrapper for Authentication ---
+const App: React.FC = () => {
+    const { isAuthenticated, isLoading } = useAuth();
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <p>Inicializando...</p>
+            </div>
+        );
+    }
+    
+    return isAuthenticated ? <AppContainer /> : <Auth />;
+};
+
+// --- Final export with AuthProvider ---
+const AppWithProvider: React.FC = () => (
+    <AuthProvider>
+        <App />
+    </AuthProvider>
+);
+
+export default AppWithProvider;
