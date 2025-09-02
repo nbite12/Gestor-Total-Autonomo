@@ -106,7 +106,7 @@ const App: React.FC = () => {
                     </div>
                 </header>
                 
-                <main className="flex-grow container mx-auto p-4 sm:p-6">
+                <main className="flex-grow container mx-auto p-4 sm:p-6 pb-24 sm:pb-6">
                     {renderView()}
                 </main>
 
