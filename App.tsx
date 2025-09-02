@@ -25,6 +25,7 @@ const App: React.FC = () => {
         incomes: [],
         expenses: [],
         personalMovements: [],
+        transfers: [],
         savingsGoals: [],
         potentialIncomes: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,

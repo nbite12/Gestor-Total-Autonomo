@@ -1,4 +1,4 @@
-import { Income, UserSettings, Expense } from './types';
+import { Income, UserSettings, Expense, Transfer } from './types';
 
 declare global {
   interface Window {
@@ -98,6 +98,7 @@ export const generateInvoicePDF = (income: Income, settings: UserSettings) => {
 export const generateQuarterlySummaryPDF = (
     incomes: Income[],
     expenses: Expense[],
+    transfers: Transfer[],
     settings: UserSettings,
     period: { startDate: Date; endDate: Date },
     summary: {
@@ -189,6 +190,32 @@ export const generateQuarterlySummaryPDF = (
         });
         finalY = doc.lastAutoTable.finalY + 15;
     }
+    
+    // --- TRANSFERS TABLE ---
+    if (transfers.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Movimientos de Capital (No Deducibles)', 14, finalY);
+        finalY += 8;
+
+        const transferColumns = ["Fecha", "Concepto", "Justificación", "Importe"];
+        const transferRows = transfers.map(tr => [
+            formatDate(tr.date),
+            tr.concept,
+            tr.justification,
+            formatCurrency(tr.amount),
+        ]);
+
+        doc.autoTable({
+            head: [transferColumns],
+            body: transferRows,
+            startY: finalY,
+            theme: 'grid',
+            headStyles: { fillColor: [100, 116, 139] } // slate-500
+        });
+        finalY = doc.lastAutoTable.finalY + 15;
+    }
+
 
     // --- TAX SUMMARY ---
     doc.setFontSize(16);

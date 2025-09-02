@@ -23,6 +23,11 @@ export enum MoneyLocation {
     OTHER = 'Otros (Crypto, etc.)'
 }
 
+export enum TransferJustification {
+    SUELDO_AUTONOMO = 'Sueldo del Autónomo',
+    GASTO_NO_RELACIONADO = 'Gasto No Relacionado con la Actividad'
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -74,6 +79,16 @@ export interface PersonalMovement {
   source?: MoneySource; // Only for income
 }
 
+export interface Transfer {
+    id: string;
+    date: string; // ISO string
+    amount: number;
+    fromLocation: MoneyLocation;
+    toLocation: MoneyLocation;
+    concept: string;
+    justification: TransferJustification;
+}
+
 export interface SavingsGoal {
   id: string;
   name: string;
@@ -112,6 +127,7 @@ export interface AppData {
   incomes: Income[];
   expenses: Expense[];
   personalMovements: PersonalMovement[];
+  transfers: Transfer[];
   savingsGoals: SavingsGoal[];
   potentialIncomes: PotentialIncome[];
   professionalCategories: Category[];

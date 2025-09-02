@@ -3,7 +3,7 @@ import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { Income, Expense, PersonalMovement, PotentialIncome, SavingsGoal, MoneySource, MoneyLocation } from '../types';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification } from '../types';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -134,6 +134,86 @@ const PotentialIncomeForm: React.FC<{
     )
 };
 
+// --- Transfer Form Modal ---
+const TransferForm: React.FC<{
+    onClose: () => void;
+    transferToEdit: Transfer | null;
+}> = ({ onClose, transferToEdit }) => {
+    const { setData } = useContext(AppContext)!;
+
+    const [formData, setFormData] = useState<Partial<Transfer>>({
+        id: transferToEdit?.id || `tr-${Date.now()}`,
+        date: transferToEdit?.date ? formatDateForInput(transferToEdit.date) : new Date().toISOString().split('T')[0],
+        amount: transferToEdit?.amount || 0,
+        fromLocation: transferToEdit?.fromLocation || MoneyLocation.PRO_BANK,
+        toLocation: transferToEdit?.toLocation || MoneyLocation.CASH,
+        concept: transferToEdit?.concept || '',
+        justification: transferToEdit?.justification || TransferJustification.SUELDO_AUTONOMO
+    });
+
+    const [error, setError] = useState('');
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({...prev, [name]: name === 'amount' ? parseFloat(value) : value}));
+        if(name === 'fromLocation' || name === 'toLocation') {
+             setError('');
+        }
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (formData.fromLocation === formData.toLocation) {
+            setError('La ubicación de origen y destino no pueden ser la misma.');
+            return;
+        }
+        setError('');
+        
+        const finalTransfer: Transfer = {
+            id: formData.id!,
+            date: new Date(formData.date!).toISOString(),
+            amount: formData.amount!,
+            fromLocation: formData.fromLocation!,
+            toLocation: formData.toLocation!,
+            concept: formData.concept!,
+            justification: formData.justification!
+        };
+        
+        setData(prev => ({
+            ...prev,
+            transfers: transferToEdit
+                ? prev.transfers.map(t => t.id === transferToEdit.id ? finalTransfer : t)
+                : [...prev.transfers, finalTransfer]
+        }));
+        onClose();
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label="Importe (€)" name="amount" type="number" min="0.01" step="0.01" value={formData.amount} onChange={handleChange} required />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select label="Desde" name="fromLocation" value={formData.fromLocation} onChange={handleChange}>
+                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                </Select>
+                 <Select label="Hasta" name="toLocation" value={formData.toLocation} onChange={handleChange}>
+                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                </Select>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
+            <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
+            <Select label="Justificación (para informe fiscal)" name="justification" value={formData.justification} onChange={handleChange}>
+                {Object.values(TransferJustification).map(j => <option key={j} value={j}>{j}</option>)}
+            </Select>
+
+            <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">{transferToEdit ? 'Guardar Cambios' : 'Añadir Transferencia'}</Button>
+            </div>
+        </form>
+    )
+};
+
 
 // --- Global View ---
 const GlobalView: React.FC = () => {
@@ -141,7 +221,7 @@ const GlobalView: React.FC = () => {
     if (!context) return <div>Cargando...</div>;
 
     const { data, setData, formatCurrency } = context;
-    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes } = data;
+    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, transfers } = data;
 
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const end = new Date();
@@ -153,6 +233,8 @@ const GlobalView: React.FC = () => {
     const [includePotentialIncome, setIncludePotentialIncome] = useState(true);
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
     const [incomeToEdit, setIncomeToEdit] = useState<PotentialIncome | null>(null);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [transferToEdit, setTransferToEdit] = useState<Transfer | null>(null);
 
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
 
@@ -193,9 +275,15 @@ const GlobalView: React.FC = () => {
                 }
             }
         });
+        
+        // Process transfers
+        data.transfers.forEach(transfer => {
+            balances[transfer.fromLocation] = (balances[transfer.fromLocation] || 0) - transfer.amount;
+            balances[transfer.toLocation] = (balances[transfer.toLocation] || 0) + transfer.amount;
+        });
 
         return balances;
-    }, [data.incomes, data.expenses, data.personalMovements]);
+    }, [data.incomes, data.expenses, data.personalMovements, data.transfers]);
 
 
     const actualMovements = useMemo(() => {
@@ -293,6 +381,18 @@ const GlobalView: React.FC = () => {
             setData(prev => ({...prev, potentialIncomes: prev.potentialIncomes.filter(pi => pi.id !== id)}));
         }
     };
+    
+    const handleOpenTransferModal = (transfer?: Transfer) => {
+        setTransferToEdit(transfer || null);
+        setIsTransferModalOpen(true);
+    }
+    
+    const handleDeleteTransfer = (id: string) => {
+        if (window.confirm('¿Seguro que quieres eliminar esta transferencia?')) {
+            setData(prev => ({...prev, transfers: prev.transfers.filter(t => t.id !== id)}));
+        }
+    }
+
 
     const sourceColors: {[key in MoneySource]: string} = {
         [MoneySource.AUTONOMO]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
@@ -312,7 +412,12 @@ const GlobalView: React.FC = () => {
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
             <Card>
-                <h3 className="text-xl font-bold mb-4">Distribución del Dinero</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Distribución del Dinero</h3>
+                    <Button size="sm" onClick={() => handleOpenTransferModal()}>
+                        <Icon name="switch-horizontal" className="w-4 h-4" /> Transferir
+                    </Button>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
                         <Icon name="cash" className="w-8 h-8 text-primary-500 flex-shrink-0" />
@@ -343,6 +448,43 @@ const GlobalView: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            </Card>
+
+            <Card>
+                 <h3 className="text-xl font-bold mb-4">Historial de Transferencias</h3>
+                 <div className="overflow-x-auto max-h-64">
+                    <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400 sticky top-0">
+                            <tr>
+                                <th scope="col" className="px-4 py-2">Fecha</th>
+                                <th scope="col" className="px-4 py-2">Concepto / Just.</th>
+                                <th scope="col" className="px-4 py-2">Desde</th>
+                                <th scope="col" className="px-4 py-2">Hasta</th>
+                                <th scope="col" className="px-4 py-2 text-right">Importe</th>
+                                <th scope="col" className="px-4 py-2 text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {transfers.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tr => (
+                                <tr key={tr.id} className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
+                                    <td className="px-4 py-2">{new Date(tr.date).toLocaleDateString('es-ES')}</td>
+                                    <td className="px-4 py-2">
+                                        <p className="font-semibold">{tr.concept}</p>
+                                        <p className="text-xs text-slate-500">{tr.justification}</p>
+                                    </td>
+                                    <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${locationColors[tr.fromLocation]}`}>{tr.fromLocation}</span></td>
+                                    <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${locationColors[tr.toLocation]}`}>{tr.toLocation}</span></td>
+                                    <td className="px-4 py-2 font-semibold text-right">{formatCurrency(tr.amount)}</td>
+                                    <td className="px-4 py-2 text-center">
+                                        <Button size="sm" variant="ghost" onClick={() => handleOpenTransferModal(tr)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeleteTransfer(tr.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+                 {transfers.length === 0 && <p className="text-center text-slate-500 py-8">No hay transferencias registradas.</p>}
             </Card>
 
             <PeriodSelector onPeriodChange={handlePeriodChange} />
@@ -480,6 +622,10 @@ const GlobalView: React.FC = () => {
 
             <Modal isOpen={isIncomeModalOpen} onClose={() => setIsIncomeModalOpen(false)} title={incomeToEdit ? "Editar Ingreso Potencial" : "Añadir Ingreso Potencial"}>
                 <PotentialIncomeForm onClose={() => setIsIncomeModalOpen(false)} incomeToEdit={incomeToEdit} />
+            </Modal>
+            
+            <Modal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} title={transferToEdit ? "Editar Transferencia" : "Nueva Transferencia"}>
+                <TransferForm onClose={() => setIsTransferModalOpen(false)} transferToEdit={transferToEdit} />
             </Modal>
         </div>
     );

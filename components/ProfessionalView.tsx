@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, MoneySource, Attachment, UserSettings, MoneyLocation } from '../types';
+import { Income, Expense, MoneySource, Attachment, UserSettings, MoneyLocation, Transfer } from '../types';
 import { Card, Button, Modal, Input, Select, Icon, HelpTooltip } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { IRPF_MODELO_130_RATE } from '../constants';
@@ -415,9 +415,10 @@ const FinancialSummary: React.FC<{
   formatCurrency: (amount: number) => string;
   incomes: Income[];
   expenses: Expense[];
+  transfers: Transfer[];
   settings: UserSettings;
   period: { startDate: Date; endDate: Date };
-}> = React.memo(({ summary, formatCurrency, incomes, expenses, settings, period }) => {
+}> = React.memo(({ summary, formatCurrency, incomes, expenses, transfers, settings, period }) => {
     
     const kpiData = [
         { title: "Total Bruto Facturado", value: formatCurrency(summary.totalGrossInvoiced), tooltip: "Suma de las bases imponibles de todas tus facturas emitidas en el periodo." },
@@ -429,7 +430,7 @@ const FinancialSummary: React.FC<{
     ];
     
     const handleExport = () => {
-        generateQuarterlySummaryPDF(incomes, expenses, settings, period, summary);
+        generateQuarterlySummaryPDF(incomes, expenses, transfers, settings, period, summary);
     };
 
     return (
@@ -459,7 +460,7 @@ const ProfessionalView: React.FC = () => {
   if (!context) return <div>Cargando...</div>;
 
   const { data, setData, formatCurrency } = context;
-  const { incomes, expenses, settings, professionalCategories } = data;
+  const { incomes, expenses, transfers, settings, professionalCategories } = data;
   
   const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(getCurrentQuarterInfo());
 
@@ -481,6 +482,7 @@ const ProfessionalView: React.FC = () => {
 
   const filteredIncomes = useMemo(() => filterByDateRange(incomes, period.startDate, period.endDate), [incomes, period]);
   const filteredExpenses = useMemo(() => filterByDateRange(expenses, period.startDate, period.endDate), [expenses, period]);
+  const filteredTransfers = useMemo(() => filterByDateRange(transfers, period.startDate, period.endDate), [transfers, period]);
 
   const summary = useMemo(() => {
     const totalGrossInvoiced = filteredIncomes.reduce((acc, inc) => acc + inc.baseAmount, 0);
@@ -598,6 +600,7 @@ const ProfessionalView: React.FC = () => {
         formatCurrency={formatCurrency}
         incomes={filteredIncomes}
         expenses={filteredExpenses}
+        transfers={filteredTransfers}
         settings={settings}
         period={period}
       />
