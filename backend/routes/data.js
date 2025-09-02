@@ -15,6 +15,37 @@ router.get('/', async (req, res) => {
       await newData.save();
       return res.json({});
     }
+
+    // --- Data Migration ---
+    const appData = dataDoc.appData || {};
+    let needsSave = false;
+
+    // Expenses need `isPaid` and `paymentDate`
+    if (appData.expenses && Array.isArray(appData.expenses)) {
+      for (const expense of appData.expenses) {
+        if (typeof expense.isPaid === 'undefined') {
+          expense.isPaid = true; // Assume old expenses are paid
+          expense.paymentDate = expense.date;
+          needsSave = true;
+        }
+      }
+    }
+    // Incomes just need `paymentDate` if paid and missing
+    if (appData.incomes && Array.isArray(appData.incomes)) {
+        for (const income of appData.incomes) {
+            if (income.isPaid && typeof income.paymentDate === 'undefined') {
+                income.paymentDate = income.date;
+                needsSave = true;
+            }
+        }
+    }
+
+    if (needsSave) {
+        dataDoc.markModified('appData'); // Important for Mixed types in Mongoose
+        await dataDoc.save();
+    }
+    // --- End Migration ---
+    
     res.json(dataDoc.appData);
   } catch (error) {
     console.error('Error fetching data:', error);

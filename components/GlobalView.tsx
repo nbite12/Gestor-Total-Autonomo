@@ -2,7 +2,7 @@ import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense } from '../types';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense } from '../types';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -277,6 +277,95 @@ const TransferForm: React.FC<{
     )
 };
 
+// --- FIX: Defined missing PendingTransactions component ---
+const PendingTransactions: React.FC = () => {
+    const context = useContext(AppContext);
+    if (!context) return null;
+
+    const { data, setData, formatCurrency } = context;
+
+    const pendingIncomes = data.incomes.filter(i => !i.isPaid);
+    const pendingExpenses = data.expenses.filter(e => !e.isPaid);
+
+    if (pendingIncomes.length === 0 && pendingExpenses.length === 0) {
+        return null; // Don't render the card if there's nothing to show
+    }
+
+    const handleMarkAsPaid = (type: 'income' | 'expense', id: string) => {
+        setData(prev => {
+            if (type === 'income') {
+                return {
+                    ...prev,
+                    incomes: prev.incomes.map(i => i.id === id ? { ...i, isPaid: true, paymentDate: new Date().toISOString() } : i),
+                };
+            } else { // expense
+                return {
+                    ...prev,
+                    expenses: prev.expenses.map(e => e.id === id ? { ...e, isPaid: true, paymentDate: new Date().toISOString() } : e),
+                };
+            }
+        });
+    };
+
+    const getTotalIncomeAmount = (income: Income) => {
+        return income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
+    };
+    
+    const getTotalExpenseAmount = (expense: Expense) => {
+        return expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
+    };
+
+    return (
+        <Card>
+            <h3 className="text-xl font-bold mb-4">Transacciones Pendientes de Pago</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <h4 className="font-semibold mb-2">Cobros Pendientes</h4>
+                    {pendingIncomes.length > 0 ? (
+                        <ul className="space-y-2 max-h-64 overflow-y-auto">
+                            {pendingIncomes.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(income => (
+                                <li key={income.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div>
+                                        <p>{income.concept}</p>
+                                        <p className="text-xs text-slate-500">{income.clientName} - {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 ml-2">
+                                        <p className="font-semibold text-green-500">{formatCurrency(getTotalIncomeAmount(income))}</p>
+                                        <Button size="sm" variant="ghost" onClick={() => handleMarkAsPaid('income', income.id)}>Marcar Pagada</Button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-sm text-slate-500">No hay cobros pendientes.</p>
+                    )}
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-2">Pagos Pendientes</h4>
+                     {pendingExpenses.length > 0 ? (
+                        <ul className="space-y-2 max-h-64 overflow-y-auto">
+                            {pendingExpenses.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(expense => (
+                                <li key={expense.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div>
+                                        <p>{expense.concept}</p>
+                                        <p className="text-xs text-slate-500">{expense.providerName} - {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 ml-2">
+                                        <p className="font-semibold text-red-500">{formatCurrency(getTotalExpenseAmount(expense))}</p>
+                                         <Button size="sm" variant="ghost" onClick={() => handleMarkAsPaid('expense', expense.id)}>Marcar Pagado</Button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-sm text-slate-500">No hay pagos pendientes.</p>
+                    )}
+                </div>
+            </div>
+        </Card>
+    );
+};
+
 
 // --- Global View ---
 const GlobalView: React.FC = () => {
@@ -324,9 +413,9 @@ const GlobalView: React.FC = () => {
             }
         });
 
-        // Process professional expenses
+        // Process paid professional expenses
         data.expenses.forEach(expense => {
-            if (expense.location) {
+            if (expense.isPaid && expense.location) {
                 const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
                 balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
             }
@@ -547,6 +636,8 @@ const GlobalView: React.FC = () => {
                     </div>
                 </div>
             </Card>
+
+            <PendingTransactions />
 
             <Card>
                  <h3 className="text-xl font-bold mb-4">Historial de Transferencias</h3>

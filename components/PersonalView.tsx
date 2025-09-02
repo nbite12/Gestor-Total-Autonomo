@@ -1,8 +1,8 @@
-
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation } from '../types';
 import { Card, Button, Modal, Input, Select, Icon } from './ui';
+import { PeriodSelector } from './PeriodSelector';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 
@@ -189,26 +189,72 @@ const PersonalView: React.FC = () => {
   const context = useContext(AppContext);
   if (!context) return <div>Cargando...</div>;
   const { data, setData, formatCurrency } = context;
-  const { personalMovements, savingsGoals, personalCategories } = data;
+  const { savingsGoals, personalCategories } = data;
 
   const [isMovementModalOpen, setMovementModalOpen] = useState(false);
   const [movementToEdit, setMovementToEdit] = useState<PersonalMovement | null>(null);
   const [isGoalFormOpen, setGoalFormOpen] = useState(false);
   const [goalToEdit, setGoalToEdit] = useState<SavingsGoal | null>(null);
   const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
+  const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
+        const end = new Date();
+        const start = new Date(end.getFullYear(), end.getMonth(), 1);
+        return { startDate: start, endDate: end };
+    });
+  const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
+
+
+  const moneyDistribution = useMemo(() => {
+        const balances: { [key in MoneyLocation]: number } = {
+            [MoneyLocation.CASH]: data.settings.initialBalances?.[MoneyLocation.CASH] || 0,
+            [MoneyLocation.PRO_BANK]: data.settings.initialBalances?.[MoneyLocation.PRO_BANK] || 0,
+            [MoneyLocation.PERS_BANK]: data.settings.initialBalances?.[MoneyLocation.PERS_BANK] || 0,
+            [MoneyLocation.OTHER]: data.settings.initialBalances?.[MoneyLocation.OTHER] || 0,
+        };
+        data.incomes.forEach(income => {
+            if (income.isPaid && income.location) {
+                const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
+                balances[income.location] = (balances[income.location] || 0) + netAmount;
+            }
+        });
+        data.expenses.forEach(expense => {
+            if (expense.isPaid && expense.location) {
+                const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
+                balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
+            }
+        });
+        data.personalMovements.forEach(movement => {
+            if (movement.location) {
+                if (movement.type === 'income') balances[movement.location] = (balances[movement.location] || 0) + movement.amount;
+                else balances[movement.location] = (balances[movement.location] || 0) - movement.amount;
+            }
+        });
+        data.transfers.forEach(transfer => {
+            balances[transfer.fromLocation] = (balances[transfer.fromLocation] || 0) - transfer.amount;
+            balances[transfer.toLocation] = (balances[transfer.toLocation] || 0) + transfer.amount;
+        });
+        return balances;
+    }, [data.incomes, data.expenses, data.personalMovements, data.transfers, data.settings.initialBalances]);
+
+
+  const filteredMovements = useMemo(() => data.personalMovements.filter(m => {
+      const moveDate = new Date(m.date);
+      return moveDate >= period.startDate && moveDate <= period.endDate;
+  }), [data.personalMovements, period]);
 
   const summary = useMemo(() => {
-    const totalIncome = personalMovements.filter(m => m.type === 'income').reduce((acc, m) => acc + m.amount, 0);
-    const totalExpense = personalMovements.filter(m => m.type === 'expense').reduce((acc, m) => acc + m.amount, 0);
+    const personalBalance = (moneyDistribution[MoneyLocation.PERS_BANK] || 0) + (moneyDistribution[MoneyLocation.CASH] || 0) + (moneyDistribution[MoneyLocation.OTHER] || 0);
+    const totalIncome = filteredMovements.filter(m => m.type === 'income').reduce((acc, m) => acc + m.amount, 0);
+    const totalExpense = filteredMovements.filter(m => m.type === 'expense').reduce((acc, m) => acc + m.amount, 0);
     return {
-      totalBalance: totalIncome - totalExpense,
+      totalBalance: personalBalance,
       totalIncome,
       totalExpense
     };
-  }, [personalMovements]);
+  }, [filteredMovements, moneyDistribution]);
 
   const expenseChartData = useMemo(() => {
-    const dataByCat = personalMovements
+    const dataByCat = filteredMovements
         .filter(m => m.type === 'expense')
         .reduce((acc, m) => {
             const catName = personalCategories.find(c => c.id === m.categoryId)?.name || 'Sin Categoría';
@@ -216,7 +262,7 @@ const PersonalView: React.FC = () => {
             return acc;
         }, {} as {[key: string]: number});
     return Object.entries(dataByCat).map(([name, value]) => ({ name, value }));
-  }, [personalMovements, personalCategories]);
+  }, [filteredMovements, personalCategories]);
   
   const COLORS = ['#FF8042', '#0088FE', '#00C49F', '#FFBB28', '#AF19FF', '#FF4560'];
 
@@ -253,15 +299,15 @@ const PersonalView: React.FC = () => {
        {/* Dashboard Summary */}
        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
            <Card className="text-center">
-                <h3 className="text-lg text-slate-500 dark:text-slate-400">Saldo Total</h3>
+                <h3 className="text-lg text-slate-500 dark:text-slate-400">Fondos Personales Actuales</h3>
                 <p className={`text-4xl font-bold ${summary.totalBalance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.totalBalance)}</p>
            </Card>
            <Card className="text-center">
-                <h3 className="text-lg text-slate-500 dark:text-slate-400">Ingresos Totales</h3>
+                <h3 className="text-lg text-slate-500 dark:text-slate-400">Ingresos (Periodo)</h3>
                 <p className="text-3xl font-bold text-green-500">{formatCurrency(summary.totalIncome)}</p>
            </Card>
            <Card className="text-center">
-                <h3 className="text-lg text-slate-500 dark:text-slate-400">Gastos Totales</h3>
+                <h3 className="text-lg text-slate-500 dark:text-slate-400">Gastos (Periodo)</h3>
                 <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalExpense)}</p>
            </Card>
        </div>
@@ -300,7 +346,7 @@ const PersonalView: React.FC = () => {
 
            {/* Expense Chart */}
            <Card>
-                <h3 className="text-xl font-bold mb-4">Gastos por Categoría</h3>
+                <h3 className="text-xl font-bold mb-4">Gastos por Categoría (Periodo)</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie data={expenseChartData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value" nameKey="name">
@@ -315,12 +361,13 @@ const PersonalView: React.FC = () => {
 
        {/* Personal Movements List */}
         <Card>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
                 <h2 className="text-xl font-bold">Movimientos Personales</h2>
                 <Button onClick={() => handleOpenMovementModal()}>
                     <Icon name="plus" className="w-5 h-5" /> Añadir Movimiento
                 </Button>
             </div>
+            <PeriodSelector onPeriodChange={handlePeriodChange} />
              <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                     <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
@@ -333,7 +380,7 @@ const PersonalView: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {personalMovements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(mov => (
+                        {filteredMovements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(mov => (
                             <tr key={mov.id} className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
                                 <td className="px-6 py-4">{new Date(mov.date).toLocaleDateString('es-ES')}</td>
                                 <td className="px-6 py-4">{mov.concept}</td>
@@ -348,7 +395,7 @@ const PersonalView: React.FC = () => {
                     </tbody>
                 </table>
              </div>
-             {personalMovements.length === 0 && <p className="text-center text-slate-500 py-8">No hay movimientos registrados.</p>}
+             {filteredMovements.length === 0 && <p className="text-center text-slate-500 py-8">No hay movimientos registrados para este periodo.</p>}
         </Card>
 
       {/* Modals */}

@@ -4,7 +4,7 @@ import { Income, Expense, Attachment, InvestmentGood, AppData, MoneyLocation } f
 import { Card, Button, Modal, Input, Select, Icon, HelpTooltip, Switch } from './ui';
 import { IRPF_BRACKETS } from '../constants';
 import { extractInvoiceData } from '../services/geminiService';
-import { generateIncomesPDF, generateExpensesPDF, generateInvestmentGoodsPDF } from '../services/pdfService';
+import { generateIncomesPDF, generateExpensesPDF, generateInvestmentGoodsPDF, generateQuarterlySummaryPDF } from '../services/pdfService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 // FIX: Imported PeriodSelector component to fix 'Cannot find name' error.
 import { PeriodSelector } from './PeriodSelector';
@@ -171,6 +171,7 @@ const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expen
         categoryId: expenseToEdit?.categoryId || (data.professionalCategories[0]?.id || ''),
         location: expenseToEdit?.location || MoneyLocation.PRO_BANK,
         isDeductible: expenseToEdit?.isDeductible ?? true,
+        isPaid: expenseToEdit?.isPaid ?? true,
         attachment: expenseToEdit?.attachment,
     });
 
@@ -224,6 +225,7 @@ const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expen
             </Select>
             <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
             <Switch label="Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
+            <Switch label="Marcar como Pagado" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
                 <Button type="submit">{expenseToEdit?.id ? 'Guardar Cambios' : 'Añadir Gasto'}</Button>
@@ -426,9 +428,13 @@ const MisImpuestosView: React.FC = () => {
     
     const years = useMemo(() => Array.from(new Set([...data.incomes, ...data.expenses].map(i => new Date(i.date).getFullYear()))).sort((a, b) => b - a), [data]);
 
+    const getQuarterDates = (y: number, q: Quarter) => ({
+        startDate: new Date(y, (q - 1) * 3, 1),
+        endDate: new Date(y, q * 3, 0, 23, 59, 59, 999)
+    });
+
     const calculateModelo303 = () => {
-        const startDate = new Date(year, (quarter - 1) * 3, 1);
-        const endDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999);
+        const { startDate, endDate } = getQuarterDates(year, quarter);
         const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
         const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
         const ivaRepercutido = incomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
@@ -437,25 +443,60 @@ const MisImpuestosView: React.FC = () => {
     };
 
     const calculateModelo130 = () => {
-        const startDate = new Date(year, (quarter - 1) * 3, 1);
-        const endDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999);
+        const { startDate, endDate } = getQuarterDates(year, quarter);
         const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
         const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+        
         const totalIngresos = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
         const totalGastosFacturas = expenses.reduce((sum, e) => sum + e.baseAmount, 0);
+        const cuotaAutonomoTrimestral = (data.settings.monthlyAutonomoFee || 0) * 3;
+
         const amortizacionTrimestral = data.investmentGoods.reduce((sum, good) => {
             const purchaseDate = new Date(good.purchaseDate);
-            const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
-            if (purchaseDate <= endDate && new Date() <= endDateUsefulLife) {
-                return sum + (good.acquisitionValue / good.usefulLife) / 4;
+            if (purchaseDate <= endDate) {
+                 const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
+                 if(endDate < endDateUsefulLife) {
+                    return sum + (good.acquisitionValue / good.usefulLife) / 4;
+                 }
             }
             return sum;
         }, 0);
-        const totalGastos = totalGastosFacturas + amortizacionTrimestral;
+
+        const totalGastos = totalGastosFacturas + amortizacionTrimestral + cuotaAutonomoTrimestral;
         const rendimientoNeto = totalIngresos - totalGastos;
         const totalInvoicedWithRetention = incomes.filter(i => i.irpfRate > 0).reduce((sum, i) => sum + i.baseAmount, 0);
         const highRetentionWarning = totalIngresos > 0 && (totalInvoicedWithRetention / totalIngresos) > 0.7;
-        setModelo130({ ingresos: totalIngresos, gastos: totalGastos, rendimiento: rendimientoNeto, pago: rendimientoNeto * 0.2, highRetentionWarning });
+
+        setModelo130({ ingresos: totalIngresos, gastos: totalGastos, rendimiento: rendimientoNeto, pago: Math.max(0, rendimientoNeto * 0.2), highRetentionWarning });
+    };
+
+    const handleGenerateReport = () => {
+        const { startDate, endDate } = getQuarterDates(year, quarter);
+        const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
+        const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+        const transfers = data.transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+
+        const totalGrossInvoiced = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
+        const totalExpensesFromInvoices = expenses.reduce((sum, e) => sum + e.baseAmount, 0);
+        const cuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * 3;
+        
+        const netProfit = totalGrossInvoiced - (totalExpensesFromInvoices + cuotaAutonomo);
+        
+        const ivaRepercutido = incomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const ivaSoportado = expenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        const vatResult = ivaRepercutido - ivaSoportado;
+
+        const irpfToPay = netProfit * 0.2;
+
+        const summary = {
+            totalGrossInvoiced,
+            totalExpenses: totalExpensesFromInvoices, // The PDF function adds the autonomo fee
+            netProfit,
+            vatResult,
+            irpfToPay: Math.max(0, irpfToPay)
+        };
+
+        generateQuarterlySummaryPDF(incomes, expenses, transfers, data.settings, { startDate, endDate }, summary);
     };
 
     const calculateAnnualModels = () => {
@@ -486,7 +527,7 @@ const MisImpuestosView: React.FC = () => {
     };
 
     return (<div className="space-y-6">
-        <Card><h3 className="text-xl font-bold mb-4">Impuestos Trimestrales</h3><div className="flex flex-wrap items-end gap-4"><Select label="Año" value={year} onChange={e => setYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select><Select label="Trimestre" value={quarter} onChange={e => setQuarter(parseInt(e.target.value) as Quarter)}><option value="1">1T</option><option value="2">2T</option><option value="3">3T</option><option value="4">4T</option></Select><Button onClick={calculateModelo303}>Preparar Modelo 303 (IVA)</Button><Button onClick={calculateModelo130}>Preparar Modelo 130 (IRPF)</Button></div>{modelo303 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 303:</h4><p>IVA Repercutido: {formatCurrency(modelo303.repercutido)}</p><p>IVA Soportado Deducible: {formatCurrency(modelo303.soportado)}</p><p className="font-bold">Resultado: {formatCurrency(modelo303.resultado)} ({modelo303.resultado >= 0 ? 'A ingresar' : 'A compensar'})</p></div>}{modelo130 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 130:</h4><p>Total Ingresos: {formatCurrency(modelo130.ingresos)}</p><p>Total Gastos Deducibles: {formatCurrency(modelo130.gastos)}</p><p>Rendimento Neto: {formatCurrency(modelo130.rendimiento)}</p><p className="font-bold">Pago a cuenta (20%): {formatCurrency(modelo130.pago)}</p>{modelo130.highRetentionWarning && <p className="text-sm text-orange-500 mt-2">Aviso: Más del 70% de tu facturación tiene retención. Podrías no estar obligado a presentar este modelo.</p>}</div>}</Card>
+        <Card><h3 className="text-xl font-bold mb-4">Impuestos Trimestrales</h3><div className="flex flex-wrap items-end gap-4"><Select label="Año" value={year} onChange={e => setYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select><Select label="Trimestre" value={quarter} onChange={e => setQuarter(parseInt(e.target.value) as Quarter)}><option value="1">1T</option><option value="2">2T</option><option value="3">3T</option><option value="4">4T</option></Select><Button onClick={calculateModelo303}>Preparar Modelo 303 (IVA)</Button><Button onClick={calculateModelo130}>Preparar Modelo 130 (IRPF)</Button><Button variant="secondary" onClick={handleGenerateReport}><Icon name="download" className="w-4 h-4" /> Generar Informe PDF</Button></div>{modelo303 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 303:</h4><p>IVA Repercutido: {formatCurrency(modelo303.repercutido)}</p><p>IVA Soportado Deducible: {formatCurrency(modelo303.soportado)}</p><p className="font-bold">Resultado: {formatCurrency(modelo303.resultado)} ({modelo303.resultado >= 0 ? 'A ingresar' : 'A compensar'})</p></div>}{modelo130 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 130:</h4><p>Total Ingresos: {formatCurrency(modelo130.ingresos)}</p><p>Total Gastos Deducibles: {formatCurrency(modelo130.gastos)}</p><p>Rendimento Neto: {formatCurrency(modelo130.rendimiento)}</p><p className="font-bold">Pago a cuenta (20%): {formatCurrency(modelo130.pago)}</p>{modelo130.highRetentionWarning && <p className="text-sm text-orange-500 mt-2">Aviso: Más del 70% de tu facturación tiene retención. Podrías no estar obligado a presentar este modelo.</p>}</div>}</Card>
         <Card><h3 className="text-xl font-bold mb-4">Resúmenes Anuales</h3><div className="flex flex-wrap items-end gap-4"><Select label="Año" value={annualYear} onChange={e => setAnnualYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select><Button onClick={calculateAnnualModels}>Generar Resúmenes</Button></div>{modelo390 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resumen Modelo 390 (IVA Anual)</h4><p>Total IVA Repercutido: {formatCurrency(modelo390.repercutido)}</p><p>Total IVA Soportado: {formatCurrency(modelo390.soportado)}</p></div>}{modelo347 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resumen Modelo 347 (Operaciones con Terceros &gt; 3.005,06€)</h4>{modelo347.length > 0 ? <ul>{modelo347.map((op:any) => <li key={op.nif}>{op.name} ({op.nif}): {formatCurrency(op.total)}</li>)}</ul> : <p>Ninguna operación supera el umbral.</p>}</div>}</Card>
     </div>);
 }
@@ -505,15 +546,21 @@ const CalculadoraRentaView: React.FC = () => {
         
         const totalIngresos = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
         const totalGastosFacturas = expenses.reduce((sum, e) => sum + e.baseAmount, 0);
+        const cuotaAutonomoAnual = (data.settings.monthlyAutonomoFee || 0) * 12;
+
         const amortizacionAnual = data.investmentGoods.reduce((sum, good) => {
              const purchaseDate = new Date(good.purchaseDate);
-             if (purchaseDate.getFullYear() <= year && (purchaseDate.getFullYear() + good.usefulLife) > year) {
-                 return sum + (good.acquisitionValue / good.usefulLife);
+             if (purchaseDate.getFullYear() <= year) {
+                const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
+                 if(endDate < endDateUsefulLife) {
+                    return sum + (good.acquisitionValue / good.usefulLife);
+                 }
              }
              return sum;
         }, 0);
 
-        const rendimientoNeto = totalIngresos - (totalGastosFacturas + amortizacionAnual);
+        const totalGastosDeducibles = totalGastosFacturas + amortizacionAnual + cuotaAutonomoAnual;
+        const rendimientoNeto = totalIngresos - totalGastosDeducibles;
         const cuotaIntegra = calculateAnnualIRPF(rendimientoNeto);
         const retencionesSoportadas = incomes.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
 
@@ -524,13 +571,17 @@ const CalculadoraRentaView: React.FC = () => {
             const qIncomes = data.incomes.filter(i => new Date(i.date) >= qStartDate && new Date(i.date) <= qEndDate);
             const qExpenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= qStartDate && new Date(e.date) <= qEndDate);
             const qIngresos = qIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
-            const qGastos = qExpenses.reduce((sum, e) => sum + e.baseAmount, 0);
+            const qGastosFacturas = qExpenses.reduce((sum, e) => sum + e.baseAmount, 0);
+            const qCuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * 3;
             const qAmortizacion = data.investmentGoods.reduce((sum, good) => {
                 const purchaseDate = new Date(good.purchaseDate);
-                if (purchaseDate <= qEndDate && (purchaseDate.getFullYear() + good.usefulLife) > year) return sum + (good.acquisitionValue / good.usefulLife) / 4;
+                if (purchaseDate <= qEndDate) {
+                    const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
+                    if(qEndDate < endDateUsefulLife) return sum + (good.acquisitionValue / good.usefulLife) / 4;
+                }
                 return sum;
             }, 0);
-            const qRendimiento = qIngresos - (qGastos + qAmortizacion);
+            const qRendimiento = qIngresos - (qGastosFacturas + qAmortizacion + qCuotaAutonomo);
             pagosACuenta130 += Math.max(0, qRendimiento * 0.2);
         }
         

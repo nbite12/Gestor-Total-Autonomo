@@ -43,6 +43,7 @@ export interface Income {
   id:string;
   invoiceNumber: string;
   date: string; // ISO string
+  paymentDate?: string;
   clientName: string;
   clientNif?: string;
   clientAddress?: string;
@@ -59,6 +60,8 @@ export interface Income {
 export interface Expense {
   id: string;
   date: string; // ISO string
+  paymentDate?: string;
+  isPaid: boolean;
   invoiceNumber?: string;
   providerName: string;
   providerNif?: string;
@@ -66,7 +69,7 @@ export interface Expense {
   baseAmount: number;
   vatRate: number; // percentage
   categoryId: string;
-  location: MoneyLocation;
+  location?: MoneyLocation;
   attachment?: Attachment;
   isDeductible: boolean;
 }
