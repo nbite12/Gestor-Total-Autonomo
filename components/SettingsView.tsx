@@ -1,7 +1,9 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
-import { UserSettings, Category } from '../types';
+import { UserSettings, Category, Income, Expense } from '../types';
 import { Card, Button, Input, Icon } from './ui';
+
+declare const JSZip: any;
 
 // --- Category Manager ---
 const CategoryManager: React.FC<{
@@ -96,55 +98,99 @@ const SettingsView: React.FC = () => {
        }
   };
 
-  const handleExportData = () => {
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(data, null, 2)
-    )}`;
-    const link = document.createElement("a");
-    link.href = jsonString;
-    link.download = `gestor-autonomo-backup-${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
+  const handleExportData = async () => {
+    try {
+        const zip = new JSZip();
+        // Deep copy to avoid mutating state
+        const dataToExport = JSON.parse(JSON.stringify(data)); 
+
+        const attachmentsFolder = zip.folder("attachments");
+        if (!attachmentsFolder) {
+            throw new Error("No se pudo crear la carpeta de adjuntos en el ZIP.");
+        }
+
+        const processAttachments = (items: (Income | Expense)[]) => {
+            for (const item of items) {
+                if (item.attachment && item.attachment.data) {
+                    const filePath = `${item.id}_${item.attachment.name}`;
+                    // Add file to zip (JSZip decodes the base64 string)
+                    attachmentsFolder.file(filePath, item.attachment.data, { base64: true });
+                    // Remove heavy base64 data from the JSON file
+                    delete item.attachment.data; 
+                }
+            }
+        };
+
+        processAttachments(dataToExport.incomes);
+        processAttachments(dataToExport.expenses);
+
+        zip.file("backup.json", JSON.stringify(dataToExport, null, 2));
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `gestor-autonomo-backup-${new Date().toISOString().split('T')[0]}.zip`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+    } catch (error) {
+        console.error("Error al exportar los datos:", error);
+        alert("Hubo un error al crear el archivo de respaldo.");
+    }
   };
   
   const handleImportData = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
-    input.onchange = (e) => {
+    input.accept = '.zip,application/zip,application/x-zip-compressed';
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const text = event.target?.result;
-          if (typeof text !== 'string') {
-              throw new Error("Error de lectura del archivo.");
-          }
-          const importedData = JSON.parse(text);
-          
-          const requiredKeys = ['incomes', 'expenses', 'settings', 'personalCategories', 'professionalCategories', 'transfers'];
-          const hasAllKeys = requiredKeys.every(key => key in importedData);
+      try {
+        const zip = await JSZip.loadAsync(file);
+        const backupFile = zip.file("backup.json");
 
-          if (!hasAllKeys) {
-            alert('El archivo no parece tener el formato correcto. Importación cancelada.');
-            return;
-          }
+        if (!backupFile) {
+          throw new Error("El archivo ZIP no contiene 'backup.json'.");
+        }
+
+        const jsonContent = await backupFile.async("string");
+        const importedData = JSON.parse(jsonContent);
+        
+        const requiredKeys = ['incomes', 'expenses', 'settings', 'personalCategories', 'professionalCategories', 'transfers'];
+        const hasAllKeys = requiredKeys.every(key => key in importedData);
+
+        if (!hasAllKeys) {
+          throw new Error('El archivo de respaldo no tiene el formato correcto.');
+        }
+
+        const rehydrateAttachments = async (items: (Income | Expense)[]) => {
+            for (const item of items) {
+                if (item.attachment && !item.attachment.data) { // Attachment exists but data needs rehydration
+                    const filePath = `attachments/${item.id}_${item.attachment.name}`;
+                    const attachmentFile = zip.file(filePath);
+                    if (attachmentFile) {
+                        const base64Data = await attachmentFile.async("base64");
+                        item.attachment.data = base64Data;
+                    } else {
+                        console.warn(`Adjunto no encontrado en el ZIP: ${filePath}`);
+                    }
+                }
+            }
+        };
+
+        await rehydrateAttachments(importedData.incomes);
+        await rehydrateAttachments(importedData.expenses);
           
-          if (window.confirm('¿Estás seguro? Al importar se sobrescribirán TODOS tus datos actuales. Esta acción es irreversible.')) {
+        if (window.confirm('¿Estás seguro? Al importar se sobrescribirán TODOS tus datos actuales. Esta acción es irreversible.')) {
             setData(importedData);
             alert('Datos importados correctamente.');
-          }
-
-        } catch (error) {
-          console.error("Error al importar datos:", error);
-          alert('Error al procesar el archivo. Asegúrate de que es un archivo de backup válido.');
         }
-      };
-      reader.onerror = () => {
-          alert('No se pudo leer el archivo.');
+      } catch (error) {
+        console.error("Error al importar datos:", error);
+        alert(`Error al procesar el archivo ZIP. Asegúrate de que es un archivo de backup válido. Detalles: ${error instanceof Error ? error.message : String(error)}`);
       }
-      reader.readAsText(file);
     };
     input.click();
   };
@@ -239,10 +285,10 @@ const SettingsView: React.FC = () => {
           <h3 className="text-lg font-bold mb-4">Gestión de Datos</h3>
           <div className="flex flex-col sm:flex-row gap-4">
               <Button onClick={handleExportData} variant="secondary">
-                  <Icon name="download" className="w-5 h-5"/> Exportar Todos Mis Datos (JSON)
+                  <Icon name="download" className="w-5 h-5"/> Exportar Todos Mis Datos (ZIP)
               </Button>
                <Button onClick={handleImportData} variant="secondary">
-                  <Icon name="upload" className="w-5 h-5"/> Importar Todos Mis Datos (JSON)
+                  <Icon name="upload" className="w-5 h-5"/> Importar Todos Mis Datos (ZIP)
               </Button>
           </div>
        </Card>
