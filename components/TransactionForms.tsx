@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, InvestmentGood, Attachment, MoneyLocation } from '../types';
+import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource } from '../types';
 import { Button, Input, Select, Icon, Switch } from './ui';
 
 // --- Helper Functions ---
@@ -72,6 +72,10 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const newIncome = { ...formData, date: new Date(formData.date!).toISOString() } as Income;
+    if (newIncome.isPaid && !newIncome.paymentDate) {
+        newIncome.paymentDate = newIncome.date;
+    }
+
     setData(prevData => ({
       ...prevData,
       incomes: incomeToEdit?.id && prevData.incomes.some(i => i.id === incomeToEdit.id)
@@ -151,6 +155,9 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const newExpense = { ...formData, date: new Date(formData.date!).toISOString() } as Expense;
+        if (newExpense.isPaid && !newExpense.paymentDate) {
+            newExpense.paymentDate = newExpense.date;
+        }
         setData(prevData => ({
             ...prevData,
             expenses: expenseToEdit?.id && prevData.expenses.some(ex => ex.id === expenseToEdit.id)
@@ -249,3 +256,76 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
         </form>
     );
 };
+
+export const MovementForm: React.FC<{
+    onClose: () => void;
+    movementToEdit?: Partial<PersonalMovement> | null;
+    defaultIsPaid?: boolean;
+    defaultType?: 'income' | 'expense';
+  }> = ({ onClose, movementToEdit, defaultIsPaid = true, defaultType = 'expense' }) => {
+    const context = useContext(AppContext);
+    if (!context) throw new Error("Context not available");
+    const { data, setData } = context;
+  
+    const [formData, setFormData] = useState<Partial<PersonalMovement>>({
+      id: movementToEdit?.id || `pm-${Date.now()}`,
+      date: movementToEdit?.date ? formatDateForInput(new Date(movementToEdit.date).toISOString()) : new Date().toISOString().split('T')[0],
+      concept: movementToEdit?.concept || '',
+      amount: movementToEdit?.amount || 0,
+      type: movementToEdit?.type || defaultType,
+      categoryId: movementToEdit?.categoryId || (data.personalCategories[0]?.id || ''),
+      source: movementToEdit?.source || MoneySource.PERSONAL,
+      location: movementToEdit?.location || MoneyLocation.PERS_BANK,
+      isPaid: movementToEdit?.isPaid ?? defaultIsPaid,
+      paymentDate: movementToEdit?.paymentDate,
+    });
+  
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const { name, value } = e.target;
+      setFormData(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) : value }));
+    };
+  
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      const newMovement = { ...formData, date: new Date(formData.date!).toISOString() } as PersonalMovement;
+      if (newMovement.isPaid && !newMovement.paymentDate) {
+        newMovement.paymentDate = newMovement.date;
+      }
+
+      setData(prevData => ({
+        ...prevData,
+        personalMovements: movementToEdit?.id && prevData.personalMovements.some(m => m.id === movementToEdit.id)
+          ? prevData.personalMovements.map(m => m.id === movementToEdit.id ? newMovement : m)
+          : [...prevData.personalMovements, newMovement],
+      }));
+      onClose();
+    };
+  
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex gap-4 mb-4">
+            <Button type="button" variant={formData.type === 'expense' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'expense'}))} className="flex-1">Gasto</Button>
+            <Button type="button" variant={formData.type === 'income' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'income'}))} className="flex-1">Ingreso</Button>
+        </div>
+        <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
+        <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
+        <Input label="Importe (€)" name="amount" type="number" step="0.01" min="0" value={formData.amount} onChange={handleChange} required />
+        <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
+            {data.personalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+        </Select>
+        <Select label="Ubicación del dinero" name="location" value={formData.location} onChange={handleChange} required>
+          {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+        </Select>
+        {formData.type === 'income' && (
+          <Select label="Fuente" name="source" value={formData.source} onChange={handleChange}>
+             {Object.values(MoneySource).map(s => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        )}
+        <Switch label="Marcar como Pagado/Recibido" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit">{movementToEdit?.id ? 'Guardar Cambios' : 'Añadir Movimiento'}</Button>
+        </div>
+      </form>
+    );
+  };

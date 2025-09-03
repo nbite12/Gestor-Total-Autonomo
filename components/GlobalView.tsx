@@ -2,8 +2,8 @@ import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense } from '../types';
-import { IncomeForm, ExpenseForm } from './TransactionForms';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement } from '../types';
+import { IncomeForm, ExpenseForm, MovementForm } from './TransactionForms';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -283,7 +283,7 @@ const TransferForm: React.FC<{
 
 // --- Contabilize Modal ---
 const ContabilizeModal: React.FC<{
-    item: Income | Expense;
+    item: Income | Expense | PersonalMovement;
     onClose: () => void;
     onSave: (id: string, paymentDate: string, location: MoneyLocation) => void;
 }> = ({ item, onClose, onSave }) => {
@@ -443,6 +443,32 @@ const PeriodizeExpenseModal: React.FC<{
     )
 }
 
+// --- Add Pending Transaction Modal ---
+const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen, onClose }) => {
+    const [scope, setScope] = useState<'professional' | 'personal'>('professional');
+    const [type, setType] = useState<'income' | 'expense'>('income');
+  
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Añadir Transacción Pendiente">
+        <div className="flex flex-col space-y-4">
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+            <Button variant={scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setScope('professional')} className="flex-1">Profesional</Button>
+            <Button variant={scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setScope('personal')} className="flex-1">Personal</Button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+            <Button variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')} className="flex-1">Ingreso / Cobro</Button>
+            <Button variant={type === 'expense' ? 'primary' : 'secondary'} onClick={() => setType('expense')} className="flex-1">Gasto / Pago</Button>
+          </div>
+          
+          <div className="pt-2">
+            {scope === 'professional' && type === 'income' && <IncomeForm onClose={onClose} defaultIsPaid={false} />}
+            {scope === 'professional' && type === 'expense' && <ExpenseForm onClose={onClose} defaultIsPaid={false} />}
+            {scope === 'personal' && <MovementForm onClose={onClose} defaultIsPaid={false} defaultType={type} />}
+          </div>
+        </div>
+      </Modal>
+    );
+  };
 
 
 // --- Global View ---
@@ -471,10 +497,9 @@ const GlobalView: React.FC = () => {
     const [transferToEdit, setTransferToEdit] = useState<Transfer | null>(null);
 
     // State for pending transaction modals
-    const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | null>(null);
+    const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | PersonalMovement | null>(null);
     const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
-    const [isPendingIncomeModalOpen, setIsPendingIncomeModalOpen] = useState(false);
-    const [isPendingExpenseModalOpen, setIsPendingExpenseModalOpen] = useState(false);
+    const [isAddPendingModalOpen, setIsAddPendingModalOpen] = useState(false);
 
 
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
@@ -507,7 +532,7 @@ const GlobalView: React.FC = () => {
         });
 
         // Process personal movements
-        data.personalMovements.forEach(movement => {
+        data.personalMovements.filter(m => m.isPaid).forEach(movement => {
             if (movement.location) {
                 if (movement.type === 'income') {
                     balances[movement.location] = (balances[movement.location] || 0) + movement.amount;
@@ -537,7 +562,7 @@ const GlobalView: React.FC = () => {
             .map(e => ({ amount: e.baseAmount + (e.baseAmount * e.vatRate / 100) }));
             
         const personalMoves = personalMovements
-            .filter(pm => new Date(pm.date) >= period.startDate && new Date(pm.date) <= period.endDate)
+            .filter(pm => new Date(pm.date) >= period.startDate && new Date(pm.date) <= period.endDate && pm.isPaid)
 
         const autonomoFee = { amount: settings.monthlyAutonomoFee * monthsInPeriod };
         
@@ -620,15 +645,22 @@ const GlobalView: React.FC = () => {
     
     const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
     const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
+    const pendingPersonalIncomes = useMemo(() => data.personalMovements.filter(m => m.type === 'income' && !m.isPaid), [data.personalMovements]);
+    const pendingPersonalExpenses = useMemo(() => data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid), [data.personalMovements]);
+
 
     // --- Handlers ---
     const handleSaveContabilizar = (id: string, paymentDate: string, location: MoneyLocation) => {
         setData(prev => {
             const isIncome = prev.incomes.some(i => i.id === id);
+            const isExpense = prev.expenses.some(e => e.id === id);
+            
             if (isIncome) {
                 return { ...prev, incomes: prev.incomes.map(i => i.id === id ? { ...i, isPaid: true, paymentDate, location } : i) };
-            } else {
+            } else if (isExpense) {
                 return { ...prev, expenses: prev.expenses.map(e => e.id === id ? { ...e, isPaid: true, paymentDate, location } : e) };
+            } else { // Personal Movement
+                return { ...prev, personalMovements: prev.personalMovements.map(m => m.id === id ? { ...m, isPaid: true, paymentDate, location } : m) };
             }
         });
     };
@@ -739,21 +771,16 @@ const GlobalView: React.FC = () => {
             <Card>
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <h3 className="text-xl font-bold">Transacciones Pendientes</h3>
-                    <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => setIsPendingIncomeModalOpen(true)}>
-                            <Icon name="plus" className="w-4 h-4" /> Añadir Cobro Pendiente
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setIsPendingExpenseModalOpen(true)}>
-                            <Icon name="plus" className="w-4 h-4" /> Añadir Pago Pendiente
-                        </Button>
-                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => setIsAddPendingModalOpen(true)}>
+                        <Icon name="plus" className="w-4 h-4" /> Añadir Transacción Pendiente
+                    </Button>
                 </div>
-                {pendingIncomes.length === 0 && pendingExpenses.length === 0 ? (
+                {pendingIncomes.length === 0 && pendingExpenses.length === 0 && pendingPersonalIncomes.length === 0 && pendingPersonalExpenses.length === 0 ? (
                     <p className="text-center text-slate-500 py-8">No hay transacciones pendientes. ¡Añade una para empezar a planificar!</p>
                 ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
                     <div>
-                        <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro</h4>
+                        <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro (Profesional)</h4>
                          {pendingIncomes.length > 0 ? (
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
                                 <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
@@ -770,11 +797,11 @@ const GlobalView: React.FC = () => {
                                 </li>
                             ))}</ul>
                         ) : (
-                            <p className="text-sm text-slate-400 italic">No hay cobros pendientes.</p>
+                            <p className="text-sm text-slate-400 italic">No hay cobros profesionales pendientes.</p>
                         )}
                     </div>
                     <div>
-                        <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago</h4>
+                        <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago (Profesional)</h4>
                          {pendingExpenses.length > 0 ? (
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
                                 <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
@@ -792,7 +819,49 @@ const GlobalView: React.FC = () => {
                                 </li>
                              ))}</ul>
                          ) : (
-                            <p className="text-sm text-slate-400 italic">No hay pagos pendientes.</p>
+                            <p className="text-sm text-slate-400 italic">No hay pagos profesionales pendientes.</p>
+                         )}
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-2 text-green-500 dark:text-green-300">Pendiente de Ingreso (Personal)</h4>
+                         {pendingPersonalIncomes.length > 0 ? (
+                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalIncomes.map(mov => (
+                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p>{mov.concept}</p>
+                                            <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                        </div>
+                                        <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-1">
+                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
+                                    </div>
+                                </li>
+                            ))}</ul>
+                        ) : (
+                            <p className="text-sm text-slate-400 italic">No hay ingresos personales pendientes.</p>
+                        )}
+                    </div>
+                     <div>
+                        <h4 className="font-semibold mb-2 text-red-500 dark:text-red-300">Pendiente de Gasto (Personal)</h4>
+                         {pendingPersonalExpenses.length > 0 ? (
+                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalExpenses.map(mov => (
+                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p>{mov.concept}</p>
+                                            <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                        </div>
+                                        <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-1">
+                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
+                                    </div>
+                                </li>
+                             ))}</ul>
+                         ) : (
+                            <p className="text-sm text-slate-400 italic">No hay gastos personales pendientes.</p>
                          )}
                     </div>
                 </div>
@@ -1019,12 +1088,7 @@ const GlobalView: React.FC = () => {
                     <PeriodizeExpenseModal expense={expenseToPeriodize} onClose={() => setExpenseToPeriodize(null)} />
                  </Modal>
             )}
-             <Modal isOpen={isPendingIncomeModalOpen} onClose={() => setIsPendingIncomeModalOpen(false)} title="Nuevo Cobro Pendiente">
-                <IncomeForm onClose={() => setIsPendingIncomeModalOpen(false)} defaultIsPaid={false} />
-            </Modal>
-            <Modal isOpen={isPendingExpenseModalOpen} onClose={() => setIsPendingExpenseModalOpen(false)} title="Nuevo Pago Pendiente">
-                <ExpenseForm onClose={() => setIsPendingExpenseModalOpen(false)} defaultIsPaid={false} />
-            </Modal>
+            <AddPendingTransactionModal isOpen={isAddPendingModalOpen} onClose={() => setIsAddPendingModalOpen(false)} />
         </div>
     );
 };

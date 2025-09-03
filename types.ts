@@ -94,6 +94,8 @@ export interface PersonalMovement {
   categoryId: string;
   location: MoneyLocation;
   source?: MoneySource; // Only for income
+  isPaid?: boolean;
+  paymentDate?: string;
 }
 
 export interface Transfer {

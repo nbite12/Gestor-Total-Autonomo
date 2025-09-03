@@ -39,6 +39,18 @@ router.get('/', async (req, res) => {
             }
         }
     }
+    
+    // PersonalMovements need `isPaid` and `paymentDate`
+    if (appData.personalMovements && Array.isArray(appData.personalMovements)) {
+        for (const movement of appData.personalMovements) {
+            if (typeof movement.isPaid === 'undefined') {
+                movement.isPaid = true;
+                movement.paymentDate = movement.date;
+                needsSave = true;
+            }
+        }
+    }
+
 
     if (needsSave) {
         dataDoc.markModified('appData'); // Important for Mixed types in Mongoose

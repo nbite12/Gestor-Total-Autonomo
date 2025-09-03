@@ -4,76 +4,11 @@ import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation } from '../ty
 import { Card, Button, Modal, Input, Select, Icon } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { MovementForm } from './TransactionForms';
 
 
 const formatCurrencyForUI = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 const formatDateForInput = (isoDate: string) => isoDate.split('T')[0];
-
-// --- Movement Form ---
-const MovementForm: React.FC<{
-  onClose: () => void;
-  movementToEdit?: PersonalMovement | null;
-}> = ({ onClose, movementToEdit }) => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error("Context not available");
-  const { data, setData } = context;
-
-  const [formData, setFormData] = useState<Partial<PersonalMovement>>({
-    id: movementToEdit?.id || `pm-${Date.now()}`,
-    date: movementToEdit ? formatDateForInput(movementToEdit.date) : new Date().toISOString().split('T')[0],
-    concept: movementToEdit?.concept || '',
-    amount: movementToEdit?.amount || 0,
-    type: movementToEdit?.type || 'expense',
-    categoryId: movementToEdit?.categoryId || (data.personalCategories[0]?.id || ''),
-    source: movementToEdit?.source || MoneySource.PERSONAL,
-    location: movementToEdit?.location || MoneyLocation.PERS_BANK,
-  });
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) : value }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newMovement = { ...formData, date: new Date(formData.date!).toISOString() } as PersonalMovement;
-    setData(prevData => ({
-      ...prevData,
-      personalMovements: movementToEdit
-        ? prevData.personalMovements.map(m => m.id === movementToEdit.id ? newMovement : m)
-        : [...prevData.personalMovements, newMovement],
-    }));
-    onClose();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex gap-4 mb-4">
-          <Button type="button" variant={formData.type === 'expense' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'expense'}))} className="flex-1">Gasto</Button>
-          <Button type="button" variant={formData.type === 'income' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'income'}))} className="flex-1">Ingreso</Button>
-      </div>
-      <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
-      <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
-      <Input label="Importe (€)" name="amount" type="number" step="0.01" min="0" value={formData.amount} onChange={handleChange} required />
-      <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
-          {data.personalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-      </Select>
-      <Select label="Ubicación del dinero" name="location" value={formData.location} onChange={handleChange} required>
-        {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-      </Select>
-      {formData.type === 'income' && (
-        <Select label="Fuente" name="source" value={formData.source} onChange={handleChange}>
-           {Object.values(MoneySource).map(s => <option key={s} value={s}>{s}</option>)}
-        </Select>
-      )}
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button type="submit">{movementToEdit ? 'Guardar Cambios' : 'Añadir Movimiento'}</Button>
-      </div>
-    </form>
-  );
-};
-
 
 // --- Savings Goal Form ---
 const SavingsGoalForm: React.FC<{
@@ -162,7 +97,9 @@ const AddFundsForm: React.FC<{
                 amount: amount,
                 type: 'expense',
                 categoryId: prev.personalCategories.find(c => c.name.toLowerCase().includes('ahorro'))?.id || prev.personalCategories[0].id,
-                location: location
+                location: location,
+                isPaid: true,
+                paymentDate: new Date().toISOString(),
             };
 
             return {...prev, savingsGoals: updatedGoals, personalMovements: [...prev.personalMovements, newMovement]};
@@ -223,7 +160,7 @@ const PersonalView: React.FC = () => {
                 balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
             }
         });
-        data.personalMovements.forEach(movement => {
+        data.personalMovements.filter(m => m.isPaid).forEach(movement => {
             if (movement.location) {
                 if (movement.type === 'income') balances[movement.location] = (balances[movement.location] || 0) + movement.amount;
                 else balances[movement.location] = (balances[movement.location] || 0) - movement.amount;
@@ -244,8 +181,8 @@ const PersonalView: React.FC = () => {
 
   const summary = useMemo(() => {
     const personalBalance = (moneyDistribution[MoneyLocation.PERS_BANK] || 0) + (moneyDistribution[MoneyLocation.CASH] || 0) + (moneyDistribution[MoneyLocation.OTHER] || 0);
-    const totalIncome = filteredMovements.filter(m => m.type === 'income').reduce((acc, m) => acc + m.amount, 0);
-    const totalExpense = filteredMovements.filter(m => m.type === 'expense').reduce((acc, m) => acc + m.amount, 0);
+    const totalIncome = filteredMovements.filter(m => m.type === 'income' && m.isPaid).reduce((acc, m) => acc + m.amount, 0);
+    const totalExpense = filteredMovements.filter(m => m.type === 'expense' && m.isPaid).reduce((acc, m) => acc + m.amount, 0);
     return {
       totalBalance: personalBalance,
       totalIncome,
