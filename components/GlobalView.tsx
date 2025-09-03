@@ -789,7 +789,10 @@ const GlobalView: React.FC = () => {
                                             <p>{income.concept}</p>
                                             <p className="text-xs text-slate-500">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
                                         </div>
-                                        <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
+                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                        </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-1">
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
@@ -810,7 +813,10 @@ const GlobalView: React.FC = () => {
                                             <p>{expense.concept}</p>
                                             <p className="text-xs text-slate-500">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
                                         </div>
-                                        <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
+                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                        </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-1">
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
@@ -832,7 +838,10 @@ const GlobalView: React.FC = () => {
                                             <p>{mov.concept}</p>
                                             <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
                                         </div>
-                                        <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                        </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-1">
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
@@ -853,7 +862,10 @@ const GlobalView: React.FC = () => {
                                             <p>{mov.concept}</p>
                                             <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
                                         </div>
-                                        <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="font-semibold">{formatCurrency(mov.amount)}</p>
+                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                        </div>
                                     </div>
                                     <div className="flex justify-end gap-2 mt-1">
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>

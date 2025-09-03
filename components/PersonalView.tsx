@@ -312,6 +312,7 @@ const PersonalView: React.FC = () => {
                             <th scope="col" className="px-6 py-3">Fecha</th>
                             <th scope="col" className="px-6 py-3">Concepto</th>
                             <th scope="col" className="px-6 py-3">Categoría</th>
+                            <th scope="col" className="px-6 py-3">Estado</th>
                             <th scope="col" className="px-6 py-3">Importe</th>
                             <th scope="col" className="px-6 py-3">Acciones</th>
                         </tr>
@@ -322,6 +323,12 @@ const PersonalView: React.FC = () => {
                                 <td className="px-6 py-4">{new Date(mov.date).toLocaleDateString('es-ES')}</td>
                                 <td className="px-6 py-4">{mov.concept}</td>
                                 <td className="px-6 py-4">{personalCategories.find(c => c.id === mov.categoryId)?.name || '-'}</td>
+                                <td className="px-6 py-4">
+                                    {mov.isPaid ? 
+                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>{mov.type === 'income' ? 'Recibido' : 'Pagado'}</span> :
+                                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                    }
+                                </td>
                                 <td className={`px-6 py-4 font-semibold ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>{mov.type === 'income' ? '+' : '-'}{formatCurrency(mov.amount)}</td>
                                 <td className="px-6 py-4 flex gap-2">
                                    <Button size="sm" variant="ghost" onClick={() => handleOpenMovementModal(mov)}><Icon name="pencil" className="w-4 h-4" /></Button>
