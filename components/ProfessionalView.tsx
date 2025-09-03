@@ -8,6 +8,7 @@ import { generateIncomesPDF, generateExpensesPDF, generateInvestmentGoodsPDF, ge
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 // FIX: Imported PeriodSelector component to fix 'Cannot find name' error.
 import { PeriodSelector } from './PeriodSelector';
+import { IncomeForm, ExpenseForm, InvestmentGoodForm } from './TransactionForms';
 
 // --- Type definitions ---
 type ProViewTab = 'libros' | 'impuestos' | 'renta' | 'resumen';
@@ -15,17 +16,10 @@ type Quarter = 1 | 2 | 3 | 4;
 
 // --- Helper Functions ---
 const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
-const formatDateForInput = (isoDate: string) => isoDate.split('T')[0];
 const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
 const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
 const getTotalFacturaEmitida = (inc: Income) => inc.baseAmount + getCuotaIVA(inc.baseAmount, inc.vatRate) - getCuotaIRPF(inc.baseAmount, inc.irpfRate);
 const getTotalFacturaRecibida = (exp: Expense) => exp.baseAmount + getCuotaIVA(exp.baseAmount, exp.vatRate);
-const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = error => reject(error);
-});
 const handleDownloadAttachment = (attachment: Attachment) => {
     const byteCharacters = atob(attachment.data);
     const byteNumbers = new Array(byteCharacters.length);
@@ -53,245 +47,6 @@ const calculateAnnualIRPF = (annualIncome: number): number => {
     }
     return tax;
 };
-
-
-// --- Form Attachment Component ---
-const FormAttachment: React.FC<{
-    attachment: Attachment | undefined;
-    onFileChange: (file: File | null) => void;
-}> = ({ attachment, onFileChange }) => (
-    <div>
-        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Adjuntar Factura (Opcional)</label>
-        {!attachment ? (
-            <Input type="file" label="" onChange={(e) => onFileChange(e.target.files?.[0] || null)} accept="image/*,application/pdf" />
-        ) : (
-            <div className="flex items-center justify-between p-2 bg-slate-100 dark:bg-slate-700 rounded-md">
-                <span className="text-sm truncate"><Icon name="paperclip" className="inline w-4 h-4 mr-2" />{attachment.name}</span>
-                <Button variant="ghost" size="sm" onClick={() => onFileChange(null)}><Icon name="x" className="w-4 h-4" /></Button>
-            </div>
-        )}
-    </div>
-);
-
-
-// --- Form Components ---
-const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income> | null; }> = ({ onClose, incomeToEdit }) => {
-  const { data, setData } = useContext(AppContext)!;
-  const [formData, setFormData] = useState<Partial<Income>>({
-    id: incomeToEdit?.id || `inc-${Date.now()}`,
-    invoiceNumber: incomeToEdit?.invoiceNumber || '',
-    date: incomeToEdit?.date ? formatDateForInput(new Date(incomeToEdit.date).toISOString()) : new Date().toISOString().split('T')[0],
-    clientName: incomeToEdit?.clientName || '',
-    clientNif: incomeToEdit?.clientNif || '',
-    clientAddress: incomeToEdit?.clientAddress || '',
-    concept: incomeToEdit?.concept || '',
-    baseAmount: incomeToEdit?.baseAmount || 0,
-    vatRate: incomeToEdit?.vatRate ?? data.settings.defaultVatRate,
-    irpfRate: incomeToEdit?.irpfRate ?? data.settings.defaultIrpfRate,
-    isPaid: incomeToEdit?.isPaid || false,
-    location: incomeToEdit?.location || MoneyLocation.PRO_BANK,
-    attachment: incomeToEdit?.attachment,
-  });
-
-  const handleFileChange = async (file: File | null) => {
-    if (!file) {
-        setFormData(prev => ({ ...prev, attachment: undefined }));
-        return;
-    }
-    const base64 = await fileToBase64(file);
-    setFormData(prev => ({ ...prev, attachment: { name: file.name, type: file.type, data: base64 } }));
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    if (type === 'checkbox') {
-        setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
-    } else {
-        setFormData(prev => ({ ...prev, [name]: name.includes('Amount') || name.includes('Rate') ? parseFloat(value) : value }));
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newIncome = { ...formData, date: new Date(formData.date!).toISOString() } as Income;
-    setData(prevData => ({
-      ...prevData,
-      incomes: incomeToEdit?.id && prevData.incomes.some(i => i.id === incomeToEdit.id)
-        ? prevData.incomes.map(i => i.id === incomeToEdit.id ? newIncome : i)
-        : [...prevData.incomes, newIncome],
-    }));
-    onClose();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input label="Nº Factura" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} required />
-        <Input label="Fecha Expedición" name="date" type="date" value={formData.date} onChange={handleChange} required />
-      </div>
-       <Input label="Nombre o Razón Social Cliente" name="clientName" value={formData.clientName} onChange={handleChange} required />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Input label="NIF/CIF Cliente" name="clientNif" value={formData.clientNif} onChange={handleChange} />
-        <Input label="Dirección Cliente" name="clientAddress" value={formData.clientAddress} onChange={handleChange} />
-      </div>
-      <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Input label="Base Imponible (€)" name="baseAmount" type="number" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
-        <Select label="Tipo de IVA (%)" name="vatRate" value={formData.vatRate} onChange={handleChange}>
-            <option value="21">21% (General)</option><option value="10">10% (Reducido)</option><option value="4">4% (Superreducido)</option><option value="0">0% (Exento)</option>
-        </Select>
-        <Select label="Retención IRPF (%)" name="irpfRate" value={formData.irpfRate} onChange={handleChange}>
-            <option value="15">15% (General)</option><option value="7">7% (Nuevos autónomos)</option><option value="0">0% (Sin retención)</option>
-        </Select>
-      </div>
-      <Select label="Ubicación del Dinero (si está pagada)" name="location" value={formData.location} onChange={handleChange}>
-        {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
-      </Select>
-      <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
-      <Switch label="Marcar como Pagada" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button type="submit">{incomeToEdit?.id && data.incomes.some(i => i.id === incomeToEdit.id) ? 'Guardar Cambios' : 'Añadir Ingreso'}</Button>
-      </div>
-    </form>
-  );
-};
-
-const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; }> = ({ onClose, expenseToEdit }) => {
-    const { data, setData } = useContext(AppContext)!;
-    const [formData, setFormData] = useState<Partial<Expense>>({
-        id: expenseToEdit?.id || `exp-${Date.now()}`,
-        date: expenseToEdit?.date ? formatDateForInput(new Date(expenseToEdit.date).toISOString()) : new Date().toISOString().split('T')[0],
-        invoiceNumber: expenseToEdit?.invoiceNumber || '',
-        providerName: expenseToEdit?.providerName || '',
-        providerNif: expenseToEdit?.providerNif || '',
-        concept: expenseToEdit?.concept || '',
-        baseAmount: expenseToEdit?.baseAmount || 0,
-        vatRate: expenseToEdit?.vatRate ?? data.settings.defaultVatRate,
-        categoryId: expenseToEdit?.categoryId || (data.professionalCategories[0]?.id || ''),
-        location: expenseToEdit?.location || MoneyLocation.PRO_BANK,
-        isDeductible: expenseToEdit?.isDeductible ?? true,
-        isPaid: expenseToEdit?.isPaid ?? true,
-        attachment: expenseToEdit?.attachment,
-    });
-
-    const handleFileChange = async (file: File | null) => {
-        if (!file) { setFormData(prev => ({ ...prev, attachment: undefined })); return; }
-        const base64 = await fileToBase64(file);
-        setFormData(prev => ({ ...prev, attachment: { name: file.name, type: file.type, data: base64 } }));
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-         if (type === 'checkbox') {
-            setFormData(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
-        } else {
-            setFormData(prev => ({ ...prev, [name]: name.includes('Amount') || name.includes('Rate') ? parseFloat(value) : value }));
-        }
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const newExpense = { ...formData, date: new Date(formData.date!).toISOString() } as Expense;
-        setData(prevData => ({
-            ...prevData,
-            expenses: expenseToEdit?.id && prevData.expenses.some(ex => ex.id === expenseToEdit.id)
-                ? prevData.expenses.map(ex => ex.id === expenseToEdit.id ? newExpense : ex)
-                : [...prevData.expenses, newExpense],
-        }));
-        onClose();
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Fecha Expedición" name="date" type="date" value={formData.date} onChange={handleChange} required />
-                <Input label="Nº Factura" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
-            </div>
-            <Input label="Nombre o Razón Social Proveedor" name="providerName" value={formData.providerName} onChange={handleChange} required />
-            <Input label="NIF/CIF Proveedor" name="providerNif" value={formData.providerNif} onChange={handleChange} />
-            <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Base Imponible (€)" name="baseAmount" type="number" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
-                <Select label="Tipo de IVA (%)" name="vatRate" value={formData.vatRate} onChange={handleChange}>
-                    <option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option>
-                </Select>
-            </div>
-            <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
-                {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-            </Select>
-            <Select label="Ubicación del Gasto" name="location" value={formData.location} onChange={handleChange}>
-                {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
-            </Select>
-            <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
-            <Switch label="Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
-            <Switch label="Marcar como Pagado" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{expenseToEdit?.id ? 'Guardar Cambios' : 'Añadir Gasto'}</Button>
-            </div>
-        </form>
-    );
-};
-
-const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Partial<InvestmentGood> | null; }> = ({ onClose, goodToEdit }) => {
-    const { setData } = useContext(AppContext)!;
-    const [formData, setFormData] = useState<Partial<InvestmentGood>>({
-        id: goodToEdit?.id || `inv-${Date.now()}`,
-        purchaseDate: goodToEdit?.purchaseDate ? formatDateForInput(new Date(goodToEdit.purchaseDate).toISOString()) : new Date().toISOString().split('T')[0],
-        description: goodToEdit?.description || '',
-        providerNif: goodToEdit?.providerNif || '',
-        invoiceNumber: goodToEdit?.invoiceNumber || '',
-        acquisitionValue: goodToEdit?.acquisitionValue || 0,
-        usefulLife: goodToEdit?.usefulLife || 4,
-        attachment: goodToEdit?.attachment,
-    });
-
-     const handleFileChange = async (file: File | null) => {
-        if (!file) { setFormData(prev => ({ ...prev, attachment: undefined })); return; }
-        const base64 = await fileToBase64(file);
-        setFormData(prev => ({ ...prev, attachment: { name: file.name, type: file.type, data: base64 } }));
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: name.includes('Value') || name.includes('Life') ? parseFloat(value) : value }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const newGood = { ...formData, purchaseDate: new Date(formData.purchaseDate!).toISOString() } as InvestmentGood;
-        setData(prev => ({
-            ...prev,
-            investmentGoods: goodToEdit?.id && prev.investmentGoods.some(g => g.id === goodToEdit.id)
-                ? prev.investmentGoods.map(g => g.id === goodToEdit.id ? newGood : g)
-                : [...prev.investmentGoods, newGood],
-        }));
-        onClose();
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Fecha de Compra" name="purchaseDate" type="date" value={formData.purchaseDate} onChange={handleChange} required />
-            <Input label="Descripción del Bien" name="description" value={formData.description} onChange={handleChange} required />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="NIF/CIF Proveedor" name="providerNif" value={formData.providerNif} onChange={handleChange} />
-                <Input label="Nº Factura" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Valor de Adquisición (Base Imponible)" name="acquisitionValue" type="number" step="0.01" min="0" value={formData.acquisitionValue} onChange={handleChange} required />
-                <Input label="Vida Útil (Años)" name="usefulLife" type="number" step="1" min="1" value={formData.usefulLife} onChange={handleChange} required />
-            </div>
-            <FormAttachment attachment={formData.attachment} onFileChange={handleFileChange} />
-            <p className="text-sm text-slate-500 dark:text-slate-400">Método de amortización: Lineal (automático)</p>
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{goodToEdit?.id ? 'Guardar Cambios' : 'Añadir Bien'}</Button>
-            </div>
-        </form>
-    );
-};
-
 
 // --- Main Professional View ---
 const ProfessionalView: React.FC = () => {
@@ -375,44 +130,120 @@ const LibrosRegistroView: React.FC<{
 }> = ({ onEditIncome, onEditExpense, onEditInvestment, onDelete }) => {
     const { data, formatCurrency } = useContext(AppContext)!;
     const { incomes, expenses, investmentGoods } = data;
+    const [libroFilter, setLibroFilter] = useState<'all' | 'incomes' | 'expenses' | 'investments'>('all');
+
+    const allTransactions = useMemo(() => {
+        const combined = [
+            ...incomes.map(i => ({ ...i, type: 'income' as const })),
+            ...expenses.map(e => ({ ...e, type: 'expense' as const }))
+        ];
+        return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [incomes, expenses]);
+
+    const IncomeTable = () => (
+        <Card>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Libro de Registro de Facturas Emitidas</h3>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                    <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
+                </div>
+            </div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">IRPF</th><th className="px-4 py-2 text-right">Total</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
+                    <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditIncome(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('income', inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
+        </Card>
+    );
+
+    const ExpenseTable = () => (
+        <Card>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Libro de Registro de Facturas Recibidas</h3>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses)} disabled={expenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                    <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
+                </div>
+            </div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Deducible</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
+                    <tbody>{expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(exp => (<tr key={exp.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(exp.date)}</td><td className="px-4 py-2">{exp.providerName}</td><td className="px-4 py-2">{exp.concept}</td><td className="px-4 py-2 text-right">{formatCurrency(exp.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(exp.baseAmount, exp.vatRate))} ({exp.vatRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaRecibida(exp))}</td><td className="px-4 py-2 text-center">{exp.isDeductible ? 'Sí' : 'No'}</td><td className="px-2 py-2 text-center">{exp.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(exp.attachment!)} title={exp.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditExpense(exp)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('expense', exp.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
+        </Card>
+    );
     
+    const InvestmentTable = () => (
+        <Card>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Libro de Registro de Bienes de Inversión</h3>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => generateInvestmentGoodsPDF(investmentGoods)} disabled={investmentGoods.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
+                    <Button onClick={() => onEditInvestment()}><Icon name="plus" /> Añadir Bien</Button>
+                </div>
+            </div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha Compra</th><th className="px-4 py-2">Descripción</th><th className="px-4 py-2 text-right">Valor Adquisición</th><th className="px-4 py-2 text-center">Vida Útil</th><th className="px-4 py-2 text-right">Amortización Anual</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
+                    <tbody>{investmentGoods.sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(good => (<tr key={good.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(good.purchaseDate)}</td><td className="px-4 py-2">{good.description}</td><td className="px-4 py-2 text-right">{formatCurrency(good.acquisitionValue)}</td><td className="px-4 py-2 text-center">{good.usefulLife} años</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(good.acquisitionValue / good.usefulLife)}</td><td className="px-2 py-2 text-center">{good.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(good.attachment!)} title={good.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditInvestment(good)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('investment', good.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
+        </Card>
+    );
+
+    const AllTransactionsTable = () => (
+         <Card>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">Registro Contable Unificado</h3>
+                <div className="flex gap-2">
+                    <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
+                    <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
+                </div>
+            </div>
+             <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Tipo</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente/Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Total</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
+                    <tbody>{allTransactions.map(item => {
+                        const isIncome = item.type === 'income';
+                        const total = isIncome ? getTotalFacturaEmitida(item as Income) : getTotalFacturaRecibida(item as Expense);
+                        const partyName = isIncome ? (item as Income).clientName : (item as Expense).providerName;
+
+                        return (
+                        <tr key={item.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
+                            <td className="px-4 py-2">{formatDate(item.date)}</td>
+                            <td className="px-4 py-2">
+                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${isIncome ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
+                                    {isIncome ? 'Ingreso' : 'Gasto'}
+                                </span>
+                            </td>
+                            <td className="px-4 py-2">{item.invoiceNumber || '-'}</td>
+                            <td className="px-4 py-2">{partyName}</td>
+                            <td className="px-4 py-2">{item.concept}</td>
+                            <td className={`px-4 py-2 text-right font-bold ${isIncome ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(total)}</td>
+                            <td className="px-2 py-2 text-center">{item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td>
+                            <td className="px-4 py-2 flex justify-center gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => isIncome ? onEditIncome(item) : onEditExpense(item)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => onDelete(item.type, item.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                            </td>
+                        </tr>
+                        );
+                    })}</tbody></table></div>
+        </Card>
+    );
+
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             <Card>
-                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Libro de Registro de Facturas Emitidas</h3>
-                    <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                        <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant={libroFilter === 'all' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('all')}>Todos los Movimientos</Button>
+                    <Button size="sm" variant={libroFilter === 'incomes' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('incomes')}>Facturas Emitidas</Button>
+                    <Button size="sm" variant={libroFilter === 'expenses' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('expenses')}>Facturas Recibidas</Button>
+                    <Button size="sm" variant={libroFilter === 'investments' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('investments')}>Bienes de Inversión</Button>
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">IRPF</th><th className="px-4 py-2 text-right">Total</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                        <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditIncome(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('income', inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
             </Card>
-            <Card>
-                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Libro de Registro de Facturas Recibidas</h3>
-                    <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses)} disabled={expenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                        <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
-                    </div>
-                </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Deducible</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                        <tbody>{expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(exp => (<tr key={exp.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(exp.date)}</td><td className="px-4 py-2">{exp.providerName}</td><td className="px-4 py-2">{exp.concept}</td><td className="px-4 py-2 text-right">{formatCurrency(exp.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(exp.baseAmount, exp.vatRate))} ({exp.vatRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaRecibida(exp))}</td><td className="px-4 py-2 text-center">{exp.isDeductible ? 'Sí' : 'No'}</td><td className="px-2 py-2 text-center">{exp.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(exp.attachment!)} title={exp.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditExpense(exp)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('expense', exp.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
-            </Card>
-             <Card>
-                <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Libro de Registro de Bienes de Inversión</h3>
-                    <div className="flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => generateInvestmentGoodsPDF(investmentGoods)} disabled={investmentGoods.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                        <Button onClick={() => onEditInvestment()}><Icon name="plus" /> Añadir Bien</Button>
-                    </div>
-                </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha Compra</th><th className="px-4 py-2">Descripción</th><th className="px-4 py-2 text-right">Valor Adquisición</th><th className="px-4 py-2 text-center">Vida Útil</th><th className="px-4 py-2 text-right">Amortización Anual</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                        <tbody>{investmentGoods.sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(good => (<tr key={good.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(good.purchaseDate)}</td><td className="px-4 py-2">{good.description}</td><td className="px-4 py-2 text-right">{formatCurrency(good.acquisitionValue)}</td><td className="px-4 py-2 text-center">{good.usefulLife} años</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(good.acquisitionValue / good.usefulLife)}</td><td className="px-2 py-2 text-center">{good.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(good.attachment!)} title={good.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditInvestment(good)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('investment', good.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
-            </Card>
+
+            <div className="space-y-8">
+                {libroFilter === 'all' && (
+                    <>
+                        <AllTransactionsTable />
+                        <InvestmentTable />
+                    </>
+                )}
+                {libroFilter === 'incomes' && <IncomeTable />}
+                {libroFilter === 'expenses' && <ExpenseTable />}
+                {libroFilter === 'investments' && <InvestmentTable />}
+            </div>
         </div>
-    )
+    );
 };
 
 const MisImpuestosView: React.FC = () => {

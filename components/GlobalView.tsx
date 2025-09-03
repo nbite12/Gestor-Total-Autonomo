@@ -3,6 +3,7 @@ import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense } from '../types';
+import { IncomeForm, ExpenseForm } from './TransactionForms';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -472,6 +473,9 @@ const GlobalView: React.FC = () => {
     // State for pending transaction modals
     const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | null>(null);
     const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
+    const [isPendingIncomeModalOpen, setIsPendingIncomeModalOpen] = useState(false);
+    const [isPendingExpenseModalOpen, setIsPendingExpenseModalOpen] = useState(false);
+
 
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
 
@@ -732,12 +736,25 @@ const GlobalView: React.FC = () => {
                 </div>
             </Card>
 
-            {(pendingIncomes.length > 0 || pendingExpenses.length > 0) && (
-                <Card>
-                    <h3 className="text-xl font-bold mb-4">Transacciones Pendientes</h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-                        <div>
-                            <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro</h4>
+            <Card>
+                <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                    <h3 className="text-xl font-bold">Transacciones Pendientes</h3>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => setIsPendingIncomeModalOpen(true)}>
+                            <Icon name="plus" className="w-4 h-4" /> Añadir Cobro Pendiente
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setIsPendingExpenseModalOpen(true)}>
+                            <Icon name="plus" className="w-4 h-4" /> Añadir Pago Pendiente
+                        </Button>
+                    </div>
+                </div>
+                {pendingIncomes.length === 0 && pendingExpenses.length === 0 ? (
+                    <p className="text-center text-slate-500 py-8">No hay transacciones pendientes. ¡Añade una para empezar a planificar!</p>
+                ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                    <div>
+                        <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro</h4>
+                         {pendingIncomes.length > 0 ? (
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
                                 <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
@@ -752,10 +769,14 @@ const GlobalView: React.FC = () => {
                                     </div>
                                 </li>
                             ))}</ul>
-                        </div>
-                        <div>
-                            <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago</h4>
-                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
+                        ) : (
+                            <p className="text-sm text-slate-400 italic">No hay cobros pendientes.</p>
+                        )}
+                    </div>
+                    <div>
+                        <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago</h4>
+                         {pendingExpenses.length > 0 ? (
+                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
                                 <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
                                         <div>
@@ -770,10 +791,13 @@ const GlobalView: React.FC = () => {
                                     </div>
                                 </li>
                              ))}</ul>
-                        </div>
+                         ) : (
+                            <p className="text-sm text-slate-400 italic">No hay pagos pendientes.</p>
+                         )}
                     </div>
-                </Card>
-            )}
+                </div>
+                )}
+            </Card>
 
             <Card>
                  <h3 className="text-xl font-bold mb-4">Historial de Transferencias</h3>
@@ -995,6 +1019,12 @@ const GlobalView: React.FC = () => {
                     <PeriodizeExpenseModal expense={expenseToPeriodize} onClose={() => setExpenseToPeriodize(null)} />
                  </Modal>
             )}
+             <Modal isOpen={isPendingIncomeModalOpen} onClose={() => setIsPendingIncomeModalOpen(false)} title="Nuevo Cobro Pendiente">
+                <IncomeForm onClose={() => setIsPendingIncomeModalOpen(false)} defaultIsPaid={false} />
+            </Modal>
+            <Modal isOpen={isPendingExpenseModalOpen} onClose={() => setIsPendingExpenseModalOpen(false)} title="Nuevo Pago Pendiente">
+                <ExpenseForm onClose={() => setIsPendingExpenseModalOpen(false)} defaultIsPaid={false} />
+            </Modal>
         </div>
     );
 };
