@@ -7,7 +7,7 @@ import SettingsView from './components/SettingsView';
 import GlobalView from './components/GlobalView';
 import { DEFAULT_PROFESSIONAL_CATEGORIES, DEFAULT_PERSONAL_CATEGORIES } from './constants';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './hooks/AuthContext';
 import Auth from './components/Auth';
 import { api } from './services/api';
 import { AICommandModal } from './components/AICommandModal';
