@@ -202,9 +202,10 @@ const PotentialExpenseForm: React.FC<{
 
 
 // --- Transfer Form Modal ---
-const TransferForm: React.FC<{
+// FIX: Export TransferForm and update props to allow for reuse.
+export const TransferForm: React.FC<{
     onClose: () => void;
-    transferToEdit: Transfer | null;
+    transferToEdit: Partial<Transfer> | null;
 }> = ({ onClose, transferToEdit }) => {
     const { setData } = useContext(AppContext)!;
 
@@ -488,6 +489,7 @@ const GlobalView: React.FC = () => {
     const [includeSavings, setIncludeSavings] = useState(true);
     const [includePotentialIncome, setIncludePotentialIncome] = useState(true);
     const [includePotentialExpenses, setIncludePotentialExpenses] = useState(true);
+    const [showProjection, setShowProjection] = useState(false);
 
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
     const [incomeToEdit, setIncomeToEdit] = useState<PotentialIncome | null>(null);
@@ -550,6 +552,47 @@ const GlobalView: React.FC = () => {
 
         return balances;
     }, [data.incomes, data.expenses, data.personalMovements, data.transfers, data.settings.initialBalances]);
+    
+    const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
+    const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
+    const pendingPersonalIncomes = useMemo(() => data.personalMovements.filter(m => m.type === 'income' && !m.isPaid), [data.personalMovements]);
+    const pendingPersonalExpenses = useMemo(() => data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid), [data.personalMovements]);
+
+    const projectedMoneyDistribution = useMemo(() => {
+        if (!showProjection) {
+            return moneyDistribution;
+        }
+
+        const projectedBalances = { ...moneyDistribution };
+
+        pendingIncomes.forEach(income => {
+            if (income.location) {
+                const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
+                projectedBalances[income.location] = (projectedBalances[income.location] || 0) + netAmount;
+            }
+        });
+
+        pendingExpenses.forEach(expense => {
+            if (expense.location) {
+                const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
+                projectedBalances[expense.location] = (projectedBalances[expense.location] || 0) - totalAmount;
+            }
+        });
+
+        pendingPersonalIncomes.forEach(movement => {
+            if (movement.location) {
+                projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) + movement.amount;
+            }
+        });
+        
+        pendingPersonalExpenses.forEach(movement => {
+            if (movement.location) {
+                projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) - movement.amount;
+            }
+        });
+
+        return projectedBalances;
+    }, [showProjection, moneyDistribution, pendingIncomes, pendingExpenses, pendingPersonalIncomes, pendingPersonalExpenses]);
 
 
     const actualMovements = useMemo(() => {
@@ -642,11 +685,6 @@ const GlobalView: React.FC = () => {
             netProjectedCashFlow,
         }
     }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses]);
-    
-    const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
-    const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
-    const pendingPersonalIncomes = useMemo(() => data.personalMovements.filter(m => m.type === 'income' && !m.isPaid), [data.personalMovements]);
-    const pendingPersonalExpenses = useMemo(() => data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid), [data.personalMovements]);
 
 
     // --- Handlers ---
@@ -724,47 +762,50 @@ const GlobalView: React.FC = () => {
         return acc;
     }, {} as { [key: string]: string });
 
+    const BalanceDisplay = ({ location, icon }: { location: MoneyLocation; icon: string; }) => {
+        const currentBalance = moneyDistribution[location];
+        const projectedBalance = projectedMoneyDistribution[location];
+        return (
+            <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <Icon name={icon} className="w-8 h-8 text-primary-500 flex-shrink-0" />
+                <div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{location}</p>
+                    <p className={`text-lg font-bold transition-colors ${showProjection && currentBalance !== projectedBalance ? 'text-primary-600 dark:text-primary-400' : ''}`}>
+                        {formatCurrency(showProjection ? projectedBalance : currentBalance)}
+                    </p>
+                    {showProjection && currentBalance !== projectedBalance && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Actual: {formatCurrency(currentBalance)}
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
 
     return (
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
             <Card>
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Distribución del Dinero</h3>
-                    <Button size="sm" onClick={() => handleOpenTransferModal()}>
-                        <Icon name="switch-horizontal" className="w-4 h-4" /> Transferir
-                    </Button>
+                <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                    <div>
+                        <h3 className="text-xl font-bold">Distribución del Dinero</h3>
+                        <p className="text-sm text-slate-500">{showProjection ? 'Saldos proyectados incluyendo transacciones pendientes.' : 'Saldos actuales en tus cuentas.'}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <Switch label="Proyectar pendientes" checked={showProjection} onChange={setShowProjection} />
+                        <Button size="sm" onClick={() => handleOpenTransferModal()}>
+                            <Icon name="switch-horizontal" className="w-4 h-4" /> Transferir
+                        </Button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <Icon name="cash" className="w-8 h-8 text-primary-500 flex-shrink-0" />
-                        <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">{MoneyLocation.CASH}</p>
-                            <p className="text-lg font-bold">{formatCurrency(moneyDistribution[MoneyLocation.CASH])}</p>
-                        </div>
-                    </div>
-                     <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <Icon name="office-building" className="w-8 h-8 text-primary-500 flex-shrink-0" />
-                        <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">{MoneyLocation.PRO_BANK}</p>
-                            <p className="text-lg font-bold">{formatCurrency(moneyDistribution[MoneyLocation.PRO_BANK])}</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <Icon name="user-circle" className="w-8 h-8 text-primary-500 flex-shrink-0" />
-                        <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">{MoneyLocation.PERS_BANK}</p>
-                            <p className="text-lg font-bold">{formatCurrency(moneyDistribution[MoneyLocation.PERS_BANK])}</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                        <Icon name="globe" className="w-8 h-8 text-primary-500 flex-shrink-0" />
-                        <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">{MoneyLocation.OTHER}</p>
-                            <p className="text-lg font-bold">{formatCurrency(moneyDistribution[MoneyLocation.OTHER])}</p>
-                        </div>
-                    </div>
+                    <BalanceDisplay location={MoneyLocation.CASH} icon="cash" />
+                    <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="office-building" />
+                    <BalanceDisplay location={MoneyLocation.PERS_BANK} icon="user-circle" />
+                    <BalanceDisplay location={MoneyLocation.OTHER} icon="globe" />
                 </div>
             </Card>
 

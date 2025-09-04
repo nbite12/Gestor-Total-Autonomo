@@ -10,6 +10,8 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Auth from './components/Auth';
 import { api } from './services/api';
+import { AICommandModal } from './components/AICommandModal';
+
 
 // --- AppContext for global state management ---
 interface AppContextType {
@@ -24,6 +26,7 @@ const AppContainer: React.FC = () => {
     const [theme, setTheme] = useLocalStorage<Theme>('app-theme', Theme.LIGHT);
     const [currentView, setCurrentView] = useState<AppView>(AppView.GLOBAL);
     const { logout, user } = useAuth();
+    const [isAiModalOpen, setAiModalOpen] = useState(false);
 
     const initialData: AppData = useMemo(() => ({
         incomes: [], expenses: [], personalMovements: [], transfers: [],
@@ -140,23 +143,52 @@ const AppContainer: React.FC = () => {
                     {renderView()}
                 </main>
 
-                <nav className="sticky bottom-0 bg-white dark:bg-slate-800 shadow-top p-2 sm:hidden z-40">
-                     <div className="flex justify-around items-center gap-1">
-                         <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
-                         <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
-                         <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                         <NavButton view={AppView.SETTINGS} icon="cog" label="Ajustes" />
-                     </div>
-                </nav>
-                 <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                    <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md flex justify-around items-center gap-2">
-                         <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" />
-                         <NavButton view={AppView.GLOBAL} icon="sparkles" label="Visión Global" />
-                         <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" />
-                         <NavButton view={AppView.SETTINGS} icon="cog" label="Configuración" />
+                <nav className="sticky bottom-0 bg-white dark:bg-slate-800 shadow-[0_-2px_5px_rgba(0,0,0,0.1)] p-2 sm:hidden z-40">
+                    <div className="relative h-14">
+                        <div className="absolute top-0 left-0 right-0 h-full grid grid-cols-5 items-center">
+                            <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
+                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
+                            <div></div> {/* Placeholder for the central button */}
+                            <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                            <NavButton view={AppView.SETTINGS} icon="cog" label="Ajustes" />
+                        </div>
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                            <Button 
+                                variant="primary" 
+                                onClick={() => setAiModalOpen(true)}
+                                className="rounded-full w-16 h-16 shadow-lg"
+                                aria-label="Asistente IA"
+                                disabled={!data.settings.geminiApiKey}
+                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+                            >
+                                <Icon name="microphone" className="w-8 h-8"/>
+                            </Button>
+                        </div>
                     </div>
                 </nav>
+
+                <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
+                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md grid grid-cols-5 items-center gap-2">
+                       <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" />
+                       <NavButton view={AppView.GLOBAL} icon="sparkles" label="Visión Global" />
+                       <div className="flex justify-center">
+                         <Button 
+                            variant="primary" 
+                            onClick={() => setAiModalOpen(true)}
+                            className="rounded-full w-14 h-14"
+                            aria-label="Asistente IA"
+                            disabled={!data.settings.geminiApiKey}
+                            title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+                          >
+                              <Icon name="microphone" className="w-7 h-7"/>
+                          </Button>
+                       </div>
+                       <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" />
+                       <NavButton view={AppView.SETTINGS} icon="cog" label="Configuración" />
+                   </div>
+                </nav>
             </div>
+            {isAiModalOpen && <AICommandModal isOpen={isAiModalOpen} onClose={() => setAiModalOpen(false)} />}
         </AppContext.Provider>
     );
 };

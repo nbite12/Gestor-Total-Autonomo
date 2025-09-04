@@ -1,6 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Income, Expense, InvestmentGood } from './types';
 
+// Extend the window interface for SpeechRecognition
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
+
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -123,5 +132,68 @@ export const extractInvoiceData = async (
     } catch (error) {
         console.error("Error al contactar con la API de Gemini:", error);
         throw new Error("No se pudo extraer la información de la factura. Revisa el documento o la configuración de la API.");
+    }
+};
+
+
+// --- New function for Natural Language Commands ---
+export interface ParsedCommand {
+    action: 'income' | 'expense' | 'personal_movement' | 'transfer';
+    concept: string;
+    amount?: number;
+    baseAmount?: number;
+    date: string; // YYYY-MM-DD
+    partyName?: string;
+    categoryHint?: string;
+    locationHint?: string;
+    fromLocationHint?: string;
+    toLocationHint?: string;
+    isProfessional: boolean;
+    movementType?: 'income' | 'expense';
+}
+
+const commandSchema = {
+    type: Type.OBJECT,
+    properties: {
+        action: { type: Type.STRING, description: "La acción: 'income', 'expense', 'personal_movement', 'transfer'." },
+        concept: { type: Type.STRING, description: "Descripción del movimiento." },
+        amount: { type: Type.NUMBER, description: "El importe monetario principal. Si es un gasto profesional, intenta deducir si es el total o la base. Por defecto, asume que es la base." },
+        date: { type: Type.STRING, description: "Fecha en formato YYYY-MM-DD. Si se dice 'ayer', 'hoy', etc., conviértelo. Por defecto, hoy." },
+        partyName: { type: Type.STRING, description: "Nombre del cliente o proveedor (para 'income'/'expense')." },
+        categoryHint: { type: Type.STRING, description: "Pista sobre la categoría del gasto (para 'expense'/'personal_movement')." },
+        locationHint: { type: Type.STRING, description: "Pista sobre la ubicación del dinero (para 'income'/'expense'/'personal_movement')." },
+        fromLocationHint: { type: Type.STRING, description: "Pista sobre el origen (para 'transfer')." },
+        toLocationHint: { type: Type.STRING, description: "Pista sobre el destino (para 'transfer')." },
+        isProfessional: { type: Type.BOOLEAN, description: "True si es un movimiento de autónomo/profesional (ej. 'factura', 'gasto deducible')." },
+        movementType: { type: Type.STRING, description: "'income' o 'expense' para movimientos personales ('personal_movement')." },
+    },
+    required: ["action", "concept", "date", "isProfessional"]
+};
+
+export const parseNaturalLanguageTransaction = async (command: string, apiKey: string): Promise<ParsedCommand> => {
+    if (!apiKey) {
+        throw new Error("API Key de Gemini no configurada.");
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
+    const systemInstruction = `Eres un asistente financiero para un autónomo en España. Tu tarea es analizar el siguiente texto y estructurarlo en un objeto JSON. El usuario quiere registrar un movimiento. Identifica si es un ingreso profesional ('income'), gasto profesional ('expense'), movimiento personal ('personal_movement') o transferencia ('transfer'). Extrae los detalles. La fecha de hoy es ${new Date().toISOString().split('T')[0]}. Responde únicamente con el objeto JSON.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: command,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: commandSchema,
+            }
+        });
+
+        const jsonString = response.text.trim();
+        return JSON.parse(jsonString) as ParsedCommand;
+
+    } catch (error) {
+        console.error("Error en parseNaturalLanguageTransaction:", error);
+        throw new Error("No he podido entender la orden. Inténtalo de nuevo siendo más específico, por ejemplo: 'Añadir gasto de 50€ en comida del banco personal'.");
     }
 };

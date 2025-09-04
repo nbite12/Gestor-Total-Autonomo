@@ -25,7 +25,8 @@ export const Icon: React.FC<{ name: string; className?: string }> = ({ name, cla
     'globe': <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 010-18h.01a9 9 0 010 18h-.01zM3.75 9.75h16.5M3.75 14.25h16.5" />,
     'switch-horizontal': <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />,
     'eye': <><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 10.224 7.31 6 12 6c4.69 0 8.577 4.224 9.964 5.683a1.012 1.012 0 010 .639C20.577 13.776 16.69 18 12 18c-4.69 0-8.577-4.224-9.964-5.683z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></>,
-    'eye-off': <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 14.334 7.21 18 12 18a10.477 10.477 0 007.456-2.986l-1.524-1.524A3.375 3.375 0 0112 15.75a3.375 3.375 0 01-2.932-1.524L3.98 8.223zM15.75 12c0 .269-.022.533-.064.79l-1.4-1.4a2.25 2.25 0 00-3.182-3.182l-1.4-1.4A9.452 9.452 0 0112 4.5c4.79 0 8.774 3.666 9.994 8.25a.375.375 0 01-.486.486l-1.332-.89a11.169 11.169 0 00-2.413-1.61z" />
+    'eye-off': <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 14.334 7.21 18 12 18a10.477 10.477 0 007.456-2.986l-1.524-1.524A3.375 3.375 0 0112 15.75a3.375 3.375 0 01-2.932-1.524L3.98 8.223zM15.75 12c0 .269-.022.533-.064.79l-1.4-1.4a2.25 2.25 0 00-3.182-3.182l-1.4-1.4A9.452 9.452 0 0112 4.5c4.79 0 8.774 3.666 9.994 8.25a.375.375 0 01-.486.486l-1.332-.89a11.169 11.169 0 00-2.413-1.61z" />,
+    microphone: <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
   };
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
