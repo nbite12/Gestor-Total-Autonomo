@@ -502,6 +502,18 @@ const GlobalView: React.FC = () => {
     const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | PersonalMovement | null>(null);
     const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
     const [isAddPendingModalOpen, setIsAddPendingModalOpen] = useState(false);
+    
+    const [typeFilters, setTypeFilters] = useState({
+        proIncome: true,
+        proExpense: true,
+        persIncome: true,
+        persExpense: true,
+        transfer: true,
+    });
+    
+    const handleFilterChange = (filterKey: keyof typeof typeFilters) => {
+        setTypeFilters(prev => ({ ...prev, [filterKey]: !prev[filterKey] }));
+    };
 
 
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
@@ -685,6 +697,64 @@ const GlobalView: React.FC = () => {
             netProjectedCashFlow,
         }
     }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses]);
+    
+    const typeLabels: { [key: string]: { label: string, color: string } } = {
+        proIncome: { label: 'Ingreso Pro.', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
+        proExpense: { label: 'Gasto Pro.', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' },
+        persIncome: { label: 'Ingreso Pers.', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' },
+        persExpense: { label: 'Gasto Pers.', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300' },
+        transfer: { label: 'Transferencia', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' },
+    };
+
+    const unifiedTransactions = useMemo(() => {
+        const allTransactions = [
+            ...incomes.map(i => ({
+                id: `inc-${i.id}`,
+                date: new Date(i.date),
+                type: 'proIncome' as const,
+                typeLabel: typeLabels.proIncome,
+                concept: i.concept,
+                details: `Cliente: ${i.clientName}`,
+                amount: i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100),
+                isPaid: i.isPaid,
+            })),
+            ...expenses.map(e => ({
+                id: `exp-${e.id}`,
+                date: new Date(e.date),
+                type: 'proExpense' as const,
+                typeLabel: typeLabels.proExpense,
+                concept: e.concept,
+                details: `Proveedor: ${e.providerName}`,
+                amount: -(e.baseAmount + (e.baseAmount * e.vatRate / 100)),
+                isPaid: e.isPaid,
+            })),
+            ...personalMovements.map(p => ({
+                id: `pm-${p.id}`,
+                date: new Date(p.date),
+                type: p.type === 'income' ? 'persIncome' as const : 'persExpense' as const,
+                typeLabel: p.type === 'income' ? typeLabels.persIncome : typeLabels.persExpense,
+                concept: p.concept,
+                details: `Categoría: ${personalCategories.find(c => c.id === p.categoryId)?.name || '-'}`,
+                amount: p.type === 'income' ? p.amount : -p.amount,
+                isPaid: p.isPaid ?? false,
+            })),
+            ...transfers.map(t => ({
+                id: `tr-${t.id}`,
+                date: new Date(t.date),
+                type: 'transfer' as const,
+                typeLabel: typeLabels.transfer,
+                concept: t.concept,
+                details: `${t.fromLocation} -> ${t.toLocation}`,
+                amount: t.amount,
+                isPaid: true,
+            })),
+        ];
+        
+        return allTransactions
+            .filter(t => t.date >= period.startDate && t.date <= period.endDate)
+            .filter(t => typeFilters[t.type])
+            .sort((a, b) => b.date.getTime() - a.date.getTime());
+    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories]);
 
 
     // --- Handlers ---
@@ -1119,6 +1189,62 @@ const GlobalView: React.FC = () => {
                         </div>
                     )) : <p className="text-center text-slate-500">Crea objetivos en el Área Personal para planificar tu ahorro.</p>}
                 </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-xl font-bold mb-4">Registro Global de Movimientos</h3>
+                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b dark:border-slate-700">
+                    {Object.entries(typeFilters).map(([key, isActive]) => (
+                        <Button
+                            key={key}
+                            size="sm"
+                            variant={isActive ? 'primary' : 'secondary'}
+                            onClick={() => handleFilterChange(key as keyof typeof typeFilters)}
+                        >
+                            {typeLabels[key].label}
+                        </Button>
+                    ))}
+                </div>
+                <div className="overflow-x-auto max-h-96">
+                    <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400 sticky top-0">
+                            <tr>
+                                <th scope="col" className="px-4 py-2">Fecha</th>
+                                <th scope="col" className="px-4 py-2">Tipo</th>
+                                <th scope="col" className="px-4 py-2">Concepto</th>
+                                <th scope="col" className="px-4 py-2">Detalles</th>
+                                <th scope="col" className="px-4 py-2 text-right">Importe</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {unifiedTransactions.map(t => (
+                                <tr key={t.id} className={`border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
+                                    <td className="px-4 py-2 whitespace-nowrap">{t.date.toLocaleDateString('es-ES')}</td>
+                                    <td className="px-4 py-2">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${t.typeLabel.color}`}>
+                                            {t.typeLabel.label}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-2">{t.concept}</td>
+                                    <td className="px-4 py-2 text-slate-500">{t.details}</td>
+                                    <td className="px-4 py-2 font-semibold text-right whitespace-nowrap">
+                                        {t.type === 'transfer' ? (
+                                            <span className="text-slate-500">{formatCurrency(t.amount)}</span>
+                                        ) : (
+                                            <span className={t.amount > 0 ? 'text-green-500' : 'text-red-500'}>
+                                                {formatCurrency(t.amount)}
+                                            </span>
+                                        )}
+                                        {!t.isPaid && <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400">(Pendiente)</span>}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                {unifiedTransactions.length === 0 && (
+                    <p className="text-center text-slate-500 py-8">No hay movimientos que coincidan con los filtros para este periodo.</p>
+                )}
             </Card>
 
             {/* Modals for this view */}
