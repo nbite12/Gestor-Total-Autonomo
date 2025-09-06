@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { UserSettings, Category, Income, Expense, MoneyLocation } from '../types';
-import { Card, Button, Input, Icon, Switch, HelpTooltip, UnsupportedModelsModal } from './ui';
+import { Card, Button, Input, Icon, Switch, HelpTooltip, UnsupportedModelsModal, Modal } from './ui';
 
 declare const JSZip: any;
 
@@ -55,12 +55,13 @@ const CategoryManager: React.FC<{
 const SettingsView: React.FC = () => {
   const context = useContext(AppContext);
   if (!context) return <div>Cargando...</div>;
-  const { data, saveData } = context;
+  const { data, saveData, resetData, isProfessionalModeEnabled } = context;
 
   const [settings, setSettings] = useState<UserSettings>(data.settings);
   const [geminiApiKey, setGeminiApiKey] = useState(data.settings.geminiApiKey || '');
   const [showApiKey, setShowApiKey] = useState(false);
   const [isUnsupportedModalOpen, setIsUnsupportedModalOpen] = useState(false);
+  const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -211,8 +212,7 @@ const SettingsView: React.FC = () => {
   const handleDeleteAllData = () => {
     if(window.confirm('¡ATENCIÓN! ESTA ACCIÓN ES IRREVERSIBLE.\n¿Estás absolutamente seguro de que quieres borrar TODOS tus datos?')) {
         if(window.confirm('ÚLTIMA CONFIRMACIÓN.\nTodos tus ingresos, gastos, objetivos y ajustes se borrarán para siempre. ¿Continuar?')) {
-             localStorage.removeItem('app-data');
-             window.location.reload();
+             resetData();
         }
     }
   };
@@ -221,86 +221,110 @@ const SettingsView: React.FC = () => {
     <div className="space-y-8">
       <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
 
-      <Card>
-          <h3 className="text-lg font-bold mb-4">Información de la Aplicación</h3>
-          <p className="text-sm text-slate-500 mb-4">
-              Consulta información importante sobre las funcionalidades y limitaciones actuales de la aplicación.
-          </p>
-          <Button variant="secondary" onClick={() => setIsUnsupportedModalOpen(true)}>
-              <Icon name="info" className="w-5 h-5" />
-              Ver Modelos Fiscales No Soportados
-          </Button>
+      {isProfessionalModeEnabled && (
+        <Card>
+            <h3 className="text-lg font-bold mb-4">Información de la Aplicación</h3>
+            <p className="text-sm text-slate-500 mb-4">
+                Consulta información importante sobre las funcionalidades y limitaciones actuales de la aplicación.
+            </p>
+            <Button variant="secondary" onClick={() => setIsUnsupportedModalOpen(true)}>
+                <Icon name="info" className="w-5 h-5" />
+                Ver Modelos Fiscales No Soportados
+            </Button>
+        </Card>
+      )}
+
+      {/* Usage Mode Settings */}
+       <Card>
+          <h3 className="text-lg font-bold">Modo de Uso</h3>
+          <p className="text-sm text-slate-500 mt-1 mb-4">Simplifica la interfaz si solo necesitas la aplicación para tus finanzas personales.</p>
+           <div className="flex items-center">
+                <Switch 
+                    label="Habilitar Área Profesional"
+                    checked={settings.professionalModeEnabled ?? true} 
+                    onChange={(c) => setSettings(p => ({...p, professionalModeEnabled: c}))} 
+                />
+                <HelpTooltip content="Desactiva esto para ocultar las secciones de facturación, impuestos y proyecciones, dejando solo la gestión de cuentas y objetivos personales." />
+            </div>
       </Card>
 
       {/* Fiscal & App Settings */}
       <Card>
         <form onSubmit={handleSaveSettings} className="space-y-6">
-            <div>
-                <h3 className="text-lg font-bold">Datos Fiscales y Preferencias</h3>
-                <p className="text-sm text-slate-500 mt-1">Esta información se usará para generar tus facturas y calcular tus impuestos.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <Input label="Nombre Completo" name="fullName" value={settings.fullName} onChange={handleChange} />
-                    <Input label="NIF / CIF" name="nif" value={settings.nif} onChange={handleChange} />
-                </div>
-                <Input label="Domicilio Fiscal" name="address" value={settings.address} onChange={handleChange} containerClassName="mt-4" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                    <Input label="IVA por defecto (%)" name="defaultVatRate" type="number" value={settings.defaultVatRate} onChange={handleChange} />
-                    <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
-                    <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
-                </div>
-                 <div className="mt-6 space-y-4 border-t dark:border-slate-700 pt-4">
-                     <div className="flex items-center">
-                        <Switch label="Estoy en el régimen de Recargo de Equivalencia" checked={settings.isInRecargoEquivalencia} onChange={(c) => setSettings(p => ({...p, isInRecargoEquivalencia: c}))} />
-                        <HelpTooltip content="Activa esta opción si eres comerciante minorista. Esto cambiará la forma en que se gestiona el IVA de tus compras." />
+            {isProfessionalModeEnabled && (
+                <div>
+                    <h3 className="text-lg font-bold">Datos Fiscales y Preferencias</h3>
+                    <p className="text-sm text-slate-500 mt-1">Esta información se usará para generar tus facturas y calcular tus impuestos.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <Input label="Nombre Completo" name="fullName" value={settings.fullName} onChange={handleChange} />
+                        <Input label="NIF / CIF" name="nif" value={settings.nif} onChange={handleChange} />
                     </div>
-                    <div className="flex items-center">
-                        <Switch label="Aplicar deducción del 7% por gastos de difícil justificación" checked={settings.applySevenPercentDeduction} onChange={(c) => setSettings(p => ({...p, applySevenPercentDeduction: c}))} />
-                        <HelpTooltip content="Activa esta opción si tributas por estimación directa simplificada para aplicar una deducción de hasta 2.000€ en tu IRPF." />
+                    <Input label="Domicilio Fiscal" name="address" value={settings.address} onChange={handleChange} containerClassName="mt-4" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <Input label="IVA por defecto (%)" name="defaultVatRate" type="number" value={settings.defaultVatRate} onChange={handleChange} />
+                        <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
+                        <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
                     </div>
-                 </div>
-            </div>
+                    <div className="mt-6 space-y-4 border-t dark:border-slate-700 pt-4">
+                        <div className="flex items-center">
+                            <Switch label="Estoy en el régimen de Recargo de Equivalencia" checked={settings.isInRecargoEquivalencia} onChange={(c) => setSettings(p => ({...p, isInRecargoEquivalencia: c}))} />
+                            <HelpTooltip content="Activa esta opción si eres comerciante minorista. Esto cambiará la forma en que se gestiona el IVA de tus compras." />
+                        </div>
+                        <div className="flex items-center">
+                            <Switch label="Aplicar deducción del 7% por gastos de difícil justificación" checked={settings.applySevenPercentDeduction} onChange={(c) => setSettings(p => ({...p, applySevenPercentDeduction: c}))} />
+                            <HelpTooltip content="Activa esta opción si tributas por estimación directa simplificada para aplicar una deducción de hasta 2.000€ en tu IRPF." />
+                        </div>
+                    </div>
+                </div>
+            )}
 
-            <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
-                <h3 className="text-lg font-bold">Perfil Fiscal del Autónomo</h3>
-                <p className="text-sm text-slate-500 mt-1">Marca las opciones que apliquen a tu actividad para personalizar los modelos fiscales que se muestran.</p>
-                <div className="mt-4 space-y-4">
-                    <div className="flex items-center">
-                        <Switch label="Alquilo una oficina o local para mi actividad" checked={settings.rentsOffice ?? false} onChange={(c) => setSettings(p => ({...p, rentsOffice: c}))} />
-                        <HelpTooltip content="Activa esta opción si pagas un alquiler por tu lugar de trabajo. Esto habilitará los modelos 115 y 180." />
-                    </div>
-                    <div className="flex items-center">
-                        <Switch label="Estoy dado de alta en el ROI (Op. Intracomunitarias)" checked={settings.isInROI ?? false} onChange={(c) => setSettings(p => ({...p, isInROI: c}))} />
-                        <HelpTooltip content="Activa esta opción si compras o vendes a empresas de la Unión Europea. Esto habilitará el modelo 349." />
-                    </div>
-                    <div className="flex items-center">
-                        <Switch label="Contrato a otros profesionales con retención" checked={settings.hiresProfessionals ?? false} onChange={(c) => setSettings(p => ({...p, hiresProfessionals: c}))} />
-                        <HelpTooltip content="Activa esta opción si pagas facturas que llevan retención de IRPF (a abogados, diseñadores, etc.). Esto habilitará los modelos 111 y 190." />
+            {isProfessionalModeEnabled && (
+                 <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                    <h3 className="text-lg font-bold">Perfil Fiscal del Autónomo</h3>
+                    <p className="text-sm text-slate-500 mt-1">Marca las opciones que apliquen a tu actividad para personalizar los modelos fiscales que se muestran.</p>
+                    <div className="mt-4 space-y-4">
+                        <div className="flex items-center">
+                            <Switch label="Alquilo una oficina o local para mi actividad" checked={settings.rentsOffice ?? false} onChange={(c) => setSettings(p => ({...p, rentsOffice: c}))} />
+                            <HelpTooltip content="Activa esta opción si pagas un alquiler por tu lugar de trabajo. Esto habilitará los modelos 115 y 180." />
+                        </div>
+                        <div className="flex items-center">
+                            <Switch label="Estoy dado de alta en el ROI (Op. Intracomunitarias)" checked={settings.isInROI ?? false} onChange={(c) => setSettings(p => ({...p, isInROI: c}))} />
+                            <HelpTooltip content="Activa esta opción si compras o vendes a empresas de la Unión Europea. Esto habilitará el modelo 349." />
+                        </div>
+                        <div className="flex items-center">
+                            <Switch label="Contrato a otros profesionales con retención" checked={settings.hiresProfessionals ?? false} onChange={(c) => setSettings(p => ({...p, hiresProfessionals: c}))} />
+                            <HelpTooltip content="Activa esta opción si pagas facturas que llevan retención de IRPF (a abogados, diseñadores, etc.). Esto habilitará los modelos 111 y 190." />
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
             
             <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
                 <h3 className="text-lg font-bold">Saldos Iniciales</h3>
                 <p className="text-sm text-slate-500 mt-1">Establece el valor inicial de cada cuenta para un cálculo de saldos preciso.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <Input 
-                        label="Banco Profesional (€)" 
-                        name={MoneyLocation.PRO_BANK}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={settings.initialBalances?.[MoneyLocation.PRO_BANK] || ''}
-                        onChange={handleBalanceChange}
-                    />
-                    <Input 
-                        label="Efectivo Profesional (€)" 
-                        name={MoneyLocation.CASH_PRO}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={settings.initialBalances?.[MoneyLocation.CASH_PRO] || ''}
-                        onChange={handleBalanceChange}
-                    />
+                    {isProfessionalModeEnabled && (
+                         <>
+                            <Input 
+                                label="Banco Profesional (€)" 
+                                name={MoneyLocation.PRO_BANK}
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={settings.initialBalances?.[MoneyLocation.PRO_BANK] || ''}
+                                onChange={handleBalanceChange}
+                            />
+                            <Input 
+                                label="Efectivo Profesional (€)" 
+                                name={MoneyLocation.CASH_PRO}
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={settings.initialBalances?.[MoneyLocation.CASH_PRO] || ''}
+                                onChange={handleBalanceChange}
+                            />
+                        </>
+                    )}
                      <Input 
                         label="Banco Personal (€)" 
                         name={MoneyLocation.PERS_BANK}
@@ -336,11 +360,25 @@ const SettingsView: React.FC = () => {
           </div>
         </form>
       </Card>
+      
+      {/* Privacy Settings */}
+      <Card>
+          <h3 className="text-lg font-bold">Privacidad</h3>
+          <p className="text-sm text-slate-500 mt-1 mb-4">Controla la visibilidad de tus datos financieros.</p>
+           <div className="flex items-center">
+                <Switch 
+                    label="Ocultar saldos por defecto al iniciar la app"
+                    checked={settings.defaultPrivacyMode ?? false} 
+                    onChange={(c) => setSettings(p => ({...p, defaultPrivacyMode: c}))} 
+                />
+                <HelpTooltip content="Activa esta opción para que todos los importes monetarios aparezcan ocultos cada vez que abras la aplicación." />
+            </div>
+      </Card>
 
       {/* AI Settings */}
         <Card>
             <h3 className="text-lg font-bold">IA (Gemini)</h3>
-            <p className="text-sm text-slate-500 mb-4">Introduce tu clave de API de Google Gemini para activar la función de importación de facturas.</p>
+            <p className="text-sm text-slate-500 mb-4">Introduce tu clave de API de Google Gemini para activar el asistente inteligente por voz y la importación de documentos.</p>
             <div className="flex gap-2 items-end">
                 <div className="flex-grow">
                     <label htmlFor="gemini-api-key-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -374,12 +412,14 @@ const SettingsView: React.FC = () => {
       
       {/* Category Management */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <CategoryManager 
-              title="Categorías de Gastos Profesionales" 
-              categories={data.professionalCategories} 
-              onAdd={(name) => handleAddCategory('professional', name)}
-              onDelete={(id) => handleDeleteCategory('professional', id)}
-          />
+          {isProfessionalModeEnabled && (
+            <CategoryManager 
+                title="Categorías de Gastos Profesionales" 
+                categories={data.professionalCategories} 
+                onAdd={(name) => handleAddCategory('professional', name)}
+                onDelete={(id) => handleDeleteCategory('professional', id)}
+            />
+          )}
           <CategoryManager 
               title="Categorías de Gastos Personales" 
               categories={data.personalCategories} 
@@ -411,7 +451,34 @@ const SettingsView: React.FC = () => {
             <Icon name="trash" className="w-5 h-5"/> Borrar Todos los Datos
           </Button>
        </div>
+       
+       <Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" onClick={() => setIsCreditsModalOpen(true)}>
+          <div className="flex justify-between items-center">
+              <div>
+                  <h3 className="text-lg font-bold">Créditos y Términos y Condiciones</h3>
+                  <p className="text-sm text-slate-500">Ver información sobre el autor y los términos de uso.</p>
+              </div>
+              <Icon name="external-link" className="w-5 h-5 text-slate-400" />
+          </div>
+       </Card>
+
        <UnsupportedModelsModal isOpen={isUnsupportedModalOpen} onClose={() => setIsUnsupportedModalOpen(false)} />
+       <Modal isOpen={isCreditsModalOpen} onClose={() => setIsCreditsModalOpen(false)} title="Créditos y Términos y Condiciones">
+          <div className="text-sm text-slate-600 dark:text-slate-400 space-y-3">
+              <p>
+                  <strong>Creador y Propietario:</strong> Eric Alejandro Munive García.
+              </p>
+              <p>
+                  Esta aplicación y todo su contenido son propiedad intelectual de su creador. Cualquier uso, reproducción o distribución no autorizada está estrictamente prohibido.
+              </p>
+              <p>
+                  El acceso y uso de la aplicación están permitidos únicamente a colaboradores autorizados o a clientes mediante una membresía activa.
+              </p>
+              <p className="italic mt-4">
+                  Aviso: Los términos y condiciones completos, así como las políticas de privacidad y avisos legales, se detallarán en futuras actualizaciones.
+              </p>
+          </div>
+        </Modal>
     </div>
   );
 };

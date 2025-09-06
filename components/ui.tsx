@@ -208,9 +208,10 @@ export const HelpTooltip: React.FC<{ content: string }> = ({ content }) => {
 
 
 // --- Card Component ---
-export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => {
+// FIX: The Card component now accepts all standard HTML div attributes (like onClick) by using React.HTMLAttributes and spreading the rest of the props.
+export const Card: React.FC<{ children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>> = ({ children, className, ...props }) => {
   return (
-    <div className={`bg-white dark:bg-slate-800 rounded-lg shadow-md p-4 sm:p-6 ${className}`}>
+    <div className={`bg-white dark:bg-slate-800 rounded-lg shadow-md p-4 sm:p-6 ${className}`} {...props}>
       {children}
     </div>
   );

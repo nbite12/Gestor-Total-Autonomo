@@ -358,17 +358,19 @@ const PeriodizeExpenseModal: React.FC<{
 }
 
 // --- Add Pending Transaction Modal ---
-const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen, onClose }) => {
-    const [scope, setScope] = useState<'professional' | 'personal'>('professional');
+const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; isProfessionalModeEnabled: boolean; }> = ({ isOpen, onClose, isProfessionalModeEnabled }) => {
+    const [scope, setScope] = useState<'professional' | 'personal'>(isProfessionalModeEnabled ? 'professional' : 'personal');
     const [type, setType] = useState<'income' | 'expense'>('income');
   
     return (
       <Modal isOpen={isOpen} onClose={onClose} title="Añadir Transacción Pendiente">
         <div className="flex flex-col space-y-4">
-          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
-            <Button variant={scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setScope('professional')} className="flex-1">Profesional</Button>
-            <Button variant={scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setScope('personal')} className="flex-1">Personal</Button>
-          </div>
+          {isProfessionalModeEnabled && (
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                <Button variant={scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setScope('professional')} className="flex-1">Profesional</Button>
+                <Button variant={scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setScope('personal')} className="flex-1">Personal</Button>
+            </div>
+          )}
           
           {scope === 'professional' && (
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
@@ -393,7 +395,7 @@ const GlobalView: React.FC = () => {
     const context = useContext(AppContext);
     if (!context) return <div>Cargando...</div>;
 
-    const { data, saveData, formatCurrency } = context;
+    const { data, saveData, formatCurrency, isProfessionalModeEnabled } = context;
     const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, potentialExpenses, transfers, personalCategories, investmentGoods } = data;
 
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
@@ -496,6 +498,94 @@ const GlobalView: React.FC = () => {
         return balances;
     }, [data.incomes, data.expenses, data.investmentGoods, data.personalMovements, data.transfers, data.settings.initialBalances]);
     
+    const netCapitalSummary = useMemo(() => {
+        // 1. Total Current Balance
+        const currentTotalBalance = Object.values(moneyDistribution).reduce((sum, val) => sum + val, 0);
+
+        // 2. Pending Incomes
+        const pendingProfessionalIncome = data.incomes
+            .filter(i => !i.isPaid)
+            .reduce((sum, i) => sum + (i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100)), 0);
+        const pendingPersonalIncome = data.personalMovements
+            .filter(m => m.type === 'income' && !m.isPaid)
+            .reduce((sum, m) => sum + m.amount, 0);
+        const totalPendingIncome = pendingProfessionalIncome + pendingPersonalIncome;
+
+        // 3. Pending Expenses
+        const pendingProfessionalExpense = data.expenses
+            .filter(e => !e.isPaid)
+            .reduce((sum, e) => sum + (e.baseAmount + (e.baseAmount * e.vatRate / 100)), 0);
+        const pendingPersonalExpense = data.personalMovements
+            .filter(m => m.type === 'expense' && !m.isPaid)
+            .reduce((sum, m) => sum + m.amount, 0);
+        const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
+
+        // 4. Projected Taxes for Current Quarter
+        const now = new Date();
+        const year = now.getFullYear();
+        const quarter = Math.floor(now.getMonth() / 3);
+        const quarterPeriod = {
+            startDate: new Date(year, quarter * 3, 1),
+            endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999),
+        };
+
+        const { incomes, expenses, investmentGoods, settings } = data;
+        const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
+        const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
+        
+        const periodIncomes = incomes.filter(i => new Date(i.date) >= quarterPeriod.startDate && new Date(i.date) <= quarterPeriod.endDate);
+        const periodDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= quarterPeriod.startDate && new Date(e.date) <= quarterPeriod.endDate);
+
+        // Model 303
+        const ivaRepercutido = periodIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const ivaSoportadoFromExpenses = periodDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= quarterPeriod.startDate && new Date(g.purchaseDate) <= quarterPeriod.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
+        const model303Result = ivaRepercutido - ivaSoportado;
+
+        // Model 130
+        const yearOfPeriod = quarterPeriod.startDate.getFullYear();
+        const quarterOfPeriod = Math.floor(quarterPeriod.startDate.getMonth() / 3) + 1;
+        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= quarterPeriod.endDate; });
+        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= quarterPeriod.endDate && e.isDeductible; });
+        const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+        const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
+             const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+             const goodStartDate = new Date(good.purchaseDate);
+             if (goodStartDate.getFullYear() > yearOfPeriod) return sum;
+             const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
+             const effectiveEndDate = quarterPeriod.endDate;
+             const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+             return sum + (days * dailyAmortization);
+        }, 0);
+        const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (quarterOfPeriod * 3);
+        const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+        const netProfitYTD = grossYTD - deductibleExpensesYTD;
+        const quoteYTD = netProfitYTD * 0.20;
+        const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+        const model130Result = Math.max(0, quoteYTD - retencionesSoportadasYTD);
+
+        // Model 111 & 115
+        const periodAllExpenses = expenses.filter(e => new Date(e.date) >= quarterPeriod.startDate && new Date(e.date) <= quarterPeriod.endDate);
+        const model111Result = periodAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        const model115Result = periodAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        
+        const totalProjectedTaxes = Math.max(0, model303Result) + Math.max(0, model130Result) + model111Result + model115Result;
+
+        // 5. Final Calculation
+        const netAvailableCapital = currentTotalBalance + totalPendingIncome - totalPendingExpenses - totalProjectedTaxes;
+
+        return {
+            currentTotalBalance,
+            totalPendingIncome,
+            totalPendingExpenses,
+            totalProjectedTaxes,
+            netAvailableCapital
+        };
+
+    }, [data, moneyDistribution]);
+
     const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
     const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
     const pendingPersonalIncomes = useMemo(() => data.personalMovements.filter(m => m.type === 'income' && !m.isPaid), [data.personalMovements]);
@@ -697,7 +787,7 @@ const GlobalView: React.FC = () => {
     const summary = useMemo(() => {
         const totalProjectedIncome = actualMovements.totalActualIncome + projectedIncome;
         const taxPayments = projectedTaxes.vatPayment + projectedTaxes.irpfPayment;
-        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings + projectedExpenses + taxPayments;
+        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings + projectedExpenses + (isProfessionalModeEnabled ? taxPayments : 0);
         const netProjectedCashFlow = totalProjectedIncome - totalProjectedExpense;
 
         return {
@@ -710,7 +800,7 @@ const GlobalView: React.FC = () => {
             netProjectedCashFlow,
             taxPayments,
         }
-    }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses, projectedTaxes]);
+    }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses, projectedTaxes, isProfessionalModeEnabled]);
     
     const typeLabels: { [key: string]: { label: string, color: string } } = {
         proIncome: { label: 'Ingreso Pro.', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
@@ -722,7 +812,7 @@ const GlobalView: React.FC = () => {
 
     const unifiedTransactions = useMemo(() => {
         const allTransactions = [
-            ...incomes.map(i => ({
+            ...(isProfessionalModeEnabled ? incomes.map(i => ({
                 id: `inc-${i.id}`,
                 date: new Date(i.date),
                 type: 'proIncome' as const,
@@ -731,8 +821,8 @@ const GlobalView: React.FC = () => {
                 details: `Cliente: ${i.clientName}`,
                 amount: i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100),
                 isPaid: i.isPaid,
-            })),
-            ...expenses.map(e => ({
+            })) : []),
+            ...(isProfessionalModeEnabled ? expenses.map(e => ({
                 id: `exp-${e.id}`,
                 date: new Date(e.date),
                 type: 'proExpense' as const,
@@ -741,7 +831,7 @@ const GlobalView: React.FC = () => {
                 details: `Proveedor: ${e.providerName}`,
                 amount: -(e.baseAmount + (e.baseAmount * e.vatRate / 100)),
                 isPaid: e.isPaid,
-            })),
+            })) : []),
             ...personalMovements.map(p => ({
                 id: `pm-${p.id}`,
                 date: new Date(p.date),
@@ -768,7 +858,7 @@ const GlobalView: React.FC = () => {
             .filter(t => t.date >= period.startDate && t.date <= period.endDate)
             .filter(t => typeFilters[t.type])
             .sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories]);
+    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled]);
 
 
     // --- Handlers ---
@@ -959,6 +1049,39 @@ const GlobalView: React.FC = () => {
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
+            {isProfessionalModeEnabled && (
+                <Card>
+                    <div className="flex justify-between items-start">
+                        <h3 className="text-xl font-bold">Capital Neto Disponible</h3>
+                        <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
+                    </div>
+                    <div className="text-center my-4">
+                        <p className={`text-5xl font-bold ${netCapitalSummary.netAvailableCapital >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {formatCurrency(netCapitalSummary.netAvailableCapital)}
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Estimación después de obligaciones</p>
+                    </div>
+                    <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Total en Cuentas y Efectivo</span>
+                            <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.currentTotalBalance)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Cobros Pendientes</span>
+                            <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Pagos Pendientes</span>
+                            <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500 dark:text-slate-400">Impuestos Trimestrales (Est.)</span>
+                            <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
             <Card>
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <div>
@@ -972,9 +1095,9 @@ const GlobalView: React.FC = () => {
                         </Button>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="office-building" />
-                    <BalanceDisplay location={MoneyLocation.CASH_PRO} icon="briefcase" />
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${isProfessionalModeEnabled ? 'lg:grid-cols-5' : 'md:grid-cols-3'} gap-4`}>
+                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="office-building" />}
+                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.CASH_PRO} icon="briefcase" />}
                     <BalanceDisplay location={MoneyLocation.PERS_BANK} icon="user-circle" />
                     <BalanceDisplay location={MoneyLocation.CASH} icon="cash" />
                     <BalanceDisplay location={MoneyLocation.OTHER} icon="globe" />
@@ -992,59 +1115,63 @@ const GlobalView: React.FC = () => {
                     <p className="text-center text-slate-500 py-8">No hay transacciones pendientes. ¡Añade una para empezar a planificar!</p>
                 ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-                    <div>
-                        <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro (Profesional)</h4>
-                         {pendingIncomes.length > 0 ? (
-                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
-                                <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p>{income.concept}</p>
-                                            <p className="text-xs text-slate-500">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
-                                        </div>
-                                        <div className="text-right flex-shrink-0 ml-2">
-                                            <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
-                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-1 mt-1">
-                                        <Button size="sm" variant="ghost" onClick={() => setProfessionalIncomeToEdit(income)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(income.id, 'income')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                    </div>
-                                </li>
-                            ))}</ul>
-                        ) : (
-                            <p className="text-sm text-slate-400 italic">No hay cobros profesionales pendientes.</p>
-                        )}
-                    </div>
-                    <div>
-                        <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago (Profesional)</h4>
-                         {pendingExpenses.length > 0 ? (
-                            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
-                                <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p>{expense.concept}</p>
-                                            <p className="text-xs text-slate-500">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
-                                        </div>
-                                        <div className="text-right flex-shrink-0 ml-2">
-                                            <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
-                                            <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-end gap-1 mt-1">
-                                        <Button size="sm" variant="ghost" onClick={() => setProfessionalExpenseToEdit(expense)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                        <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setExpenseToPeriodize(expense)}>Periodizar</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(expense.id, 'expense')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                    </div>
-                                </li>
-                             ))}</ul>
-                         ) : (
-                            <p className="text-sm text-slate-400 italic">No hay pagos profesionales pendientes.</p>
-                         )}
-                    </div>
+                    {isProfessionalModeEnabled && (
+                        <>
+                            <div>
+                                <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro (Profesional)</h4>
+                                {pendingIncomes.length > 0 ? (
+                                    <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
+                                        <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p>{income.concept}</p>
+                                                    <p className="text-xs text-slate-500">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                                </div>
+                                                <div className="text-right flex-shrink-0 ml-2">
+                                                    <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
+                                                    <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end gap-1 mt-1">
+                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalIncomeToEdit(income)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                                <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(income.id, 'income')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                            </div>
+                                        </li>
+                                    ))}</ul>
+                                ) : (
+                                    <p className="text-sm text-slate-400 italic">No hay cobros profesionales pendientes.</p>
+                                )}
+                            </div>
+                            <div>
+                                <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago (Profesional)</h4>
+                                {pendingExpenses.length > 0 ? (
+                                    <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
+                                        <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p>{expense.concept}</p>
+                                                    <p className="text-xs text-slate-500">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                                </div>
+                                                <div className="text-right flex-shrink-0 ml-2">
+                                                    <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
+                                                    <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end gap-1 mt-1">
+                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalExpenseToEdit(expense)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                                <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
+                                                <Button size="sm" variant="ghost" onClick={() => setExpenseToPeriodize(expense)}>Periodizar</Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(expense.id, 'expense')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                            </div>
+                                        </li>
+                                    ))}</ul>
+                                ) : (
+                                    <p className="text-sm text-slate-400 italic">No hay pagos profesionales pendientes.</p>
+                                )}
+                            </div>
+                        </>
+                    )}
                     <div>
                         <h4 className="font-semibold mb-2 text-green-500 dark:text-green-300">Pendiente de Ingreso (Personal)</h4>
                          {pendingPersonalIncomes.length > 0 ? (
@@ -1114,7 +1241,7 @@ const GlobalView: React.FC = () => {
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Gastos Proyectados</h4>
                         <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalProjectedExpense)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot. + {formatCurrency(summary.taxPayments)} imp.)</p>
+                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot.{isProfessionalModeEnabled && ` + ${formatCurrency(summary.taxPayments)} imp.`})</p>
                     </div>
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Flujo de Caja Neto Proyectado</h4>
@@ -1293,16 +1420,33 @@ const GlobalView: React.FC = () => {
             <Card>
                 <h3 className="text-xl font-bold mb-4">Registro Global de Movimientos</h3>
                 <div className="flex flex-wrap gap-2 mb-4">
-                    {Object.entries(typeFilters).map(([key, isActive]) => (
-                        <Button
-                            key={key}
-                            size="sm"
-                            variant={isActive ? 'primary' : 'secondary'}
-                            onClick={() => handleFilterChange(key as keyof typeof typeFilters)}
-                        >
-                            {typeLabels[key].label}
-                        </Button>
-                    ))}
+                     {isProfessionalModeEnabled && (
+                        <>
+                            <Button
+                                size="sm"
+                                variant={typeFilters.proIncome ? 'primary' : 'secondary'}
+                                onClick={() => handleFilterChange('proIncome')}
+                            >
+                                {typeLabels.proIncome.label}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant={typeFilters.proExpense ? 'primary' : 'secondary'}
+                                onClick={() => handleFilterChange('proExpense')}
+                            >
+                                {typeLabels.proExpense.label}
+                            </Button>
+                        </>
+                    )}
+                    <Button size="sm" variant={typeFilters.persIncome ? 'primary' : 'secondary'} onClick={() => handleFilterChange('persIncome')}>
+                        {typeLabels.persIncome.label}
+                    </Button>
+                    <Button size="sm" variant={typeFilters.persExpense ? 'primary' : 'secondary'} onClick={() => handleFilterChange('persExpense')}>
+                        {typeLabels.persExpense.label}
+                    </Button>
+                    <Button size="sm" variant={typeFilters.transfer ? 'primary' : 'secondary'} onClick={() => handleFilterChange('transfer')}>
+                        {typeLabels.transfer.label}
+                    </Button>
                 </div>
 
                 <div className="py-4 border-t border-b dark:border-slate-700">
@@ -1376,7 +1520,7 @@ const GlobalView: React.FC = () => {
                     <PeriodizeExpenseModal expense={expenseToPeriodize} onClose={() => setExpenseToPeriodize(null)} />
                  </Modal>
             )}
-            <AddPendingTransactionModal isOpen={isAddPendingModalOpen} onClose={() => setIsAddPendingModalOpen(false)} />
+            <AddPendingTransactionModal isOpen={isAddPendingModalOpen} onClose={() => setIsAddPendingModalOpen(false)} isProfessionalModeEnabled={isProfessionalModeEnabled} />
 
             {professionalIncomeToEdit && (
                 <Modal isOpen={true} onClose={() => setProfessionalIncomeToEdit(null)} title="Editar Ingreso Profesional">

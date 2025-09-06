@@ -28,7 +28,7 @@ export const AICommandModal: React.FC<{
 }> = ({ isOpen, onClose }) => {
     const context = useContext(AppContext);
     if (!context) return null;
-    const { data } = context;
+    const { data, isProfessionalModeEnabled } = context;
 
     const [commandText, setCommandText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -145,6 +145,12 @@ export const AICommandModal: React.FC<{
     const renderConfirmationForm = () => {
         if (!parsedData) return null;
 
+        if (!isProfessionalModeEnabled && (parsedData.action === 'income' || parsedData.action === 'expense')) {
+            setError("El Área Profesional está desactivada. No se pueden añadir facturas. Habilítala en Ajustes.");
+            setParsedData(null);
+            return null;
+        }
+
         let initialData: Partial<Income | Expense | PersonalMovement | Transfer> = {};
         
         switch (parsedData.action) {
@@ -221,7 +227,7 @@ export const AICommandModal: React.FC<{
             ) : (
                 <div className="space-y-4">
                     <p className="text-sm text-slate-600 dark:text-slate-400">
-                        Describe el movimiento que quieres añadir. Por ejemplo: "Factura para Acme Inc de 1000€ por diseño web" o "Gasto personal de 45€ en el supermercado con la tarjeta del banco personal".
+                        Describe el movimiento que quieres añadir. Por ejemplo: {isProfessionalModeEnabled ? '"Factura para Acme Inc de 1000€ por diseño web" o ' : ''}"Gasto personal de 45€ en el supermercado con la tarjeta del banco personal".
                     </p>
                     <textarea
                         rows={4}

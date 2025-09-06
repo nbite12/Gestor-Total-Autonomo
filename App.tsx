@@ -18,6 +18,10 @@ interface AppContextType {
     data: AppData;
     saveData: (value: AppData | ((prevState: AppData) => AppData), message: string) => void;
     formatCurrency: (amount: number) => string;
+    resetData: () => void;
+    isPrivacyMode: boolean;
+    togglePrivacyMode: () => void;
+    isProfessionalModeEnabled: boolean;
 }
 export const AppContext = createContext<AppContextType | null>(null);
 
@@ -43,12 +47,15 @@ const AppContainer: React.FC = () => {
             rentsOffice: false,
             isInROI: false,
             hiresProfessionals: false,
+            professionalModeEnabled: true,
+            defaultPrivacyMode: false,
             initialBalances: {},
         },
     }), []);
 
     const [data, setDataState] = useState<AppData>(initialData);
     const [isDataLoading, setIsDataLoading] = useState(true);
+    const [isPrivacyMode, setIsPrivacyMode] = useState(initialData.settings.defaultPrivacyMode);
     
     // --- Undo Functionality State ---
     const [undoState, setUndoState] = useState<AppData | null>(null);
@@ -68,14 +75,17 @@ const AppContainer: React.FC = () => {
             try {
                 setIsDataLoading(true);
                 const remoteData = await api<AppData>('/data'); 
-                setDataState({
+                const hydratedData = {
                     ...initialData,
                     ...remoteData,
                     settings: {
                         ...initialData.settings,
                         ...(remoteData.settings || {}),
                     },
-                });
+                };
+                setDataState(hydratedData);
+                setIsPrivacyMode(hydratedData.settings.defaultPrivacyMode);
+
             } catch (error) {
                 console.error("Failed to fetch user data:", error);
             } finally {
@@ -94,6 +104,13 @@ const AppContainer: React.FC = () => {
 
         const updater = (prev: AppData) => {
             const newState = typeof value === 'function' ? value(prev) : value;
+             // Check if professional mode was just disabled
+            if (prev.settings.professionalModeEnabled && !newState.settings.professionalModeEnabled) {
+                // If the user is on a now-hidden view, switch them to the personal view
+                if (currentView === AppView.PROFESSIONAL) {
+                    setCurrentView(AppView.PERSONAL);
+                }
+            }
             if (!user?.isGuest) {
                 api('/data', { method: 'POST', body: newState })
                     .catch(err => {
@@ -132,33 +149,71 @@ const AppContainer: React.FC = () => {
         }
     };
 
+    const resetData = () => {
+        saveData(initialData, "Todos los datos han sido eliminados.");
+    };
+
     useEffect(() => {
         document.documentElement.classList.toggle('dark', theme === Theme.DARK);
         localStorage.setItem('app-theme', theme);
     }, [theme]);
+    
+    useEffect(() => {
+        if (!data.settings.professionalModeEnabled && currentView === AppView.PROFESSIONAL) {
+            setCurrentView(AppView.PERSONAL);
+        }
+    }, [data.settings.professionalModeEnabled, currentView]);
 
-    const toggleTheme = () => setTheme(theme === Theme.LIGHT ? Theme.DARK : Theme.LIGHT);
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+    const toggleTheme = () => setTheme(prev => prev === Theme.LIGHT ? Theme.DARK : Theme.LIGHT);
+    const togglePrivacyMode = () => setIsPrivacyMode(prev => !prev);
+    
+    const formatCurrency = (amount: number) => {
+        if (isPrivacyMode) return '*****';
+        return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+    };
+    
+    const isProfessionalModeEnabled = data.settings.professionalModeEnabled;
 
     const renderView = () => {
+        if (!isProfessionalModeEnabled) {
+            switch(currentView) {
+                case AppView.PERSONAL: return <PersonalView />;
+                case AppView.GLOBAL: return <GlobalView />;
+                case AppView.SETTINGS: return <SettingsView />;
+                default: return <GlobalView />;
+            }
+        }
         switch (currentView) {
             case AppView.PROFESSIONAL: return <ProfessionalView />;
             case AppView.GLOBAL: return <GlobalView />;
             case AppView.PERSONAL: return <PersonalView />;
             case AppView.SETTINGS: return <SettingsView />;
-            default: return <ProfessionalView />;
+            default: return <GlobalView />;
         }
     };
     
-    const NavButton: React.FC<{view: AppView, icon: string, label: string}> = ({view, icon, label}) => (
+    const NavButton: React.FC<{view: AppView, icon: string, label: string, className?: string}> = ({view, icon, label, className = ''}) => (
         <Button 
             variant={currentView === view ? 'primary' : 'ghost'} 
             onClick={() => setCurrentView(view)}
-            className="flex-1 flex flex-col sm:flex-row h-14 sm:h-auto items-center justify-center gap-2"
+            className={`flex flex-col sm:flex-row h-full items-center justify-center gap-2 w-full ${className}`}
             aria-label={`Ir a ${label}`}
         >
             <Icon name={icon} />
             <span className="text-xs sm:text-base">{label}</span>
+        </Button>
+    );
+    
+    const AiButton = ({isDesktop = false}: {isDesktop?: boolean}) => (
+         <Button 
+            variant="primary" 
+            onClick={() => setAiModalOpen(true)}
+            className={`rounded-full shadow-lg ${isDesktop ? 'w-14 h-14' : 'w-16 h-16'}`}
+            aria-label="Asistente IA"
+            disabled={!data.settings.geminiApiKey}
+            title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+        >
+            <Icon name="microphone" className={isDesktop ? 'w-7 h-7' : 'w-8 h-8'}/>
         </Button>
     );
 
@@ -171,7 +226,7 @@ const AppContainer: React.FC = () => {
     }
     
     return (
-        <AppContext.Provider value={{ data, saveData, formatCurrency }}>
+        <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
             <div className="min-h-screen flex flex-col">
                 <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-40">
                     <div className="container mx-auto flex justify-between items-center">
@@ -180,8 +235,14 @@ const AppContainer: React.FC = () => {
                         </h1>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">Hola, {user?.username}</span>
+                            <Button variant="ghost" size="sm" onClick={togglePrivacyMode} aria-label="Ocultar/Mostrar saldos">
+                                <Icon name={isPrivacyMode ? 'eye-off' : 'eye'} className="w-6 h-6" />
+                            </Button>
                             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Cambiar tema">
                                 <Icon name={theme === 'light' ? 'moon' : 'sun'} className="w-6 h-6" />
+                            </Button>
+                             <Button variant={currentView === AppView.SETTINGS ? 'secondary' : 'ghost'} size="sm" onClick={() => setCurrentView(AppView.SETTINGS)} aria-label="Configuración">
+                                <Icon name="cog" className="w-6 h-6" />
                             </Button>
                             <Button variant="secondary" size="sm" onClick={logout}>
                                 Cerrar Sesión
@@ -196,46 +257,57 @@ const AppContainer: React.FC = () => {
 
                 <nav className="sticky bottom-0 bg-white dark:bg-slate-800 shadow-[0_-2px_5px_rgba(0,0,0,0.1)] p-2 sm:hidden z-40">
                     <div className="relative h-14">
-                        <div className="absolute top-0 left-0 right-0 h-full grid grid-cols-5 items-center">
-                            <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
-                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
-                            <div></div> {/* Placeholder for the central button */}
-                            <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                            <NavButton view={AppView.SETTINGS} icon="cog" label="Ajustes" />
+                        <div className="absolute top-0 left-0 right-0 h-full flex justify-between items-stretch gap-1">
+                            {/* Left Column */}
+                            <div className="flex-1 flex justify-center items-center">
+                                <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
+                            </div>
+
+                            {/* Center Spacer */}
+                            <div className="w-16 flex-shrink-0" />
+
+                            {/* Right Column */}
+                            <div className="flex-1 flex justify-center items-center gap-1">
+                                {isProfessionalModeEnabled ? (
+                                    <>
+                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
+                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                    </>
+                                ) : (
+                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                )}
+                            </div>
                         </div>
+                        {/* AI Button Overlay */}
                         <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                            <Button 
-                                variant="primary" 
-                                onClick={() => setAiModalOpen(true)}
-                                className="rounded-full w-16 h-16 shadow-lg"
-                                aria-label="Asistente IA"
-                                disabled={!data.settings.geminiApiKey}
-                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
-                            >
-                                <Icon name="microphone" className="w-8 h-8"/>
-                            </Button>
+                           <AiButton />
                         </div>
                     </div>
                 </nav>
 
                 <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md grid grid-cols-5 items-center gap-2">
-                       <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" />
-                       <NavButton view={AppView.GLOBAL} icon="sparkles" label="Visión Global" />
-                       <div className="flex justify-center">
-                         <Button 
-                            variant="primary" 
-                            onClick={() => setAiModalOpen(true)}
-                            className="rounded-full w-14 h-14"
-                            aria-label="Asistente IA"
-                            disabled={!data.settings.geminiApiKey}
-                            title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
-                          >
-                              <Icon name="microphone" className="w-7 h-7"/>
-                          </Button>
-                       </div>
-                       <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" />
-                       <NavButton view={AppView.SETTINGS} icon="cog" label="Configuración" />
+                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md flex items-center gap-2 h-16">
+                        {/* Left Column */}
+                        <div className="flex-1 flex justify-center">
+                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Visión Global" className="max-w-xs" />
+                        </div>
+                        
+                        {/* Center AI Button */}
+                        <div className="flex-shrink-0">
+                           <AiButton isDesktop={true} />
+                        </div>
+
+                        {/* Right Column */}
+                        <div className={`flex-1 flex ${isProfessionalModeEnabled ? 'justify-end' : 'justify-center'} gap-2`}>
+                        {isProfessionalModeEnabled ? (
+                                <>
+                                    <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" className="max-w-xs"/>
+                                    <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
+                                </>
+                            ) : (
+                                <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
+                            )}
+                        </div>
                    </div>
                 </nav>
             </div>

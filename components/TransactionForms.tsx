@@ -61,7 +61,7 @@ const findBestCategoryId = (suggestion: string | undefined, categories: Category
 
 // --- Form Components ---
 export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income> | null; defaultIsPaid?: boolean; }> = ({ onClose, incomeToEdit, defaultIsPaid = false }) => {
-  const { data, saveData } = useContext(AppContext)!;
+  const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
   const [formData, setFormData] = useState<Partial<Income>>({
     id: incomeToEdit?.id || `inc-${Date.now()}`,
     invoiceNumber: incomeToEdit?.invoiceNumber || '',
@@ -124,6 +124,10 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
     }), isEditing ? "Ingreso actualizado." : "Ingreso añadido.");
     onClose();
   };
+  
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
 
   return (
     <>
@@ -156,7 +160,7 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
           </Select>
         </div>
         <Select label="Ubicación del Dinero (si está pagada)" name="location" value={formData.location} onChange={handleChange}>
-          {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
+          {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
         </Select>
         
         <div>
@@ -204,7 +208,7 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
 };
 
 export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; }> = ({ onClose, expenseToEdit, defaultIsPaid = true }) => {
-    const { data, saveData } = useContext(AppContext)!;
+    const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<Expense>>({
         id: expenseToEdit?.id || `exp-${Date.now()}`,
         date: expenseToEdit?.date ? formatDateForDateTimeLocalInput(expenseToEdit.date) : formatDateForDateTimeLocalInput(),
@@ -420,6 +424,11 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
         onClose();
     };
 
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
+
+
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -449,7 +458,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                     {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                 </Select>
                 <Select label="Ubicación del Gasto" name="location" value={formData.location} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                    {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                 </Select>
                 
                 <div>
@@ -589,7 +598,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
 };
 
 export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Partial<InvestmentGood> | null; }> = ({ onClose, goodToEdit }) => {
-    const { data, saveData } = useContext(AppContext)!;
+    const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<InvestmentGood>>({
         id: goodToEdit?.id || `inv-${Date.now()}`,
         purchaseDate: goodToEdit?.purchaseDate ? formatDateForDateTimeLocalInput(goodToEdit.purchaseDate) : formatDateForDateTimeLocalInput(),
@@ -649,6 +658,10 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
         onClose();
     };
 
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
+
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -696,7 +709,7 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
                 </div>
                 
                 <Select label="Ubicación del Pago" name="location" value={formData.location} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                    {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                 </Select>
                 <Switch label="Bien Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
                 <Switch label="Marcar como Pagado" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
@@ -727,7 +740,7 @@ export const MovementForm: React.FC<{
   }> = ({ onClose, movementToEdit, defaultIsPaid = true, defaultType = 'expense' }) => {
     const context = useContext(AppContext);
     if (!context) throw new Error("Context not available");
-    const { data, saveData } = context;
+    const { data, saveData, isProfessionalModeEnabled } = context;
   
     const [formData, setFormData] = useState<Partial<PersonalMovement>>({
       id: movementToEdit?.id || `pm-${Date.now()}`,
@@ -763,6 +776,10 @@ export const MovementForm: React.FC<{
       }), isEditing ? "Movimiento actualizado." : "Movimiento añadido.");
       onClose();
     };
+    
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
   
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -777,11 +794,13 @@ export const MovementForm: React.FC<{
             {data.personalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
         </Select>
         <Select label="Ubicación del dinero" name="location" value={formData.location} onChange={handleChange} required>
-          {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+          {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
         </Select>
         {formData.type === 'income' && (
           <Select label="Fuente" name="source" value={formData.source} onChange={handleChange}>
-             {Object.values(MoneySource).map(s => <option key={s} value={s}>{s}</option>)}
+             {Object.values(MoneySource)
+                .filter(s => isProfessionalModeEnabled ? true : s !== MoneySource.AUTONOMO)
+                .map(s => <option key={s} value={s}>{s}</option>)}
           </Select>
         )}
         <Switch label="Marcar como Pagado/Recibido" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
@@ -798,13 +817,13 @@ export const TransferForm: React.FC<{
     onClose: () => void;
     transferToEdit: Partial<Transfer> | null;
 }> = ({ onClose, transferToEdit }) => {
-    const { saveData } = useContext(AppContext)!;
+    const { saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
 
     const [formData, setFormData] = useState<Partial<Transfer>>({
         id: transferToEdit?.id || `tr-${Date.now()}`,
         date: transferToEdit?.date ? formatDateForDateTimeLocalInput(transferToEdit.date) : formatDateForDateTimeLocalInput(),
         amount: transferToEdit?.amount || 0,
-        fromLocation: transferToEdit?.fromLocation || MoneyLocation.PRO_BANK,
+        fromLocation: transferToEdit?.fromLocation || (isProfessionalModeEnabled ? MoneyLocation.PRO_BANK : MoneyLocation.PERS_BANK),
         toLocation: transferToEdit?.toLocation || MoneyLocation.CASH,
         concept: transferToEdit?.concept || '',
         justification: transferToEdit?.justification || TransferJustification.SUELDO_AUTONOMO
@@ -847,23 +866,29 @@ export const TransferForm: React.FC<{
         onClose();
     };
 
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Importe (€)" name="amount" type="number" min="0.01" step="0.01" value={formData.amount} onChange={handleChange} required />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Select label="Desde" name="fromLocation" value={formData.fromLocation} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                    {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
                 </Select>
                  <Select label="Hasta" name="toLocation" value={formData.toLocation} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                    {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
                 </Select>
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
             <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
-            <Select label="Justificación (para informe fiscal)" name="justification" value={formData.justification} onChange={handleChange}>
-                {Object.values(TransferJustification).map(j => <option key={j} value={j}>{j}</option>)}
-            </Select>
+            {isProfessionalModeEnabled && (
+                <Select label="Justificación (para informe fiscal)" name="justification" value={formData.justification} onChange={handleChange}>
+                    {Object.values(TransferJustification).map(j => <option key={j} value={j}>{j}</option>)}
+                </Select>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -961,7 +986,7 @@ export const AddFundsForm: React.FC<{
 }> = ({ goal, onClose, onSaveSuccess }) => {
     const context = useContext(AppContext);
     if (!context) throw new Error("Context not available");
-    const { saveData } = context;
+    const { saveData, isProfessionalModeEnabled } = context;
     const [amount, setAmount] = useState(0);
     const [location, setLocation] = useState<MoneyLocation>(MoneyLocation.PERS_BANK);
 
@@ -1001,12 +1026,16 @@ export const AddFundsForm: React.FC<{
         onSaveSuccess(isCompleted);
         onClose();
     }
+    
+    const availableLocations = isProfessionalModeEnabled 
+        ? Object.values(MoneyLocation) 
+        : Object.values(MoneyLocation).filter(l => l !== MoneyLocation.PRO_BANK && l !== MoneyLocation.CASH_PRO);
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label={`Añadir fondos a "${goal.name}"`} type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value))} min="0.01" step="0.01" />
             <Select label="Desde" value={location} onChange={(e) => setLocation(e.target.value as MoneyLocation)}>
-                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
             </Select>
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>

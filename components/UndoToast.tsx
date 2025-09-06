@@ -12,7 +12,8 @@ export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo
   const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    // Fix: `setTimeout` in a browser environment returns a `number`, not `NodeJS.Timeout`.
+    let timer: number;
     // When the toast becomes visible, we want to reset the animation,
     // and then start it after a very brief delay. This ensures the
     // transition from 100% to 0% width is visually triggered.
@@ -34,8 +35,8 @@ export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-4 left-1/2 -translate-x-1/2 w-full max-w-sm sm:max-w-md bg-slate-800 text-white rounded-lg shadow-2xl flex flex-col transition-all duration-300 ease-in-out z-50 overflow-hidden ${
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full'
+      className={`fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-sm sm:max-w-md bg-slate-800 text-white rounded-lg shadow-2xl flex flex-col transition-all duration-300 ease-in-out z-50 overflow-hidden ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full'
       }`}
     >
       {/* Main content with padding */}

@@ -172,6 +172,8 @@ export interface UserSettings {
   rentsOffice: boolean;
   isInROI: boolean;
   hiresProfessionals: boolean;
+  professionalModeEnabled: boolean;
+  defaultPrivacyMode: boolean;
   initialBalances?: {
       [key in MoneyLocation]?: number;
   };
