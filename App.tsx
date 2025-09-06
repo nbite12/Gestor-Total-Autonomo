@@ -11,6 +11,7 @@ import Auth from './components/Auth';
 import { api } from './services/api';
 import { AICommandModal } from './components/AICommandModal';
 import { UndoToast } from './components/UndoToast';
+import { OnboardingModal } from './components/OnboardingModal';
 
 
 // --- AppContext for global state management ---
@@ -31,6 +32,7 @@ const AppContainer: React.FC = () => {
     const [currentView, setCurrentView] = useState<AppView>(AppView.GLOBAL);
     const { logout, user } = useAuth();
     const [isAiModalOpen, setAiModalOpen] = useState(false);
+    const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
     const initialData: AppData = useMemo(() => ({
         incomes: [], expenses: [], personalMovements: [], transfers: [],
@@ -50,6 +52,7 @@ const AppContainer: React.FC = () => {
             professionalModeEnabled: true,
             defaultPrivacyMode: false,
             initialBalances: {},
+            hasCompletedOnboarding: false,
         },
     }), []);
 
@@ -68,6 +71,7 @@ const AppContainer: React.FC = () => {
         const fetchAllData = async () => {
             if (user?.isGuest) {
                 setDataState(initialData);
+                setIsOnboardingOpen(true);
                 setIsDataLoading(false);
                 return;
             }
@@ -85,6 +89,10 @@ const AppContainer: React.FC = () => {
                 };
                 setDataState(hydratedData);
                 setIsPrivacyMode(hydratedData.settings.defaultPrivacyMode);
+                
+                if (!hydratedData.settings.hasCompletedOnboarding) {
+                    setIsOnboardingOpen(true);
+                }
 
             } catch (error) {
                 console.error("Failed to fetch user data:", error);
@@ -150,7 +158,8 @@ const AppContainer: React.FC = () => {
     };
 
     const resetData = () => {
-        saveData(initialData, "Todos los datos han sido eliminados.");
+        const resetState = { ...initialData, settings: { ...initialData.settings, hasCompletedOnboarding: true }};
+        saveData(resetState, "Todos los datos han sido eliminados.");
     };
 
     useEffect(() => {
@@ -318,6 +327,7 @@ const AppContainer: React.FC = () => {
                 onUndo={handleUndo}
                 onClose={() => setIsUndoToastVisible(false)}
             />
+            <OnboardingModal isOpen={isOnboardingOpen} onClose={() => setIsOnboardingOpen(false)} />
         </AppContext.Provider>
     );
 };

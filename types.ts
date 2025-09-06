@@ -177,6 +177,7 @@ export interface UserSettings {
   initialBalances?: {
       [key in MoneyLocation]?: number;
   };
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface AppData {

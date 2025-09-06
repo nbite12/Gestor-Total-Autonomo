@@ -20,6 +20,12 @@ router.get('/', async (req, res) => {
     const appData = dataDoc.appData || {};
     let needsSave = false;
 
+    // Add hasCompletedOnboarding flag for existing users
+    if (appData.settings && typeof appData.settings.hasCompletedOnboarding === 'undefined') {
+        appData.settings.hasCompletedOnboarding = true;
+        needsSave = true;
+    }
+
     // Expenses need `isPaid` and `paymentDate`
     if (appData.expenses && Array.isArray(appData.expenses)) {
       for (const expense of appData.expenses) {

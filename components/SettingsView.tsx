@@ -1,7 +1,8 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../App';
 import { UserSettings, Category, Income, Expense, MoneyLocation } from '../types';
 import { Card, Button, Input, Icon, Switch, HelpTooltip, UnsupportedModelsModal, Modal } from './ui';
+import { OnboardingModal } from './OnboardingModal';
 
 declare const JSZip: any;
 
@@ -62,6 +63,11 @@ const SettingsView: React.FC = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [isUnsupportedModalOpen, setIsUnsupportedModalOpen] = useState(false);
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
+
+  useEffect(() => {
+    setSettings(data.settings);
+  }, [data.settings]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -220,6 +226,17 @@ const SettingsView: React.FC = () => {
   return (
     <div className="space-y-8">
       <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
+      
+      <Card>
+        <h3 className="text-lg font-bold mb-2">Asistente de Configuración</h3>
+        <p className="text-sm text-slate-500 mb-4">
+            Vuelve a ejecutar el asistente inicial para reconfigurar los ajustes principales de la aplicación de forma guiada.
+        </p>
+        <Button variant="secondary" onClick={() => setIsSetupWizardOpen(true)}>
+            <Icon name="cog" className="w-5 h-5" />
+            Iniciar Asistente de Configuración
+        </Button>
+      </Card>
 
       {isProfessionalModeEnabled && (
         <Card>
@@ -479,6 +496,7 @@ const SettingsView: React.FC = () => {
               </p>
           </div>
         </Modal>
+        <OnboardingModal isOpen={isSetupWizardOpen} onClose={() => setIsSetupWizardOpen(false)} isRelaunchable={true} />
     </div>
   );
 };

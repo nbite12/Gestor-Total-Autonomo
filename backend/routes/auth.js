@@ -25,8 +25,36 @@ router.post('/register', async (req, res) => {
     const newUser = new User({ username, password });
     await newUser.save();
 
-    // Create an empty data document for the new user
-    const newData = new Data({ userId: newUser._id, appData: {} });
+    // Create an empty data document for the new user with onboarding flag
+    const initialSettings = {
+        nif: '', 
+        fullName: '', 
+        address: '',
+        defaultVatRate: 21, 
+        defaultIrpfRate: 15, 
+        monthlyAutonomoFee: 80,
+        geminiApiKey: '',
+        isInRecargoEquivalencia: false,
+        applySevenPercentDeduction: false,
+        rentsOffice: false,
+        isInROI: false,
+        hiresProfessionals: false,
+        professionalModeEnabled: true,
+        defaultPrivacyMode: false,
+        initialBalances: {},
+        hasCompletedOnboarding: false,
+    };
+    
+    const initialData = {
+        settings: initialSettings,
+        incomes: [], expenses: [], personalMovements: [], transfers: [],
+        investmentGoods: [],
+        savingsGoals: [], potentialIncomes: [], potentialExpenses: [],
+        professionalCategories: [], // Let onboarding set defaults
+        personalCategories: [],
+    };
+
+    const newData = new Data({ userId: newUser._id, appData: initialData });
     await newData.save();
 
     const payload = { userId: newUser._id, username: newUser.username };
