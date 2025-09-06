@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource, Transfer, TransferJustification, Category } from '../types';
+import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource, Transfer, TransferJustification, Category, SavingsGoal } from '../types';
 import { Button, Input, Select, Icon, Switch, HelpTooltip } from './ui';
 import { AiModal } from './AiModal';
 import { suggestDeductibility } from '../services/geminiService';
@@ -13,7 +13,7 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
     reader.onerror = error => reject(error);
 });
 
-const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
+export const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
     const date = isoDate ? new Date(isoDate) : new Date();
 
     // Check if the provided string was just a date (YYYY-MM-DD). If so, new Date() might interpret it as UTC midnight.
@@ -38,7 +38,7 @@ const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+const formatCurrencyForUI = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
 const findBestCategoryId = (suggestion: string | undefined, categories: Category[]): string | undefined => {
     if (!suggestion || categories.length === 0) {
@@ -274,16 +274,12 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
 
                 if (name === 'baseAmount' || name === 'irpfRetentionRate') {
                     const rate = (name === 'irpfRetentionRate' ? numericValue : newState.irpfRetentionRate) as number || 0;
-// FIX START: Remove .toFixed(2) to prevent converting number to string
                     newState.irpfRetentionAmount = base * (rate / 100);
-// FIX END
                 }
                 
                 if (name === 'baseAmount' || name === 'recargoEquivalenciaRate') {
                     const rate = (name === 'recargoEquivalenciaRate' ? numericValue : newState.recargoEquivalenciaRate) as number || 0;
-// FIX START: Remove .toFixed(2) to prevent converting number to string
                     newState.recargoEquivalenciaAmount = base * (rate / 100);
-// FIX END
                 }
 
                 return newState;
@@ -316,9 +312,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             setFormData(prev => ({ 
                 ...prev, 
                 irpfRetentionRate: rate,
-// FIX START: Remove .toFixed(2) to prevent converting number to string
                 irpfRetentionAmount: base * (rate / 100)
-// FIX END
             }));
         }
     };
@@ -334,18 +328,14 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             if(hasIrpfRetention) {
                 const rate = 15; // default prof rate
                 const base = formData.baseAmount || 0;
-// FIX START: Remove .toFixed(2) to prevent converting number to string
                 setFormData(prev => ({...prev, irpfRetentionRate: rate, irpfRetentionAmount: base * (rate/100)}));
-// FIX END
             }
         } else {
              setFormData(prev => ({ ...prev, isRentalExpense: true }));
              if(hasIrpfRetention) {
                 const rate = 19; // rental rate
                 const base = formData.baseAmount || 0;
-// FIX START: Remove .toFixed(2) to prevent converting number to string
                 setFormData(prev => ({...prev, irpfRetentionRate: rate, irpfRetentionAmount: base * (rate/100)}));
-// FIX END
             }
         }
     };
@@ -538,7 +528,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                                 error={formData.deductibleBaseAmount && formData.baseAmount && formData.deductibleBaseAmount > formData.baseAmount ? "No puede ser mayor que la base imponible total." : ""}
                             />
                             <p className="text-xs text-slate-500 mt-1">
-                                Indica qué parte de la base imponible ({formatCurrency(formData.baseAmount || 0)}) es fiscalmente deducible.
+                                Indica qué parte de la base imponible ({formatCurrencyForUI(formData.baseAmount || 0)}) es fiscalmente deducible.
                             </p>
                         </div>
                     )}
@@ -555,7 +545,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                             </Select>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Importe Retenido</label>
-                                <p className="p-2 bg-slate-200 dark:bg-slate-700 rounded-md text-sm">{formatCurrency(formData.irpfRetentionAmount || 0)}</p>
+                                <p className="p-2 bg-slate-200 dark:bg-slate-700 rounded-md text-sm">{formatCurrencyForUI(formData.irpfRetentionAmount || 0)}</p>
                             </div>
                         </div>
                     )}
@@ -573,7 +563,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                             </Select>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Importe Recargo</label>
-                                <p className="p-2 bg-slate-200 dark:bg-slate-700 rounded-md text-sm">{formatCurrency(formData.recargoEquivalenciaAmount || 0)}</p>
+                                <p className="p-2 bg-slate-200 dark:bg-slate-700 rounded-md text-sm">{formatCurrencyForUI(formData.recargoEquivalenciaAmount || 0)}</p>
                             </div>
                         </div>
                     )}
@@ -882,3 +872,146 @@ export const TransferForm: React.FC<{
         </form>
     )
 };
+
+export const SavingsGoalForm: React.FC<{
+    onClose: () => void;
+    goalToEdit: SavingsGoal | null;
+}> = ({ onClose, goalToEdit }) => {
+    const context = useContext(AppContext);
+    if (!context) throw new Error("Context not available");
+    const { saveData } = context;
+
+    const [formData, setFormData] = useState(() => {
+        const defaultDeadline = new Date();
+        defaultDeadline.setMonth(defaultDeadline.getMonth() + 1);
+        return {
+            name: goalToEdit?.name || '',
+            targetAmount: goalToEdit?.targetAmount || 0,
+            deadline: goalToEdit ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput(defaultDeadline)
+        }
+    });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: name === 'targetAmount' ? parseFloat(value) : value }));
+    };
+
+    const setDeadline = (months: number) => {
+        const newDeadline = new Date();
+        newDeadline.setMonth(newDeadline.getMonth() + months);
+        setFormData(prev => ({ ...prev, deadline: formatDateForDateTimeLocalInput(newDeadline) }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const message = goalToEdit ? "Objetivo de ahorro actualizado." : "Objetivo de ahorro creado.";
+        if (goalToEdit) {
+            const updatedGoal: SavingsGoal = {
+                ...goalToEdit,
+                name: formData.name,
+                targetAmount: formData.targetAmount,
+                deadline: new Date(formData.deadline).toISOString(),
+            };
+            saveData(prev => ({
+                ...prev,
+                savingsGoals: prev.savingsGoals.map(g => g.id === goalToEdit.id ? updatedGoal : g)
+            }), message);
+        } else {
+            const newGoal: SavingsGoal = {
+                id: `sg-${Date.now()}`,
+                name: formData.name,
+                targetAmount: formData.targetAmount,
+                currentAmount: 0,
+                deadline: new Date(formData.deadline).toISOString(),
+            };
+            saveData(prev => ({...prev, savingsGoals: [...prev.savingsGoals, newGoal]}), message);
+        }
+        onClose();
+    };
+    
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label="Nombre del Objetivo" name="name" value={formData.name} onChange={handleChange} required />
+            <Input label="Importe Objetivo (€)" name="targetAmount" type="number" step="0.01" min="0" value={formData.targetAmount} onChange={handleChange} required />
+            
+            <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Plazo Rápido</label>
+                <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => setDeadline(1)}>1 Mes</Button>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => setDeadline(3)}>3 Meses</Button>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => setDeadline(6)}>6 Meses</Button>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => setDeadline(12)}>1 Año</Button>
+                </div>
+            </div>
+
+            <Input label="Fecha Límite" name="deadline" type="datetime-local" value={formData.deadline} onChange={handleChange} required />
+             <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">{goalToEdit ? 'Guardar Cambios' : 'Crear Objetivo'}</Button>
+            </div>
+        </form>
+    );
+}
+
+// --- Add Funds Form ---
+export const AddFundsForm: React.FC<{
+  goal: SavingsGoal;
+  onClose: () => void;
+  onSaveSuccess: (isGoalCompleted: boolean) => void;
+}> = ({ goal, onClose, onSaveSuccess }) => {
+    const context = useContext(AppContext);
+    if (!context) throw new Error("Context not available");
+    const { saveData } = context;
+    const [amount, setAmount] = useState(0);
+    const [location, setLocation] = useState<MoneyLocation>(MoneyLocation.PERS_BANK);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (amount <= 0) return;
+
+        let isCompleted = false;
+
+        saveData(prev => {
+            const currentGoal = prev.savingsGoals.find(g => g.id === goal.id);
+            if (currentGoal) {
+                const newCurrentAmount = currentGoal.currentAmount + amount;
+                isCompleted = newCurrentAmount >= currentGoal.targetAmount;
+            }
+            
+            // Update goal
+            const updatedGoals = prev.savingsGoals.map(g => 
+                g.id === goal.id ? { ...g, currentAmount: g.currentAmount + amount } : g
+            );
+            // Create expense movement
+            const newMovement: PersonalMovement = {
+                id: `pm-${Date.now()}`,
+                date: new Date().toISOString(),
+                concept: `Aportación a objetivo: ${goal.name}`,
+                amount: amount,
+                type: 'expense',
+                categoryId: prev.personalCategories.find(c => c.name.toLowerCase().includes('ahorro'))?.id || prev.personalCategories[0].id,
+                location: location,
+                isPaid: true,
+                paymentDate: new Date().toISOString(),
+            };
+
+            return {...prev, savingsGoals: updatedGoals, personalMovements: [...prev.personalMovements, newMovement]};
+        }, `Aportación de ${formatCurrencyForUI(amount)} a "${goal.name}".`);
+        
+        onSaveSuccess(isCompleted);
+        onClose();
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label={`Añadir fondos a "${goal.name}"`} type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value))} min="0.01" step="0.01" />
+            <Select label="Desde" value={location} onChange={(e) => setLocation(e.target.value as MoneyLocation)}>
+                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+            </Select>
+            <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">Añadir</Button>
+            </div>
+        </form>
+    )
+}

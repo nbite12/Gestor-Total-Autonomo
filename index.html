@@ -35,6 +35,122 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      .celebration-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 1000;
+        overflow: hidden;
+      }
+
+      /* For simple contribution */
+      @keyframes rise {
+        0% {
+          transform: translateY(0) rotate(0deg);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-100vh) rotate(360deg);
+          opacity: 0;
+        }
+      }
+
+      .rising-emoji {
+        position: absolute;
+        bottom: -50px;
+        font-size: 2rem;
+        animation: rise 3s linear forwards;
+        text-shadow: 0 0 5px rgba(0,0,0,0.5);
+      }
+
+      /* === ELEGANT GOAL COMPLETE CELEBRATION (NEW) === */
+
+      .goal-complete-backdrop {
+          animation: radial-pulse 5s ease-out forwards;
+      }
+
+      @keyframes radial-pulse {
+          0% { background: radial-gradient(circle, hsla(38, 96%, 54%, 0.4) 0%, hsla(25, 95%, 53%, 0) 70%); }
+          25% { background: radial-gradient(circle, hsla(38, 96%, 54%, 0.6) 0%, hsla(25, 95%, 53%, 0) 70%); }
+          50% { background: radial-gradient(circle, hsla(38, 96%, 54%, 0.3) 0%, hsla(25, 95%, 53%, 0) 70%); }
+          100% { background: radial-gradient(circle, hsla(38, 96%, 54%, 0) 0%, hsla(25, 95%, 53%, 0) 70%); }
+      }
+      
+      .particle {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          font-size: 1.5rem;
+          opacity: 0;
+          animation: burst 1.5s ease-out forwards;
+      }
+      @keyframes burst {
+          0% {
+              transform: translate(-50%, -50%) scale(0.5);
+              opacity: 1;
+          }
+          100% {
+              transform: translate(var(--x), var(--y)) scale(1);
+              opacity: 0;
+          }
+      }
+
+      .trophy-container {
+          position: absolute;
+          top: 35%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          animation: trophy-appear 5s ease-out forwards;
+          opacity: 0;
+      }
+      .trophy-icon {
+          font-size: clamp(6rem, 20vw, 8rem);
+          filter: drop-shadow(0 0 20px hsl(50, 100%, 50%));
+      }
+
+      @keyframes trophy-appear {
+          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+          20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+          40% { transform: translate(-50%, -50%) scale(1); }
+          80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+          100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+      }
+      
+      .elegant-message {
+          position: absolute;
+          top: 55%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          text-align: center;
+          color: white;
+          text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+          animation: elegant-message-fade 5s ease-out forwards;
+          opacity: 0;
+      }
+
+      .elegant-message h1 {
+        font-size: clamp(2rem, 10vw, 4rem);
+        font-weight: 900;
+        color: #ffeb3b;
+        margin-bottom: 0.5rem;
+        line-height: 1.1;
+      }
+
+      .elegant-message p {
+        font-size: clamp(1rem, 5vw, 1.5rem);
+      }
+
+      @keyframes elegant-message-fade {
+          0% { opacity: 0; transform: translate(-50%, -40%); }
+          20% { opacity: 1; transform: translate(-50%, -50%); }
+          80% { opacity: 1; transform: translate(-50%, -50%); }
+          100% { opacity: 0; transform: translate(-50%, -60%); }
+      }
+    </style>
 <script type="importmap">
 {
   "imports": {

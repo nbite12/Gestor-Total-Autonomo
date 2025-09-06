@@ -36,7 +36,7 @@ const AppContainer: React.FC = () => {
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
         settings: {
             nif: '', fullName: '', address: '',
-            defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 300,
+            defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 80,
             geminiApiKey: '',
             isInRecargoEquivalencia: false,
             applySevenPercentDeduction: false,

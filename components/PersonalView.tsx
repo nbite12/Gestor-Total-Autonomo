@@ -1,139 +1,10 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation, InvestmentGood } from '../types';
-import { Card, Button, Modal, Input, Select, Icon } from './ui';
+import { Card, Button, Modal, Input, Select, Icon, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { MovementForm } from './TransactionForms';
-
-
-const formatCurrencyForUI = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
-    const date = isoDate ? new Date(isoDate) : new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-
-// --- Savings Goal Form ---
-const SavingsGoalForm: React.FC<{
-    onClose: () => void;
-    goalToEdit: SavingsGoal | null;
-}> = ({ onClose, goalToEdit }) => {
-    const context = useContext(AppContext);
-    if (!context) throw new Error("Context not available");
-    const { saveData } = context;
-
-    const [formData, setFormData] = useState(() => {
-        const defaultDeadline = new Date();
-        defaultDeadline.setMonth(defaultDeadline.getMonth() + 1);
-        return {
-            name: goalToEdit?.name || '',
-            targetAmount: goalToEdit?.targetAmount || 0,
-            deadline: goalToEdit ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput(defaultDeadline)
-        }
-    });
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: name === 'targetAmount' ? parseFloat(value) : value }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const message = goalToEdit ? "Objetivo de ahorro actualizado." : "Objetivo de ahorro creado.";
-        if (goalToEdit) {
-            const updatedGoal: SavingsGoal = {
-                ...goalToEdit,
-                name: formData.name,
-                targetAmount: formData.targetAmount,
-                deadline: new Date(formData.deadline).toISOString(),
-            };
-            saveData(prev => ({
-                ...prev,
-                savingsGoals: prev.savingsGoals.map(g => g.id === goalToEdit.id ? updatedGoal : g)
-            }), message);
-        } else {
-            const newGoal: SavingsGoal = {
-                id: `sg-${Date.now()}`,
-                name: formData.name,
-                targetAmount: formData.targetAmount,
-                currentAmount: 0,
-                deadline: new Date(formData.deadline).toISOString(),
-            };
-            saveData(prev => ({...prev, savingsGoals: [...prev.savingsGoals, newGoal]}), message);
-        }
-        onClose();
-    };
-    
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Nombre del Objetivo" name="name" value={formData.name} onChange={handleChange} required />
-            <Input label="Importe Objetivo (€)" name="targetAmount" type="number" step="0.01" min="0" value={formData.targetAmount} onChange={handleChange} required />
-            <Input label="Fecha Límite" name="deadline" type="datetime-local" value={formData.deadline} onChange={handleChange} required />
-             <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{goalToEdit ? 'Guardar Cambios' : 'Crear Objetivo'}</Button>
-            </div>
-        </form>
-    );
-}
-
-// --- Add Funds Form ---
-const AddFundsForm: React.FC<{
-  goal: SavingsGoal;
-  onClose: () => void;
-}> = ({ goal, onClose }) => {
-    const context = useContext(AppContext);
-    if (!context) throw new Error("Context not available");
-    const { data, saveData } = context;
-    const [amount, setAmount] = useState(0);
-    const [location, setLocation] = useState<MoneyLocation>(MoneyLocation.PERS_BANK);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (amount <= 0) return;
-
-        saveData(prev => {
-            // Update goal
-            const updatedGoals = prev.savingsGoals.map(g => 
-                g.id === goal.id ? { ...g, currentAmount: g.currentAmount + amount } : g
-            );
-            // Create expense movement
-            const newMovement: PersonalMovement = {
-                id: `pm-${Date.now()}`,
-                date: new Date().toISOString(),
-                concept: `Aportación a objetivo: ${goal.name}`,
-                amount: amount,
-                type: 'expense',
-                categoryId: prev.personalCategories.find(c => c.name.toLowerCase().includes('ahorro'))?.id || prev.personalCategories[0].id,
-                location: location,
-                isPaid: true,
-                paymentDate: new Date().toISOString(),
-            };
-
-            return {...prev, savingsGoals: updatedGoals, personalMovements: [...prev.personalMovements, newMovement]};
-        }, `Aportación de ${formatCurrencyForUI(amount)} a "${goal.name}".`);
-        onClose();
-    }
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label={`Añadir fondos a "${goal.name}"`} type="number" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value))} min="0.01" step="0.01" />
-            <Select label="Desde" value={location} onChange={(e) => setLocation(e.target.value as MoneyLocation)}>
-                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-            </Select>
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">Añadir</Button>
-            </div>
-        </form>
-    )
-}
+import { MovementForm, SavingsGoalForm, AddFundsForm, formatDateForDateTimeLocalInput } from './TransactionForms';
 
 // --- Main Personal View ---
 const PersonalView: React.FC = () => {
@@ -147,6 +18,8 @@ const PersonalView: React.FC = () => {
   const [isGoalFormOpen, setGoalFormOpen] = useState(false);
   const [goalToEdit, setGoalToEdit] = useState<SavingsGoal | null>(null);
   const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
+  const [celebrationType, setCelebrationType] = useState<'none' | 'contribution' | 'goalComplete'>('none');
+
   const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const end = new Date();
         const start = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -251,9 +124,14 @@ const PersonalView: React.FC = () => {
     setGoalToEdit(null);
   }
 
+  const handleSaveContribution = (isGoalCompleted: boolean) => {
+    setCelebrationType(isGoalCompleted ? 'goalComplete' : 'contribution');
+  };
+
 
   return (
     <div className="space-y-6">
+       <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
        {/* Dashboard Summary */}
        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
            <Card className="text-center">
@@ -374,7 +252,11 @@ const PersonalView: React.FC = () => {
 
       {goalToAddFunds && (
         <Modal isOpen={true} onClose={() => setGoalToAddFunds(null)} title="Aportar a Objetivo">
-            <AddFundsForm goal={goalToAddFunds} onClose={() => setGoalToAddFunds(null)} />
+            <AddFundsForm 
+                goal={goalToAddFunds} 
+                onClose={() => setGoalToAddFunds(null)}
+                onSaveSuccess={handleSaveContribution}
+            />
         </Modal>
       )}
     </div>

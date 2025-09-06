@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 // --- Icon Component ---
 export const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = 'w-6 h-6' }) => {
@@ -250,4 +250,104 @@ export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label, disabl
             </button>
         </div>
     );
+};
+
+// --- Celebration Component ---
+export const Celebration: React.FC<{
+  type: 'contribution' | 'goalComplete' | 'none';
+  onComplete: () => void;
+}> = ({ type, onComplete }) => {
+  useEffect(() => {
+    if (type === 'none') return;
+
+    if (type === 'goalComplete') {
+      const playSound = () => {
+        // @ts-ignore
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const audioContext = new AudioContext();
+
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+
+        const playNote = (frequency: number, startTime: number, duration: number) => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(1, audioContext.currentTime + startTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + startTime + duration);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start(audioContext.currentTime + startTime);
+            oscillator.stop(audioContext.currentTime + startTime + duration);
+        };
+
+        const now = 0;
+        playNote(261.63, now, 0.15); // C4
+        playNote(329.63, now + 0.1, 0.15); // E4
+        playNote(392.00, now + 0.2, 0.15); // G4
+        playNote(523.25, now + 0.3, 0.3);  // C5
+      };
+      playSound();
+    }
+
+    const timer = setTimeout(() => {
+      onComplete();
+    }, type === 'goalComplete' ? 5000 : 3000);
+    
+    return () => clearTimeout(timer);
+  }, [type, onComplete]);
+
+  if (type === 'none') return null;
+
+  if (type === 'contribution') {
+    return (
+      <div className="celebration-overlay">
+        {Array.from({ length: 15 }).map((_, i) => (
+          <div key={i} className="rising-emoji" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 1}s` }}>
+            {['💰', '✨', '🎉', '🚀'][Math.floor(Math.random() * 4)]}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === 'goalComplete') {
+    return (
+      <div className="celebration-overlay goal-complete-backdrop">
+        {Array.from({ length: 30 }).map((_, i) => {
+          const angle = Math.random() * 360;
+          const radius = Math.random() * 250 + 150;
+          const x = Math.cos(angle * (Math.PI / 180)) * radius;
+          const y = Math.sin(angle * (Math.PI / 180)) * radius;
+          return (
+            <div
+              key={i}
+              className="particle"
+              style={{
+                // @ts-ignore
+                '--x': `${x}px`,
+                '--y': `${y}px`,
+                animationDelay: `${Math.random() * 0.5}s`,
+                color: ['#FFD700', '#FFC300', '#FFFFFF'][Math.floor(Math.random() * 3)]
+              }}
+            >
+              {['✨', '⭐', '✦'][Math.floor(Math.random() * 3)]}
+            </div>
+          );
+        })}
+        <div className="trophy-container">
+          <span className="trophy-icon">🏆</span>
+        </div>
+        <div className="elegant-message">
+          <h1>¡OBJETIVO CONSEGUIDO!</h1>
+          <p>¡Enhorabuena, tu esfuerzo ha dado sus frutos!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };

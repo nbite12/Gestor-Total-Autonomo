@@ -1,9 +1,9 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
-import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
+import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood } from '../types';
-import { IncomeForm, ExpenseForm, MovementForm, TransferForm } from './TransactionForms';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal } from '../types';
+import { IncomeForm, ExpenseForm, MovementForm, TransferForm, SavingsGoalForm, AddFundsForm, formatDateForDateTimeLocalInput } from './TransactionForms';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -30,17 +30,6 @@ const getMonthsRemaining = (deadline: string): number => {
     // If deadline is in the same month, we count it as 1 month remaining for contribution.
     return months <= 0 ? 1 : months;
 };
-
-const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
-    const date = isoDate ? new Date(isoDate) : new Date();
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
 
 
 // --- Potential Income Form Modal ---
@@ -425,6 +414,11 @@ const GlobalView: React.FC = () => {
     const [expenseToEdit, setExpenseToEdit] = useState<PotentialExpense | null>(null);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [transferToEdit, setTransferToEdit] = useState<Transfer | null>(null);
+    const [isGoalFormOpen, setIsGoalFormOpen] = useState(false);
+    const [goalToEdit, setGoalToEdit] = useState<SavingsGoal | null>(null);
+    const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
+    const [celebrationType, setCelebrationType] = useState<'none' | 'contribution' | 'goalComplete'>('none');
+
 
     // State for pending transaction modals
     const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | PersonalMovement | null>(null);
@@ -900,6 +894,26 @@ const GlobalView: React.FC = () => {
         }, message);
     };
 
+    const handleOpenGoalForm = (goal?: SavingsGoal) => {
+        setGoalToEdit(goal || null);
+        setIsGoalFormOpen(true);
+    };
+
+    const handleCloseGoalForm = () => {
+        setGoalToEdit(null);
+        setIsGoalFormOpen(false);
+    };
+
+    const handleDeleteGoal = useCallback((id: string) => {
+        if (window.confirm('¿Seguro que quieres borrar este objetivo? No se borrarán las aportaciones ya hechas.')) {
+            saveData(prev => ({ ...prev, savingsGoals: prev.savingsGoals.filter(g => g.id !== id) }), "Objetivo de ahorro eliminado.");
+        }
+    }, [saveData]);
+
+    const handleSaveContribution = (isGoalCompleted: boolean) => {
+        setCelebrationType(isGoalCompleted ? 'goalComplete' : 'contribution');
+    };
+
 
     const sourceColors: {[key in MoneySource]: string} = {
         [MoneySource.AUTONOMO]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
@@ -943,6 +957,7 @@ const GlobalView: React.FC = () => {
 
     return (
         <div className="space-y-6">
+            <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
             <Card>
@@ -1180,73 +1195,99 @@ const GlobalView: React.FC = () => {
             </Card>
 
             <Card>
-                <h3 className="text-xl font-bold mb-4">Planificación de Ahorro</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Planificación de Ahorro</h3>
+                    <Button size="sm" onClick={() => handleOpenGoalForm()}>
+                        <Icon name="plus" className="w-4 h-4" /> Nuevo Objetivo
+                    </Button>
+                </div>
                 <div className="space-y-4">
-                    {savingsGoals.length > 0 ? savingsGoals.map(goal => (
-                        <div key={goal.id} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center border-t dark:border-slate-700 pt-4 first:border-t-0">
-                            <div className="md:col-span-1">
-                                <p className="font-semibold">{goal.name}</p>
-                                <p className="text-xs text-slate-500">
-                                    Restante: {formatCurrency(Math.max(0, goal.targetAmount - goal.currentAmount))}
-                                </p>
-                            </div>
-                            {(() => {
-                                const amountRemaining = goal.targetAmount - goal.currentAmount;
-                                if (amountRemaining <= 0) {
-                                    return (
-                                        <div className="md:col-span-2 flex items-center gap-2 text-green-500">
-                                            <Icon name="sparkles" className="w-5 h-5" />
-                                            <p className="font-semibold">¡Objetivo conseguido!</p>
-                                        </div>
-                                    );
-                                }
+                    {savingsGoals.length > 0 ? savingsGoals.map(goal => {
+                        const amountRemaining = goal.targetAmount - goal.currentAmount;
+                        let projectedFinishDate: Date | null = null;
+                        if (goal.plannedContribution && goal.plannedContribution > 0 && amountRemaining > 0) {
+                            const dailyContribution = goal.plannedContribution / (365.25 / 12);
+                            const daysNeeded = Math.ceil(amountRemaining / dailyContribution);
+                            projectedFinishDate = new Date();
+                            projectedFinishDate.setDate(projectedFinishDate.getDate() + daysNeeded);
+                        }
 
-                                const monthsRemaining = getMonthsRemaining(goal.deadline);
-                                if (monthsRemaining === 0) {
-                                    return (
-                                        <div className="md:col-span-2 text-red-500">
-                                            <p className="font-semibold">Plazo vencido</p>
-                                            <p className="text-sm">No has alcanzado este objetivo a tiempo.</p>
-                                        </div>
-                                    );
-                                }
-
-                                const suggestedContribution = amountRemaining / monthsRemaining;
-                                let statusMessage = null;
-                                let statusColor = '';
-
-                                if (goal.plannedContribution && goal.plannedContribution > 0) {
-                                    if (goal.plannedContribution >= suggestedContribution) {
-                                        statusMessage = '¡Vas por buen camino para cumplir tu objetivo a tiempo!';
-                                        statusColor = 'text-green-500';
-                                    } else {
-                                        const difference = suggestedContribution - goal.plannedContribution;
-                                        statusMessage = `Necesitas aportar ${formatCurrency(difference)} más al mes para llegar a tiempo.`;
-                                        statusColor = 'text-orange-500';
+                        return (
+                            <div key={goal.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start border-t dark:border-slate-700 pt-4 first:border-t-0">
+                                <div className="md:col-span-1">
+                                    <p className="font-semibold">{goal.name}</p>
+                                    <p className="text-xs text-slate-500">
+                                        Restante: {formatCurrency(Math.max(0, amountRemaining))}
+                                    </p>
+                                </div>
+                                {(() => {
+                                    if (amountRemaining <= 0) {
+                                        return (
+                                            <div className="md:col-span-3 flex items-center gap-2 text-green-500">
+                                                <Icon name="sparkles" className="w-5 h-5" />
+                                                <p className="font-semibold">¡Objetivo conseguido!</p>
+                                            </div>
+                                        );
                                     }
-                                }
-                                
-                                return (
-                                    <>
-                                        <div className="md:col-span-1">
-                                            <p className="text-sm">Aportación mensual sugerida:</p>
-                                            <p className="font-semibold">{formatCurrency(suggestedContribution)}</p>
-                                        </div>
-                                        <div className="md:col-span-1">
-                                           <Input 
-                                              label="Mi aportación mensual"
-                                              type="number"
-                                              placeholder={formatCurrency(suggestedContribution)}
-                                              value={goal.plannedContribution || ''}
-                                              onChange={(e) => handleGoalContributionChange(goal.id, e.target.value)}
-                                           />
-                                           {statusMessage && <p className={`text-xs mt-1 ${statusColor}`}>{statusMessage}</p>}
-                                        </div>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    )) : <p className="text-center text-slate-500">Crea objetivos en el Área Personal para planificar tu ahorro.</p>}
+
+                                    const monthsRemaining = getMonthsRemaining(goal.deadline);
+                                    if (monthsRemaining === 0) {
+                                        return (
+                                            <div className="md:col-span-3 text-red-500">
+                                                <p className="font-semibold">Plazo vencido</p>
+                                                <p className="text-sm">No has alcanzado este objetivo a tiempo.</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    const suggestedContribution = amountRemaining / monthsRemaining;
+                                    let statusMessage = null;
+                                    let statusColor = '';
+
+                                    if (goal.plannedContribution && goal.plannedContribution > 0) {
+                                        if (goal.plannedContribution >= suggestedContribution) {
+                                            statusMessage = '¡Vas por buen camino para cumplir tu objetivo a tiempo!';
+                                            statusColor = 'text-green-500';
+                                        } else {
+                                            const difference = suggestedContribution - goal.plannedContribution;
+                                            statusMessage = `Necesitas aportar ${formatCurrency(difference)} más al mes para llegar a tiempo.`;
+                                            statusColor = 'text-orange-500';
+                                        }
+                                    }
+                                    
+                                    return (
+                                        <>
+                                            <div className="md:col-span-1">
+                                                <p className="text-sm">Aportación mensual sugerida:</p>
+                                                <p className="font-semibold">{formatCurrency(suggestedContribution)}</p>
+                                            </div>
+                                            <div className="md:col-span-1">
+                                            <Input 
+                                                label="Mi aportación mensual"
+                                                type="number"
+                                                placeholder={formatCurrency(suggestedContribution)}
+                                                value={goal.plannedContribution || ''}
+                                                onChange={(e) => handleGoalContributionChange(goal.id, e.target.value)}
+                                            />
+                                            {statusMessage && <p className={`text-xs mt-1 ${statusColor}`}>{statusMessage}</p>}
+                                             {projectedFinishDate && (
+                                                <div className="text-xs mt-1 text-primary-600 dark:text-primary-400">
+                                                    <p><strong>Final estimado: {projectedFinishDate.toLocaleDateString('es-ES')}</strong></p>
+                                                    <p>(vs. objetivo: {new Date(goal.deadline).toLocaleDateString('es-ES')})</p>
+                                                </div>
+                                            )}
+                                            </div>
+                                            <div className="md:col-span-1 flex justify-end items-center self-start pt-6 gap-1">
+                                                <Button size="sm" variant="secondary" onClick={() => setGoalToAddFunds(goal)}>Aportar</Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleOpenGoalForm(goal)} title="Editar objetivo"><Icon name="pencil" className="w-4 h-4"/></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeleteGoal(goal.id)} title="Eliminar objetivo"><Icon name="trash" className="w-4 h-4 text-red-500"/></Button>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        );
+                    }) : <p className="text-center text-slate-500">Crea objetivos en el Área Personal para planificar tu ahorro.</p>}
                 </div>
             </Card>
 
@@ -1351,6 +1392,18 @@ const GlobalView: React.FC = () => {
             {personalMovementToEdit && (
                 <Modal isOpen={true} onClose={() => setPersonalMovementToEdit(null)} title="Editar Movimiento Personal">
                     <MovementForm onClose={() => setPersonalMovementToEdit(null)} movementToEdit={personalMovementToEdit} />
+                </Modal>
+            )}
+             <Modal isOpen={isGoalFormOpen} onClose={handleCloseGoalForm} title={goalToEdit ? "Editar Objetivo de Ahorro" : "Crear Nuevo Objetivo de Ahorro"}>
+                <SavingsGoalForm onClose={handleCloseGoalForm} goalToEdit={goalToEdit} />
+            </Modal>
+             {goalToAddFunds && (
+                <Modal isOpen={true} onClose={() => setGoalToAddFunds(null)} title="Aportar a Objetivo">
+                    <AddFundsForm 
+                        goal={goalToAddFunds} 
+                        onClose={() => setGoalToAddFunds(null)}
+                        onSaveSuccess={handleSaveContribution}
+                    />
                 </Modal>
             )}
         </div>
