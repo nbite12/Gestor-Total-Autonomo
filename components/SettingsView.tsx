@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../App';
 import { UserSettings, Category, Income, Expense, MoneyLocation } from '../types';
-import { Card, Button, Input, Icon } from './ui';
+import { Card, Button, Input, Icon, Switch, HelpTooltip, UnsupportedModelsModal } from './ui';
 
 declare const JSZip: any;
 
@@ -55,15 +55,20 @@ const CategoryManager: React.FC<{
 const SettingsView: React.FC = () => {
   const context = useContext(AppContext);
   if (!context) return <div>Cargando...</div>;
-  const { data, setData } = context;
+  const { data, saveData } = context;
 
   const [settings, setSettings] = useState<UserSettings>(data.settings);
   const [geminiApiKey, setGeminiApiKey] = useState(data.settings.geminiApiKey || '');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [isUnsupportedModalOpen, setIsUnsupportedModalOpen] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setSettings(prev => ({...prev, [name]: name.includes('Rate') || name.includes('Fee') ? parseFloat(value) : value }));
+    const { name, value, type } = e.target;
+     if (type === 'checkbox') {
+        setSettings(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
+    } else {
+        setSettings(prev => ({...prev, [name]: name.includes('Rate') || name.includes('Fee') ? parseFloat(value) : value }));
+    }
   };
 
   const handleBalanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,33 +84,31 @@ const SettingsView: React.FC = () => {
   
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    setData(prev => ({...prev, settings}));
-    alert('Ajustes guardados con éxito.');
+    saveData(prev => ({...prev, settings}), "Ajustes guardados.");
   };
 
   const handleSaveApiKey = () => {
-      setData(prev => ({...prev, settings: {...prev.settings, geminiApiKey}}));
-      alert('Clave de API de Gemini guardada.');
+      saveData(prev => ({...prev, settings: {...prev.settings, geminiApiKey}}), "Clave de API de Gemini guardada.");
   }
 
   const handleAddCategory = (type: 'professional' | 'personal', name: string) => {
       const newCategory: Category = { id: `cat-${type}-${Date.now()}`, name };
-      setData(prev => {
+      saveData(prev => {
           if (type === 'professional') {
               return {...prev, professionalCategories: [...prev.professionalCategories, newCategory]};
           }
           return {...prev, personalCategories: [...prev.personalCategories, newCategory]};
-      });
+      }, "Categoría añadida.");
   };
 
   const handleDeleteCategory = (type: 'professional' | 'personal', id: string) => {
        if (window.confirm('¿Seguro que quieres borrar esta categoría?')) {
-           setData(prev => {
+           saveData(prev => {
                if (type === 'professional') {
                    return {...prev, professionalCategories: prev.professionalCategories.filter(c => c.id !== id)};
                }
                return {...prev, personalCategories: prev.personalCategories.filter(c => c.id !== id)};
-           });
+           }, "Categoría eliminada.");
        }
   };
 
@@ -195,8 +198,7 @@ const SettingsView: React.FC = () => {
         await rehydrateAttachments(importedData.expenses);
           
         if (window.confirm('¿Estás seguro? Al importar se sobrescribirán TODOS tus datos actuales. Esta acción es irreversible.')) {
-            setData(importedData);
-            alert('Datos importados correctamente.');
+            saveData(importedData, "Datos importados correctamente.");
         }
       } catch (error) {
         console.error("Error al importar datos:", error);
@@ -219,12 +221,23 @@ const SettingsView: React.FC = () => {
     <div className="space-y-8">
       <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
 
+      <Card>
+          <h3 className="text-lg font-bold mb-4">Información de la Aplicación</h3>
+          <p className="text-sm text-slate-500 mb-4">
+              Consulta información importante sobre las funcionalidades y limitaciones actuales de la aplicación.
+          </p>
+          <Button variant="secondary" onClick={() => setIsUnsupportedModalOpen(true)}>
+              <Icon name="info" className="w-5 h-5" />
+              Ver Modelos Fiscales No Soportados
+          </Button>
+      </Card>
+
       {/* Fiscal & App Settings */}
       <Card>
         <form onSubmit={handleSaveSettings} className="space-y-6">
             <div>
                 <h3 className="text-lg font-bold">Datos Fiscales y Preferencias</h3>
-                <p className="text-sm text-slate-500 mt-1">Esta información se usará para generar tus facturas.</p>
+                <p className="text-sm text-slate-500 mt-1">Esta información se usará para generar tus facturas y calcular tus impuestos.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     <Input label="Nombre Completo" name="fullName" value={settings.fullName} onChange={handleChange} />
                     <Input label="NIF / CIF" name="nif" value={settings.nif} onChange={handleChange} />
@@ -235,21 +248,41 @@ const SettingsView: React.FC = () => {
                     <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
                     <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
                 </div>
+                 <div className="mt-6 space-y-4 border-t dark:border-slate-700 pt-4">
+                     <div className="flex items-center">
+                        <Switch label="Estoy en el régimen de Recargo de Equivalencia" checked={settings.isInRecargoEquivalencia} onChange={(c) => setSettings(p => ({...p, isInRecargoEquivalencia: c}))} />
+                        <HelpTooltip content="Activa esta opción si eres comerciante minorista. Esto cambiará la forma en que se gestiona el IVA de tus compras." />
+                    </div>
+                    <div className="flex items-center">
+                        <Switch label="Aplicar deducción del 7% por gastos de difícil justificación" checked={settings.applySevenPercentDeduction} onChange={(c) => setSettings(p => ({...p, applySevenPercentDeduction: c}))} />
+                        <HelpTooltip content="Activa esta opción si tributas por estimación directa simplificada para aplicar una deducción de hasta 2.000€ en tu IRPF." />
+                    </div>
+                 </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                <h3 className="text-lg font-bold">Perfil Fiscal del Autónomo</h3>
+                <p className="text-sm text-slate-500 mt-1">Marca las opciones que apliquen a tu actividad para personalizar los modelos fiscales que se muestran.</p>
+                <div className="mt-4 space-y-4">
+                    <div className="flex items-center">
+                        <Switch label="Alquilo una oficina o local para mi actividad" checked={settings.rentsOffice ?? false} onChange={(c) => setSettings(p => ({...p, rentsOffice: c}))} />
+                        <HelpTooltip content="Activa esta opción si pagas un alquiler por tu lugar de trabajo. Esto habilitará los modelos 115 y 180." />
+                    </div>
+                    <div className="flex items-center">
+                        <Switch label="Estoy dado de alta en el ROI (Op. Intracomunitarias)" checked={settings.isInROI ?? false} onChange={(c) => setSettings(p => ({...p, isInROI: c}))} />
+                        <HelpTooltip content="Activa esta opción si compras o vendes a empresas de la Unión Europea. Esto habilitará el modelo 349." />
+                    </div>
+                    <div className="flex items-center">
+                        <Switch label="Contrato a otros profesionales con retención" checked={settings.hiresProfessionals ?? false} onChange={(c) => setSettings(p => ({...p, hiresProfessionals: c}))} />
+                        <HelpTooltip content="Activa esta opción si pagas facturas que llevan retención de IRPF (a abogados, diseñadores, etc.). Esto habilitará los modelos 111 y 190." />
+                    </div>
+                </div>
             </div>
             
             <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
                 <h3 className="text-lg font-bold">Saldos Iniciales</h3>
                 <p className="text-sm text-slate-500 mt-1">Establece el valor inicial de cada cuenta para un cálculo de saldos preciso.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <Input 
-                        label="Efectivo (€)" 
-                        name={MoneyLocation.CASH}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={settings.initialBalances?.[MoneyLocation.CASH] || ''}
-                        onChange={handleBalanceChange}
-                    />
                     <Input 
                         label="Banco Profesional (€)" 
                         name={MoneyLocation.PRO_BANK}
@@ -260,12 +293,30 @@ const SettingsView: React.FC = () => {
                         onChange={handleBalanceChange}
                     />
                     <Input 
+                        label="Efectivo Profesional (€)" 
+                        name={MoneyLocation.CASH_PRO}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.CASH_PRO] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                     <Input 
                         label="Banco Personal (€)" 
                         name={MoneyLocation.PERS_BANK}
                         type="number"
                         step="0.01"
                         placeholder="0.00"
                         value={settings.initialBalances?.[MoneyLocation.PERS_BANK] || ''}
+                        onChange={handleBalanceChange}
+                    />
+                    <Input 
+                        label="Efectivo (€)" 
+                        name={MoneyLocation.CASH}
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={settings.initialBalances?.[MoneyLocation.CASH] || ''}
                         onChange={handleBalanceChange}
                     />
                     <Input 
@@ -360,6 +411,7 @@ const SettingsView: React.FC = () => {
             <Icon name="trash" className="w-5 h-5"/> Borrar Todos los Datos
           </Button>
        </div>
+       <UnsupportedModelsModal isOpen={isUnsupportedModalOpen} onClose={() => setIsUnsupportedModalOpen(false)} />
     </div>
   );
 };

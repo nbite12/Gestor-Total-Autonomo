@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, createContext } from 'react';
+import React, { useState, useEffect, useMemo, createContext, useRef } from 'react';
 import { AppView, Theme, AppData } from './types';
 import { Icon, Button } from './components/ui';
 import ProfessionalView from './components/ProfessionalView';
@@ -6,24 +6,24 @@ import PersonalView from './components/PersonalView';
 import SettingsView from './components/SettingsView';
 import GlobalView from './components/GlobalView';
 import { DEFAULT_PROFESSIONAL_CATEGORIES, DEFAULT_PERSONAL_CATEGORIES } from './constants';
-import { useLocalStorage } from './hooks/useLocalStorage';
 import { AuthProvider, useAuth } from './hooks/AuthContext';
 import Auth from './components/Auth';
 import { api } from './services/api';
 import { AICommandModal } from './components/AICommandModal';
+import { UndoToast } from './components/UndoToast';
 
 
 // --- AppContext for global state management ---
 interface AppContextType {
     data: AppData;
-    setData: (value: AppData | ((prevState: AppData) => AppData)) => void;
+    saveData: (value: AppData | ((prevState: AppData) => AppData), message: string) => void;
     formatCurrency: (amount: number) => string;
 }
 export const AppContext = createContext<AppContextType | null>(null);
 
 // --- Main Application Component (Protected) ---
 const AppContainer: React.FC = () => {
-    const [theme, setTheme] = useLocalStorage<Theme>('app-theme', Theme.LIGHT);
+    const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('app-theme') as Theme) || Theme.LIGHT);
     const [currentView, setCurrentView] = useState<AppView>(AppView.GLOBAL);
     const { logout, user } = useAuth();
     const [isAiModalOpen, setAiModalOpen] = useState(false);
@@ -38,20 +38,36 @@ const AppContainer: React.FC = () => {
             nif: '', fullName: '', address: '',
             defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 300,
             geminiApiKey: '',
+            isInRecargoEquivalencia: false,
+            applySevenPercentDeduction: false,
+            rentsOffice: false,
+            isInROI: false,
+            hiresProfessionals: false,
             initialBalances: {},
         },
     }), []);
 
     const [data, setDataState] = useState<AppData>(initialData);
     const [isDataLoading, setIsDataLoading] = useState(true);
+    
+    // --- Undo Functionality State ---
+    const [undoState, setUndoState] = useState<AppData | null>(null);
+    const [undoMessage, setUndoMessage] = useState('');
+    const [isUndoToastVisible, setIsUndoToastVisible] = useState(false);
+    const undoTimeoutRef = useRef<number | null>(null);
+
 
     useEffect(() => {
         const fetchAllData = async () => {
+            if (user?.isGuest) {
+                setDataState(initialData);
+                setIsDataLoading(false);
+                return;
+            }
+
             try {
                 setIsDataLoading(true);
-                // This endpoint should return the entire AppData object for the logged-in user
                 const remoteData = await api<AppData>('/data'); 
-                // Merge remote data with initial data to ensure all keys are present
                 setDataState({
                     ...initialData,
                     ...remoteData,
@@ -67,23 +83,58 @@ const AppContainer: React.FC = () => {
             }
         };
         fetchAllData();
-    }, [initialData]);
+    }, [initialData, user?.isGuest]);
 
-    const setData = (value: AppData | ((prevState: AppData) => AppData)) => {
+    const saveData = (value: AppData | ((prevState: AppData) => AppData), message: string) => {
+        if (undoTimeoutRef.current) {
+            clearTimeout(undoTimeoutRef.current);
+        }
+
+        const previousData = data;
+
         const updater = (prev: AppData) => {
             const newState = typeof value === 'function' ? value(prev) : value;
-            api('/data', { method: 'POST', body: newState })
-                .catch(err => {
-                    console.error("Failed to save data:", err);
-                    alert("Error: No se pudieron guardar los cambios en el servidor. Revisa tu conexión.");
-                });
+            if (!user?.isGuest) {
+                api('/data', { method: 'POST', body: newState })
+                    .catch(err => {
+                        console.error("Failed to save data:", err);
+                        alert("Error: No se pudieron guardar los cambios en el servidor. Revisa tu conexión.");
+                    });
+            }
             return newState;
         };
+        
         setDataState(updater);
+        
+        // Setup Undo
+        setUndoState(previousData);
+        setUndoMessage(message);
+        setIsUndoToastVisible(true);
+
+        undoTimeoutRef.current = window.setTimeout(() => {
+            setIsUndoToastVisible(false);
+            setUndoState(null);
+        }, 5000);
+    };
+    
+    const handleUndo = () => {
+        if (undoState) {
+            setDataState(undoState); // Revert state
+            if (!user?.isGuest) {
+                 api('/data', { method: 'POST', body: undoState })
+                    .catch(err => console.error("Failed to save undone data:", err));
+            }
+            setUndoState(null);
+            setIsUndoToastVisible(false);
+            if (undoTimeoutRef.current) {
+                clearTimeout(undoTimeoutRef.current);
+            }
+        }
     };
 
     useEffect(() => {
         document.documentElement.classList.toggle('dark', theme === Theme.DARK);
+        localStorage.setItem('app-theme', theme);
     }, [theme]);
 
     const toggleTheme = () => setTheme(theme === Theme.LIGHT ? Theme.DARK : Theme.LIGHT);
@@ -120,7 +171,7 @@ const AppContainer: React.FC = () => {
     }
     
     return (
-        <AppContext.Provider value={{ data, setData, formatCurrency }}>
+        <AppContext.Provider value={{ data, saveData, formatCurrency }}>
             <div className="min-h-screen flex flex-col">
                 <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-40">
                     <div className="container mx-auto flex justify-between items-center">
@@ -189,6 +240,12 @@ const AppContainer: React.FC = () => {
                 </nav>
             </div>
             {isAiModalOpen && <AICommandModal isOpen={isAiModalOpen} onClose={() => setAiModalOpen(false)} />}
+             <UndoToast
+                isVisible={isUndoToastVisible}
+                message={undoMessage}
+                onUndo={handleUndo}
+                onClose={() => setIsUndoToastVisible(false)}
+            />
         </AppContext.Provider>
     );
 };

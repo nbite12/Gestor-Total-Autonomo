@@ -1,25 +1,25 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, Attachment, InvestmentGood, AppData, MoneyLocation } from '../types';
-import { Card, Button, Modal, Input, Select, Icon, HelpTooltip, Switch } from './ui';
+import { Income, Expense, Attachment, InvestmentGood, AppData } from '../types';
+import { Card, Button, Modal, Icon, HelpTooltip, Select } from './ui';
 import { IRPF_BRACKETS } from '../constants';
-import { extractInvoiceData } from '../services/geminiService';
-import { generateIncomesPDF, generateExpensesPDF, generateInvestmentGoodsPDF, generateComprehensivePeriodPDF } from '../services/pdfService';
+import { generateIncomesPDF, generateExpensesPDF, generateComprehensivePeriodPDF } from '../services/pdfService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-// FIX: Imported PeriodSelector component to fix 'Cannot find name' error.
 import { PeriodSelector } from './PeriodSelector';
 import { IncomeForm, ExpenseForm, InvestmentGoodForm } from './TransactionForms';
+import { AiModal } from './AiModal';
+import { UnsupportedModelsModal } from './ui';
 
 // --- Type definitions ---
-type ProViewTab = 'libros' | 'impuestos' | 'renta' | 'resumen';
-type Quarter = 1 | 2 | 3 | 4;
+type ProViewTab = 'libros' | 'analisis' | 'pdf';
+type TaxModel = '303/130/111/115' | '390' | '100' | '347' | '190/180' | '349';
 
 // --- Helper Functions ---
 const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
 const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
 const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
 const getTotalFacturaEmitida = (inc: Income) => inc.baseAmount + getCuotaIVA(inc.baseAmount, inc.vatRate) - getCuotaIRPF(inc.baseAmount, inc.irpfRate);
-const getTotalFacturaRecibida = (exp: Expense) => exp.baseAmount + getCuotaIVA(exp.baseAmount, exp.vatRate);
+
 const handleDownloadAttachment = (attachment: Attachment) => {
     const byteCharacters = atob(attachment.data);
     const byteNumbers = new Array(byteCharacters.length);
@@ -35,25 +35,158 @@ const handleDownloadAttachment = (attachment: Attachment) => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 };
-const calculateAnnualIRPF = (annualIncome: number): number => {
-    let tax = 0;
+
+interface IRPFBreakdownRow {
+  bracket: { limit: number; rate: number };
+  baseInBracket: number;
+  partialQuota: number;
+}
+
+const calculateAnnualIRPFBreakdown = (annualIncome: number) => {
+    let totalQuota = 0;
+    let remainingIncome = annualIncome;
     let lastLimit = 0;
+    const breakdown: IRPFBreakdownRow[] = [];
+
     for (const bracket of IRPF_BRACKETS) {
-        if (annualIncome > lastLimit) {
-            const taxableAmount = Math.min(annualIncome, bracket.limit) - lastLimit;
-            tax += taxableAmount * bracket.rate;
-        } else { break; }
-        lastLimit = bracket.limit;
+        const bracketLimit = bracket.limit === Infinity ? Infinity : bracket.limit;
+        const bracketWidth = bracketLimit - lastLimit;
+        
+        if (remainingIncome <= 0 && annualIncome > lastLimit) {
+            breakdown.push({ bracket, baseInBracket: 0, partialQuota: 0 });
+            lastLimit = bracketLimit;
+            continue;
+        }
+        
+        const baseInBracket = Math.min(remainingIncome, bracketWidth);
+        if(baseInBracket <= 0) continue;
+
+        const partialQuota = baseInBracket * bracket.rate;
+
+        totalQuota += partialQuota;
+        remainingIncome -= baseInBracket;
+        
+        breakdown.push({ bracket, baseInBracket, partialQuota });
+
+        lastLimit = bracketLimit;
     }
-    return tax;
+    
+    const lastBracketIndex = IRPF_BRACKETS.findIndex(b => b.limit === lastLimit);
+    if(lastBracketIndex > -1 && lastBracketIndex < IRPF_BRACKETS.length - 1) {
+        IRPF_BRACKETS.slice(lastBracketIndex + 1).forEach(bracket => {
+            breakdown.push({ bracket, baseInBracket: 0, partialQuota: 0 });
+        });
+    }
+
+    const effectiveRate = annualIncome > 0 ? (totalQuota / annualIncome) * 100 : 0;
+
+    return { breakdown, totalQuota, effectiveRate };
+};
+
+const checkFilingPeriod = (model: TaxModel, year: number, quarter: number): { isOpen: boolean; text: string } => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const diffInCalendarDays = (d1: Date, d2: Date) => {
+        const date1 = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
+        const date2 = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
+        return Math.round((date2.getTime() - date1.getTime()) / (1000 * 60 * 60 * 24));
+    };
+
+    const formatDateForDeadline = (date: Date) => date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+
+    const getFilingDates = (): { start: Date; end: Date } | null => {
+        switch(model) {
+            case '303/130/111/115':
+                 switch (quarter) {
+                    case 1: return { start: new Date(year, 3, 1), end: new Date(year, 3, 20) }; // Q1 -> April
+                    case 2: return { start: new Date(year, 6, 1), end: new Date(year, 6, 20) }; // Q2 -> July
+                    case 3: return { start: new Date(year, 9, 1), end: new Date(year, 9, 20) }; // Q3 -> October
+                    case 4: return { start: new Date(year + 1, 0, 1), end: new Date(year + 1, 0, 30) }; // Q4 -> Jan
+                    default: return null;
+                }
+            case '100': return { start: new Date(year + 1, 3, 1), end: new Date(year + 1, 5, 30) }; // Renta (year) -> April-June next year
+            case '390':
+            case '190/180':
+                return { start: new Date(year + 1, 0, 1), end: new Date(year + 1, 0, 31) }; // Annual Summaries -> January
+            case '347': return { start: new Date(year + 1, 1, 1), end: new Date(year + 1, 1, 28) }; // Ops with 3rd parties -> February
+            default: return null;
+        }
+    };
+    
+    const filingDates = getFilingDates();
+    if (!filingDates) return { isOpen: false, text: 'Plazo no definido' };
+
+    const { start: filingStart, end: filingEnd } = filingDates;
+    
+    if (today >= filingStart && today <= filingEnd) {
+        const daysLeft = diffInCalendarDays(today, filingEnd);
+        if (daysLeft === 0) return { isOpen: true, text: 'Plazo abierto. ¡Finaliza hoy!' };
+        if (daysLeft === 1) return { isOpen: true, text: 'Plazo abierto. Finaliza mañana.' };
+        return { isOpen: true, text: `Plazo abierto. Finaliza en ${daysLeft} días.` };
+    } else if (today < filingStart) {
+        const daysUntil = diffInCalendarDays(today, filingStart);
+        if (daysUntil === 1) return { isOpen: false, text: `Fuera de plazo. El plazo abre mañana.` };
+        if (daysUntil <= 15) return { isOpen: false, text: `Fuera de plazo. El plazo abre en ${daysUntil} días.` };
+        return { isOpen: false, text: `Fuera de plazo. El plazo abre el ${formatDateForDeadline(filingStart)}.` };
+    } else {
+        return { isOpen: false, text: `Plazo finalizado el ${formatDateForDeadline(filingEnd)}.` };
+    }
+};
+
+// Helper function for Model 100
+const calculateAnnualRent = (year: number, appData: AppData) => {
+    const { incomes, expenses, investmentGoods, settings } = appData;
+    const yearIncomes = incomes.filter(i => new Date(i.date).getFullYear() === year);
+    const yearDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date).getFullYear() === year);
+    const annualGrossInvoiced = yearIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
+    const annualExpensesFromInvoices = yearDeductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount) + (e.recargoEquivalenciaAmount || 0), 0);
+    const annualAmortization = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= year).reduce((sum, good) => {
+        const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+        const goodStartDate = new Date(good.purchaseDate);
+        const effectiveStartDate = goodStartDate < new Date(year, 0, 1) ? new Date(year, 0, 1) : goodStartDate;
+        const effectiveEndDate = new Date(year, 11, 31);
+        if (effectiveEndDate >= effectiveStartDate && new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate()) >= effectiveStartDate) {
+            const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+            return sum + (daysInPeriod * dailyAmortization);
+        }
+        return sum;
+    }, 0);
+    const annualCuotaAutonomo = (settings.monthlyAutonomoFee || 0) * 12;
+    const annualTotalDeductibleExpenses = annualExpensesFromInvoices + annualCuotaAutonomo + annualAmortization;
+    const annualNetProfitBeforeDeductions = annualGrossInvoiced - annualTotalDeductibleExpenses;
+    
+    let gastosDificilJustificacion = 0;
+    if (settings.applySevenPercentDeduction && annualNetProfitBeforeDeductions > 0) {
+        gastosDificilJustificacion = Math.min(2000, annualNetProfitBeforeDeductions * 0.07);
+    }
+    
+    const finalNetProfit = annualNetProfitBeforeDeductions - gastosDificilJustificacion;
+
+    const { totalQuota: cuotaIntegra, breakdown, effectiveRate } = calculateAnnualIRPFBreakdown(finalNetProfit);
+    const retencionesSoportadas = yearIncomes.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+    // Simplified 130 calculation for the whole year for now
+    const pagosACuenta130 = Math.max(0, finalNetProfit * 0.20); // This is a simplification
+    const resultadoFinal = cuotaIntegra - retencionesSoportadas - pagosACuenta130;
+    
+    return { 
+        annualNetProfit: finalNetProfit, 
+        cuotaIntegra, 
+        retencionesSoportadas, 
+        pagosACuenta130, 
+        resultadoFinal, 
+        gastosDificilJustificacion,
+        irpfBreakdown: breakdown, 
+        effectiveRate 
+    };
 };
 
 // --- Main Professional View ---
 const ProfessionalView: React.FC = () => {
     const context = useContext(AppContext);
     if (!context) return <div>Cargando...</div>;
-    const { data, setData } = context;
-    const [activeTab, setActiveTab] = useState<ProViewTab>('libros');
+    const { data, saveData } = context;
+    const [activeTab, setActiveTab] = useState<ProViewTab>('analisis');
     const [isIncomeModalOpen, setIncomeModalOpen] = useState(false);
     const [incomeToEdit, setIncomeToEdit] = useState<Partial<Income> | null>(null);
     const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
@@ -68,12 +201,12 @@ const ProfessionalView: React.FC = () => {
 
     const handleDelete = (type: 'income' | 'expense' | 'investment', id: string) => {
         if (!window.confirm('¿Estás seguro de que quieres borrar este elemento?')) return;
-        setData(prev => {
+        saveData(prev => {
             if (type === 'income') return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
             if (type === 'expense') return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
             if (type === 'investment') return { ...prev, investmentGoods: prev.investmentGoods.filter(g => g.id !== id) };
             return prev;
-        });
+        }, "Elemento eliminado.");
     };
     
     const handleAnalysisComplete = (extractedData: Partial<Income> | Partial<Expense> | Partial<InvestmentGood>, type: 'income' | 'expense' | 'investment', file: File) => {
@@ -104,19 +237,23 @@ const ProfessionalView: React.FC = () => {
             </div>
             <div className="border-b border-slate-200 dark:border-slate-700">
                 <nav className="-mb-px flex space-x-6 sm:space-x-8 overflow-x-auto" aria-label="Tabs">
+                    <TabButton tabName="analisis" label="Dashboard Fiscal" />
                     <TabButton tabName="libros" label="Libros de Registro" />
-                    <TabButton tabName="impuestos" label="Mis Impuestos" />
-                    <TabButton tabName="renta" label="Calculadora Renta" />
-                    <TabButton tabName="resumen" label="Resumen Gráfico" />
+                    <TabButton tabName="pdf" label="Generar PDFs" />
                 </nav>
             </div>
             <div className="pt-4">
                 {activeTab === 'libros' && <LibrosRegistroView onEditIncome={handleOpenIncomeModal} onEditExpense={handleOpenExpenseModal} onEditInvestment={handleOpenInvestmentModal} onDelete={handleDelete} />}
-                {activeTab === 'impuestos' && <MisImpuestosView />}
-                {activeTab === 'renta' && <CalculadoraRentaView />}
-                {activeTab === 'resumen' && <ResumenGraficoView />}
+                {activeTab === 'analisis' && <AnalisisFiscalView />}
+                {activeTab === 'pdf' && <GenerarPDFsView />}
             </div>
-            <AiImportModal isOpen={isAiImportModalOpen} onClose={() => setAiImportModalOpen(false)} onAnalysisComplete={handleAnalysisComplete} apiKey={data.settings.geminiApiKey} />
+            <AiModal 
+                isOpen={isAiImportModalOpen} 
+                onClose={() => setAiImportModalOpen(false)} 
+                onAnalysisComplete={handleAnalysisComplete} 
+                apiKey={data.settings.geminiApiKey} 
+                professionalCategories={data.professionalCategories}
+            />
             <Modal isOpen={isIncomeModalOpen} onClose={() => setIncomeModalOpen(false)} title={incomeToEdit?.id ? "Editar Factura Emitida" : "Nueva Factura Emitida"}><IncomeForm onClose={() => setIncomeModalOpen(false)} incomeToEdit={incomeToEdit} /></Modal>
             <Modal isOpen={isExpenseModalOpen} onClose={() => setExpenseModalOpen(false)} title={expenseToEdit?.id ? "Editar Factura Recibida" : "Nueva Factura Recibida"}><ExpenseForm onClose={() => setExpenseModalOpen(false)} expenseToEdit={expenseToEdit} /></Modal>
             <Modal isOpen={isInvestmentModalOpen} onClose={() => setInvestmentModalOpen(false)} title={investmentToEdit?.id ? "Editar Bien de Inversión" : "Nuevo Bien de Inversión"}><InvestmentGoodForm onClose={() => setInvestmentModalOpen(false)} goodToEdit={investmentToEdit} /></Modal>
@@ -125,433 +262,552 @@ const ProfessionalView: React.FC = () => {
 };
 
 // --- View Components for Tabs ---
-const LibrosRegistroView: React.FC<{
-    onEditIncome: (income?: Partial<Income>) => void; onEditExpense: (expense?: Partial<Expense>) => void; onEditInvestment: (good?: Partial<InvestmentGood>) => void; onDelete: (type: 'income' | 'expense' | 'investment', id: string) => void;
-}> = ({ onEditIncome, onEditExpense, onEditInvestment, onDelete }) => {
+const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelete: (id: string) => void; }> = ({ onEdit, onDelete }) => {
     const { data, formatCurrency } = useContext(AppContext)!;
-    const { incomes, expenses, investmentGoods } = data;
-    const [libroFilter, setLibroFilter] = useState<'all' | 'incomes' | 'expenses' | 'investments'>('all');
-
-    const allTransactions = useMemo(() => {
-        const combined = [
-            ...incomes.map(i => ({ ...i, type: 'income' as const })),
-            ...expenses.map(e => ({ ...e, type: 'expense' as const }))
-        ];
-        return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [incomes, expenses]);
-
-    const IncomeTable = () => (
+    const { incomes } = data;
+    return (
         <Card>
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">Libro de Registro de Facturas Emitidas</h3>
+                <h3 className="text-xl font-bold">Libro de Ingresos</h3>
                 <div className="flex gap-2">
                     <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                    <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
+                    <Button onClick={() => onEdit()}><Icon name="plus" /> Añadir Ingreso</Button>
                 </div>
             </div>
             <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">IRPF</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2">Estado</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                    <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-4 py-2 text-center">{inc.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagada</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditIncome(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('income', inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
+                    <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-4 py-2 text-center">{inc.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagada</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEdit(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete(inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
         </Card>
     );
+};
 
-    const ExpenseTable = () => (
-        <Card>
-            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">Libro de Registro de Facturas Recibidas</h3>
-                <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses)} disabled={expenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                    <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
-                </div>
-            </div>
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Estado</th><th className="px-4 py-2 text-center">Deducible</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                    <tbody>{expenses.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(exp => (<tr key={exp.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(exp.date)}</td><td className="px-4 py-2">{exp.providerName}</td><td className="px-4 py-2">{exp.concept}</td><td className="px-4 py-2 text-right">{formatCurrency(exp.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(exp.baseAmount, exp.vatRate))} ({exp.vatRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaRecibida(exp))}</td><td className="px-4 py-2 text-center">{exp.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagado</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td><td className="px-4 py-2 text-center">{exp.isDeductible ? 'Sí' : 'No'}</td><td className="px-2 py-2 text-center">{exp.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(exp.attachment!)} title={exp.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditExpense(exp)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('expense', exp.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
-        </Card>
-    );
+const UnifiedExpenseBook: React.FC<{
+    onEditExpense: (expense?: Partial<Expense>) => void;
+    onEditInvestment: (good?: Partial<InvestmentGood>) => void;
+    onDelete: (type: 'expense' | 'investment', id: string) => void;
+}> = ({ onEditExpense, onEditInvestment, onDelete }) => {
+    const { data, formatCurrency } = useContext(AppContext)!;
+    const { expenses, investmentGoods } = data;
+
+    type UnifiedExpenseItem = 
+        | (Expense & { itemType: 'expense' })
+        | (InvestmentGood & { itemType: 'investment' });
+
+    const unifiedExpenses = useMemo<UnifiedExpenseItem[]>(() => {
+        const expenseItems: UnifiedExpenseItem[] = expenses.map(e => ({ ...e, itemType: 'expense' }));
+        const investmentItems: UnifiedExpenseItem[] = investmentGoods.map(g => ({ ...g, itemType: 'investment' }));
+
+        const allItems = [...expenseItems, ...investmentItems];
+        
+        return allItems.sort((a, b) => {
+            const dateA = new Date(a.itemType === 'investment' ? a.purchaseDate : a.date);
+            const dateB = new Date(b.itemType === 'investment' ? b.purchaseDate : b.date);
+            return dateB.getTime() - dateA.getTime();
+        });
+    }, [expenses, investmentGoods]);
     
-    const InvestmentTable = () => (
+    return (
         <Card>
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">Libro de Registro de Bienes de Inversión</h3>
+                <h3 className="text-xl font-bold">Libro de Gastos y Bienes de Inversión</h3>
                 <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => generateInvestmentGoodsPDF(investmentGoods)} disabled={investmentGoods.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                    <Button onClick={() => onEditInvestment()}><Icon name="plus" /> Añadir Bien</Button>
-                </div>
-            </div>
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha Compra</th><th className="px-4 py-2">Descripción</th><th className="px-4 py-2 text-right">Valor Adquisición</th><th className="px-4 py-2 text-center">Vida Útil</th><th className="px-4 py-2 text-right">Amortización Anual</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                    <tbody>{investmentGoods.sort((a,b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map(good => (<tr key={good.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(good.purchaseDate)}</td><td className="px-4 py-2">{good.description}</td><td className="px-4 py-2 text-right">{formatCurrency(good.acquisitionValue)}</td><td className="px-4 py-2 text-center">{good.usefulLife} años</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(good.acquisitionValue / good.usefulLife)}</td><td className="px-2 py-2 text-center">{good.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(good.attachment!)} title={good.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEditInvestment(good)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete('investment', good.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
-        </Card>
-    );
-
-    const AllTransactionsTable = () => (
-         <Card>
-            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
-                <h3 className="text-xl font-bold">Registro Contable Unificado</h3>
-                <div className="flex gap-2">
-                    <Button onClick={() => onEditIncome()}><Icon name="plus" /> Añadir Ingreso</Button>
+                    <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses, investmentGoods)} disabled={unifiedExpenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
                     <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
+                    <Button onClick={() => onEditInvestment()} variant="secondary"><Icon name="plus" /> Añadir Bien Inversión</Button>
                 </div>
             </div>
-             <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Tipo</th><th className="px-4 py-2">Estado</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente/Proveedor</th><th className="px-4 py-2">Concepto</th><th className="px-4 py-2 text-right">Total</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                    <tbody>{allTransactions.map(item => {
-                        const isIncome = item.type === 'income';
-                        const total = isIncome ? getTotalFacturaEmitida(item as Income) : getTotalFacturaRecibida(item as Expense);
-                        const partyName = isIncome ? (item as Income).clientName : (item as Expense).providerName;
-
-                        return (
-                        <tr key={item.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
-                            <td className="px-4 py-2">{formatDate(item.date)}</td>
-                            <td className="px-4 py-2">
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${isIncome ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
-                                    {isIncome ? 'Ingreso' : 'Gasto'}
-                                </span>
-                            </td>
-                            <td className="px-4 py-2 text-center">
-                                {item.isPaid ? 
-                                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{isIncome ? 'Cobrado' : 'Pagado'}</span> :
-                                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
-                                }
-                            </td>
-                            <td className="px-4 py-2">{item.invoiceNumber || '-'}</td>
-                            <td className="px-4 py-2">{partyName}</td>
-                            <td className="px-4 py-2">{item.concept}</td>
-                            <td className={`px-4 py-2 text-right font-bold ${isIncome ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(total)}</td>
-                            <td className="px-2 py-2 text-center">{item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td>
-                            <td className="px-4 py-2 flex justify-center gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => isIncome ? onEditIncome(item) : onEditExpense(item)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => onDelete(item.type, item.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                            </td>
+             <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
+                        <tr>
+                            <th className="px-4 py-2">Fecha</th>
+                            <th className="px-4 py-2">Tipo</th>
+                            <th className="px-4 py-2">Proveedor</th>
+                            <th className="px-4 py-2">Concepto</th>
+                            <th className="px-4 py-2 text-right">Base</th>
+                            <th className="px-4 py-2 text-right">IVA</th>
+                            <th className="px-4 py-2 text-right">IRPF Ret.</th>
+                            <th className="px-4 py-2 text-right">Total</th>
+                            <th className="px-4 py-2">Estado</th>
+                            <th className="px-4 py-2">Deducibilidad</th>
+                            <th className="px-2 py-2">Adj.</th>
+                            <th className="px-4 py-2 text-center">Acciones</th>
                         </tr>
-                        );
-                    })}</tbody></table></div>
+                    </thead>
+                    <tbody>
+                        {unifiedExpenses.map(item => {
+                            const isExpense = item.itemType === 'expense';
+                            const date = isExpense ? item.date : item.purchaseDate;
+                            const provider = isExpense ? item.providerName : item.providerName;
+                            const concept = isExpense ? item.concept : item.description;
+                            const base = isExpense ? item.baseAmount : item.acquisitionValue;
+                            const vatRate = isExpense ? item.vatRate : item.vatRate;
+                            const vatAmount = base * (vatRate / 100);
+                            const irpfAmount = (isExpense && item.irpfRetentionAmount) ? item.irpfRetentionAmount : 0;
+                            const total = base + vatAmount;
+
+                            let deductibilityInfo;
+                            if (isExpense) {
+                                if (!item.isDeductible) deductibilityInfo = <span className="text-red-500">No Deducible</span>;
+                                else if (item.deductibleBaseAmount != null) deductibilityInfo = `Parcial (${formatCurrency(item.deductibleBaseAmount)})`;
+                                else deductibilityInfo = `Total (${formatCurrency(item.baseAmount)})`;
+                            } else {
+                                if (item.isDeductible) deductibilityInfo = `Amortizable (${formatCurrency(item.acquisitionValue/item.usefulLife)}/año)`;
+                                else deductibilityInfo = <span className="text-red-500">No Deducible</span>;
+                            }
+
+                            return (
+                                <tr key={`${item.itemType}-${item.id}`} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
+                                    <td className="px-4 py-2">{formatDate(date)}</td>
+                                    <td className="px-4 py-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${isExpense ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-slate-100 text-slate-800 dark:bg-slate-600 dark:text-slate-200'}`}>{isExpense ? 'Gasto' : 'Bien Inversión'}</span></td>
+                                    <td className="px-4 py-2">{provider}</td>
+                                    <td className="px-4 py-2">{concept}</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(base)}</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(vatAmount)} ({vatRate}%)</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(irpfAmount)}</td>
+                                    <td className="px-4 py-2 text-right font-bold">{formatCurrency(total)}</td>
+                                    <td className="px-4 py-2 text-center">{item.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagado</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td>
+                                    <td className="px-4 py-2 text-xs">{deductibilityInfo}</td>
+                                    <td className="px-2 py-2 text-center">{item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td>
+                                    <td className="px-4 py-2 flex justify-center gap-1">
+                                        <Button size="sm" variant="ghost" onClick={() => isExpense ? onEditExpense(item) : onEditInvestment(item)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => onDelete(item.itemType, item.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </Card>
     );
+};
 
+const LibrosRegistroView: React.FC<{
+    onEditIncome: (income?: Partial<Income>) => void; 
+    onEditExpense: (expense?: Partial<Expense>) => void; 
+    onEditInvestment: (good?: Partial<InvestmentGood>) => void; 
+    onDelete: (type: 'income' | 'expense' | 'investment', id: string) => void;
+}> = ({ onEditIncome, onEditExpense, onEditInvestment, onDelete }) => {
     return (
-        <div className="space-y-6">
-            <Card>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant={libroFilter === 'all' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('all')}>Todos los Movimientos</Button>
-                    <Button size="sm" variant={libroFilter === 'incomes' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('incomes')}>Facturas Emitidas</Button>
-                    <Button size="sm" variant={libroFilter === 'expenses' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('expenses')}>Facturas Recibidas</Button>
-                    <Button size="sm" variant={libroFilter === 'investments' ? 'primary' : 'secondary'} onClick={() => setLibroFilter('investments')}>Bienes de Inversión</Button>
-                </div>
-            </Card>
-
-            <div className="space-y-8">
-                {libroFilter === 'all' && (
-                    <>
-                        <AllTransactionsTable />
-                        <InvestmentTable />
-                    </>
-                )}
-                {libroFilter === 'incomes' && <IncomeTable />}
-                {libroFilter === 'expenses' && <ExpenseTable />}
-                {libroFilter === 'investments' && <InvestmentTable />}
-            </div>
+        <div className="space-y-8">
+            <IncomeBook onEdit={onEditIncome} onDelete={(id) => onDelete('income', id)} />
+            <UnifiedExpenseBook 
+                onEditExpense={onEditExpense}
+                onEditInvestment={onEditInvestment}
+                onDelete={onDelete}
+            />
         </div>
     );
 };
 
-const MisImpuestosView: React.FC = () => {
-    const { data, formatCurrency } = useContext(AppContext)!;
-    const [year, setYear] = useState(new Date().getFullYear());
-    const [quarter, setQuarter] = useState<Quarter>(1);
-    const [annualYear, setAnnualYear] = useState(new Date().getFullYear());
 
-    const [modelo303, setModelo303] = useState<any>(null);
-    const [modelo130, setModelo130] = useState<any>(null);
-    const [modelo390, setModelo390] = useState<any>(null);
-    const [modelo347, setModelo347] = useState<any>(null);
-    
-    const years = useMemo(() => Array.from(new Set([...data.incomes, ...data.expenses].map(i => new Date(i.date).getFullYear()))).sort((a, b) => b - a), [data]);
+const AnalisisFiscalView: React.FC = () => {
+    const context = useContext(AppContext);
+    if (!context) return <div>Cargando...</div>;
+    const { data, formatCurrency } = context;
+    const { incomes, expenses, investmentGoods, settings } = data;
 
-    const getQuarterDates = (y: number, q: Quarter) => ({
-        startDate: new Date(y, (q - 1) * 3, 1),
-        endDate: new Date(y, q * 3, 0, 23, 59, 59, 999)
+    const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const quarter = Math.floor(now.getMonth() / 3);
+        return {
+            startDate: new Date(year, quarter * 3, 1),
+            endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999),
+        };
     });
 
-    const calculateModelo303 = () => {
-        const { startDate, endDate } = getQuarterDates(year, quarter);
-        const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
-        const ivaRepercutido = incomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const ivaSoportado = expenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-        setModelo303({ repercutido: ivaRepercutido, soportado: ivaSoportado, resultado: ivaRepercutido - ivaSoportado });
-    };
+    const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => {
+        setPeriod({ startDate, endDate });
+    }, []);
 
-    const calculateModelo130 = () => {
-        const { startDate, endDate } = getQuarterDates(year, quarter);
-        const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+    const availableYears = useMemo(() => {
+        const years = new Set<number>();
+        incomes.forEach(i => years.add(new Date(i.date).getFullYear()));
+        expenses.forEach(e => years.add(new Date(e.date).getFullYear()));
+        if (years.size === 0) years.add(new Date().getFullYear());
+        return Array.from(years).sort((a, b) => b - a);
+    }, [incomes, expenses]);
+    
+    const [rentaYear, setRentaYear] = useState<number>(availableYears[0] || new Date().getFullYear());
+
+    const fiscalCalculations = useMemo(() => {
+        // --- Period Calculations (303, 130, 111, 115) ---
+        const periodIncomes = incomes.filter(i => new Date(i.date) >= period.startDate && new Date(i.date) <= period.endDate);
+        const periodExpenses = expenses.filter(e => new Date(e.date) >= period.startDate && new Date(e.date) <= period.endDate);
+        const periodDeductibleExpenses = periodExpenses.filter(e => e.isDeductible);
         
-        const totalIngresos = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
-        const totalGastosFacturas = expenses.reduce((sum, e) => sum + e.baseAmount, 0);
-        const cuotaAutonomoTrimestral = (data.settings.monthlyAutonomoFee || 0) * 3;
+        // KPIs
+        const kpiTotalInvoiced = periodIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
+        const kpiTotalExpenses = periodExpenses.reduce((sum, e) => sum + e.baseAmount, 0);
+        const kpiGrossProfit = kpiTotalInvoiced - kpiTotalExpenses;
+        const kpiProfitMargin = kpiTotalInvoiced > 0 ? (kpiGrossProfit / kpiTotalInvoiced) * 100 : 0;
+        const kpis = { kpiTotalInvoiced, kpiTotalExpenses, kpiGrossProfit, kpiProfitMargin };
 
-        const amortizacionTrimestral = data.investmentGoods.reduce((sum, good) => {
-            const purchaseDate = new Date(good.purchaseDate);
-            if (purchaseDate <= endDate) {
-                 const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
-                 if(endDate < endDateUsefulLife) {
-                    return sum + (good.acquisitionValue / good.usefulLife) / 4;
-                 }
-            }
-            return sum;
-        }, 0);
+        // 303
+        const ivaRepercutido = periodIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const ivaSoportadoFromExpenses = periodDeductibleExpenses
+            .filter(e => !e.recargoEquivalenciaAmount) // Exclude VAT from RE purchases
+            .reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        const ivaSoportadoFromGoods = investmentGoods
+            .filter(g => g.isDeductible && new Date(g.purchaseDate) >= period.startDate && new Date(g.purchaseDate) <= period.endDate)
+            .reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
+        const model303 = { ivaRepercutido, ivaSoportado, result: ivaRepercutido - ivaSoportado };
 
-        const totalGastos = totalGastosFacturas + amortizacionTrimestral + cuotaAutonomoTrimestral;
-        const rendimientoNeto = totalIngresos - totalGastos;
-        const totalInvoicedWithRetention = incomes.filter(i => i.irpfRate > 0).reduce((sum, i) => sum + i.baseAmount, 0);
-        const highRetentionWarning = totalIngresos > 0 && (totalInvoicedWithRetention / totalIngresos) > 0.7;
+        // 111 & 115
+        const model111 = periodExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        const model115 = periodExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
 
-        setModelo130({ ingresos: totalIngresos, gastos: totalGastos, rendimiento: rendimientoNeto, pago: Math.max(0, rendimientoNeto * 0.2), highRetentionWarning });
-    };
-
-    const handleGenerateReport = () => {
-        const { startDate, endDate } = getQuarterDates(year, quarter);
-        const incomesInPeriod = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const expensesInPeriod = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
-        const transfersInPeriod = data.transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+        // 130 - complex calculation
+        const yearOfPeriod = period.startDate.getFullYear();
+        const quarterOfPeriod = Math.floor(period.startDate.getMonth() / 3) + 1;
         
-        const totalGrossInvoiced = incomesInPeriod.reduce((sum, i) => sum + i.baseAmount, 0);
-        const totalExpensesFromInvoices = expensesInPeriod.reduce((sum, e) => sum + e.baseAmount, 0);
-        const cuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * 3;
+        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= period.endDate; });
+        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= period.endDate && e.isDeductible; });
         
-        const totalAmortization = data.investmentGoods.reduce((sum, good) => {
+        const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount) + (e.recargoEquivalenciaAmount || 0), 0);
+        const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
              const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
              const goodStartDate = new Date(good.purchaseDate);
-             const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
-             const effectiveStartDate = goodStartDate > startDate ? goodStartDate : startDate;
-             const effectiveEndDate = goodEndDate < endDate ? goodEndDate : endDate;
-             if(effectiveEndDate > effectiveStartDate) {
-                const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
-                return sum + (daysInPeriod * dailyAmortization);
-             }
-             return sum;
-        },0)
-
-        const totalDeductibleExpenses = totalExpensesFromInvoices + cuotaAutonomo + totalAmortization;
-        const netProfit = totalGrossInvoiced - totalDeductibleExpenses;
+             if (goodStartDate.getFullYear() > yearOfPeriod) return sum;
+             const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
+             const effectiveEndDate = period.endDate;
+             const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+             return sum + (days * dailyAmortization);
+        }, 0);
+        const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (quarterOfPeriod * 3);
+        const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+        const netProfitYTD = grossYTD - deductibleExpensesYTD;
+        const quoteYTD = netProfitYTD * 0.20;
+        const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
         
-        const ivaRepercutido = incomesInPeriod.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const ivaSoportado = expensesInPeriod.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-        const vatResult = ivaRepercutido - ivaSoportado;
-        const irpfToPay = netProfit * 0.2;
-
-        const summary = {
-            totalGrossInvoiced,
-            totalExpenses: totalDeductibleExpenses,
-            netProfit,
-            ivaRepercutido,
-            ivaSoportado,
-            vatResult,
-            irpfToPay: Math.max(0, irpfToPay)
+        // Previous 130 payments
+        let pagosAnteriores130 = 0;
+        // This is a simplified calculation. A real one would store the results.
+        const model130 = {
+            netProfit: netProfitYTD,
+            quote: quoteYTD,
+            retenciones: retencionesSoportadasYTD,
+            previousPayments: pagosAnteriores130,
+            result: Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130)
         };
         
-        generateComprehensivePeriodPDF(incomesInPeriod, expensesInPeriod, data.investmentGoods, transfersInPeriod, data.settings, { startDate, endDate }, summary);
-    };
+        // Model 349
+        const opsByNif349: { [nif: string]: { name: string; total: number; key: 'E' | 'A' } } = {};
+        periodIncomes
+            .filter(i => i.isIntraCommunity)
+            .forEach(i => {
+                if (!i.clientNif) return;
+                opsByNif349[i.clientNif] = opsByNif349[i.clientNif] || { name: i.clientName, total: 0, key: 'E' };
+                opsByNif349[i.clientNif].total += i.baseAmount;
+            });
+        periodExpenses
+            .filter(e => e.isIntraCommunity)
+            .forEach(e => {
+                if (!e.providerNif) return;
+                opsByNif349[e.providerNif] = opsByNif349[e.providerNif] || { name: e.providerName, total: 0, key: 'A' };
+                opsByNif349[e.providerNif].total += e.baseAmount;
+            });
+        const model349 = Object.entries(opsByNif349).map(([nif, data]) => ({ nif, ...data }));
 
-    const calculateAnnualModels = () => {
-        const startDate = new Date(annualYear, 0, 1);
-        const endDate = new Date(annualYear, 11, 31, 23, 59, 59, 999);
-        const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
-        // Modelo 390
-        const ivaRepercutido = incomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const ivaSoportado = expenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-        setModelo390({ repercutido: ivaRepercutido, soportado: ivaSoportado });
-        // Modelo 347
-        const operations: { [nif: string]: { name: string, total: number } } = {};
-        incomes.forEach(i => {
-            if (i.clientNif) {
-                if (!operations[i.clientNif]) operations[i.clientNif] = { name: i.clientName, total: 0 };
-                operations[i.clientNif].total += getTotalFacturaEmitida(i);
-            }
-        });
-        expenses.forEach(e => {
-            if (e.providerNif) {
-                if (!operations[e.providerNif]) operations[e.providerNif] = { name: e.providerName, total: 0 };
-                operations[e.providerNif].total += getTotalFacturaRecibida(e);
-            }
-        });
-        const final347 = Object.entries(operations).map(([nif, data]) => ({ nif, ...data })).filter(op => op.total > 3005.06);
-        setModelo347(final347);
-    };
 
-    return (<div className="space-y-6">
-        <Card><h3 className="text-xl font-bold mb-4">Impuestos Trimestrales</h3><div className="flex flex-wrap items-end gap-4"><Select label="Año" value={year} onChange={e => setYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select><Select label="Trimestre" value={quarter} onChange={e => setQuarter(parseInt(e.target.value) as Quarter)}><option value="1">1T</option><option value="2">2T</option><option value="3">3T</option><option value="4">4T</option></Select><Button onClick={calculateModelo303}>Preparar Modelo 303 (IVA)</Button><Button onClick={calculateModelo130}>Preparar Modelo 130 (IRPF)</Button><Button variant="secondary" onClick={handleGenerateReport}><Icon name="download" className="w-4 h-4" /> Generar Informe Total PDF</Button></div>{modelo303 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 303:</h4><p>IVA Repercutido: {formatCurrency(modelo303.repercutido)}</p><p>IVA Soportado Deducible: {formatCurrency(modelo303.soportado)}</p><p className="font-bold">Resultado: {formatCurrency(modelo303.resultado)} ({modelo303.resultado >= 0 ? 'A ingresar' : 'A compensar'})</p></div>}{modelo130 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resultado Modelo 130:</h4><p>Total Ingresos: {formatCurrency(modelo130.ingresos)}</p><p>Total Gastos Deducibles: {formatCurrency(modelo130.gastos)}</p><p>Rendimento Neto: {formatCurrency(modelo130.rendimiento)}</p><p className="font-bold">Pago a cuenta (20%): {formatCurrency(modelo130.pago)}</p>{modelo130.highRetentionWarning && <p className="text-sm text-orange-500 mt-2">Aviso: Más del 70% de tu facturación tiene retención. Podrías no estar obligado a presentar este modelo.</p>}</div>}</Card>
-        <Card><h3 className="text-xl font-bold mb-4">Resúmenes Anuales</h3><div className="flex flex-wrap items-end gap-4"><Select label="Año" value={annualYear} onChange={e => setAnnualYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select><Button onClick={calculateAnnualModels}>Generar Resúmenes</Button></div>{modelo390 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resumen Modelo 390 (IVA Anual)</h4><p>Total IVA Repercutido: {formatCurrency(modelo390.repercutido)}</p><p>Total IVA Soportado: {formatCurrency(modelo390.soportado)}</p></div>}{modelo347 && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg"><h4>Resumen Modelo 347 (Operaciones con Terceros &gt; 3.005,06€)</h4>{modelo347.length > 0 ? <ul>{modelo347.map((op:any) => <li key={op.nif}>{op.name} ({op.nif}): {formatCurrency(op.total)}</li>)}</ul> : <p>Ninguna operación supera el umbral.</p>}</div>}</Card>
-    </div>);
-}
-
-const CalculadoraRentaView: React.FC = () => {
-    const { data, formatCurrency } = useContext(AppContext)!;
-    const [year, setYear] = useState(new Date().getFullYear() - 1);
-    const [result, setResult] = useState<any>(null);
-    const years = useMemo(() => Array.from(new Set([...data.incomes, ...data.expenses].map(i => new Date(i.date).getFullYear()))).sort((a, b) => b - a), [data]);
-    
-    const calculateRenta = () => {
-        const startDate = new Date(year, 0, 1);
-        const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
-        const incomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const expenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+        // --- Annual Calculations ---
+        const yearIncomes = incomes.filter(i => new Date(i.date).getFullYear() === rentaYear);
+        const yearExpenses = expenses.filter(e => new Date(e.date).getFullYear() === rentaYear);
         
-        const totalIngresos = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
-        const totalGastosFacturas = expenses.reduce((sum, e) => sum + e.baseAmount, 0);
-        const cuotaAutonomoAnual = (data.settings.monthlyAutonomoFee || 0) * 12;
-
-        const amortizacionAnual = data.investmentGoods.reduce((sum, good) => {
-             const purchaseDate = new Date(good.purchaseDate);
-             if (purchaseDate.getFullYear() <= year) {
-                const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
-                 if(endDate < endDateUsefulLife) {
-                    return sum + (good.acquisitionValue / good.usefulLife);
-                 }
-             }
-             return sum;
-        }, 0);
-
-        const totalGastosDeducibles = totalGastosFacturas + amortizacionAnual + cuotaAutonomoAnual;
-        const rendimientoNeto = totalIngresos - totalGastosDeducibles;
-        const cuotaIntegra = calculateAnnualIRPF(rendimientoNeto);
-        const retencionesSoportadas = incomes.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
-
-        let pagosACuenta130 = 0;
-        for (let q = 1; q <= 4; q++) {
-            const qStartDate = new Date(year, (q - 1) * 3, 1);
-            const qEndDate = new Date(year, q * 3, 0, 23, 59, 59, 999);
-            const qIncomes = data.incomes.filter(i => new Date(i.date) >= qStartDate && new Date(i.date) <= qEndDate);
-            const qExpenses = data.expenses.filter(e => e.isDeductible && new Date(e.date) >= qStartDate && new Date(e.date) <= qEndDate);
-            const qIngresos = qIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
-            const qGastosFacturas = qExpenses.reduce((sum, e) => sum + e.baseAmount, 0);
-            const qCuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * 3;
-            const qAmortizacion = data.investmentGoods.reduce((sum, good) => {
-                const purchaseDate = new Date(good.purchaseDate);
-                if (purchaseDate <= qEndDate) {
-                    const endDateUsefulLife = new Date(purchaseDate.getFullYear() + good.usefulLife, purchaseDate.getMonth(), purchaseDate.getDate());
-                    if(qEndDate < endDateUsefulLife) return sum + (good.acquisitionValue / good.usefulLife) / 4;
-                }
-                return sum;
-            }, 0);
-            const qRendimiento = qIngresos - (qGastosFacturas + qAmortizacion + qCuotaAutonomo);
-            pagosACuenta130 += Math.max(0, qRendimiento * 0.2);
-        }
+        // 390
+        const annualIVARepercutido = yearIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const annualIVASoportado = yearExpenses
+            .filter(e => e.isDeductible && !e.recargoEquivalenciaAmount)
+            .reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0) + 
+            investmentGoods
+            .filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() === rentaYear)
+            .reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        const model390 = { ivaRepercutido: annualIVARepercutido, ivaSoportado: annualIVASoportado, result: annualIVARepercutido - annualIVASoportado };
         
-        const resultadoFinal = cuotaIntegra - retencionesSoportadas - pagosACuenta130;
-        setResult({ rendimientoNeto, cuotaIntegra, retencionesSoportadas, pagosACuenta130, resultadoFinal });
-    };
+        // 190 & 180
+        const model190 = yearExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        const model180 = yearExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
 
-    return (<Card>
-        <h3 className="text-xl font-bold mb-4">Calculadora de Renta Anual (Modelo 100)</h3>
-        <div className="flex items-end gap-4">
-            <Select label="Año Fiscal" value={year} onChange={e => setYear(parseInt(e.target.value))}>{years.map(y => <option key={y} value={y}>{y}</option>)}</Select>
-            <Button onClick={calculateRenta}>Calcular Renta</Button>
-        </div>
-        {result && <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg space-y-2">
-            <p><strong>Rendimiento Neto Anual:</strong> {formatCurrency(result.rendimientoNeto)}</p>
-            <p><strong>Cuota Íntegra (Total IRPF a pagar):</strong> {formatCurrency(result.cuotaIntegra)}</p><hr className="dark:border-slate-700"/>
-            <p className="text-sm">(-) Retenciones IRPF Soportadas: {formatCurrency(result.retencionesSoportadas)}</p>
-            <p className="text-sm">(-) Pagos a Cuenta (Mod. 130): {formatCurrency(result.pagosACuenta130)}</p><hr className="dark:border-slate-700"/>
-            <p className={`text-lg font-bold ${result.resultadoFinal >= 0 ? 'text-red-500' : 'text-green-500'}`}>Resultado Final Declaración: {formatCurrency(Math.abs(result.resultadoFinal))} ({result.resultadoFinal >= 0 ? 'A PAGAR' : 'A DEVOLVER'})</p>
-        </div>}
-    </Card>);
-}
+        // 347
+        const opsByNif: { [nif: string]: { name: string, total: number } } = {};
+        yearIncomes.forEach(i => {
+            if (!i.clientNif) return;
+            opsByNif[i.clientNif] = opsByNif[i.clientNif] || { name: i.clientName, total: 0 };
+            opsByNif[i.clientNif].total += getTotalFacturaEmitida(i);
+        });
+        yearExpenses.forEach(e => {
+            if (!e.providerNif) return;
+            opsByNif[e.providerNif] = opsByNif[e.providerNif] || { name: e.providerName, total: 0 };
+            opsByNif[e.providerNif].total += e.baseAmount + getCuotaIVA(e.baseAmount, e.vatRate);
+        });
+        const model347 = Object.entries(opsByNif).map(([nif, data]) => ({ nif, ...data })).filter(op => op.total > 3005.06);
 
-const ResumenGraficoView: React.FC = () => {
-    const context = useContext(AppContext)!;
-    const { data, formatCurrency } = context;
-    const { incomes, expenses, professionalCategories } = data;
-    const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
-        const now = new Date(); const year = now.getFullYear(); const month = now.getMonth();
-        if (month < 3) return { startDate: new Date(year, 0, 1), endDate: new Date(year, 2, 31, 23, 59, 59, 999) };
-        if (month < 6) return { startDate: new Date(year, 3, 1), endDate: new Date(year, 5, 30, 23, 59, 59, 999) };
-        if (month < 9) return { startDate: new Date(year, 6, 1), endDate: new Date(year, 8, 30, 23, 59, 59, 999) };
-        return { startDate: new Date(year, 9, 1), endDate: new Date(year, 11, 31, 23, 59, 59, 999) };
-    });
-    const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
+        // 100
+        const model100 = calculateAnnualRent(rentaYear, data);
 
-    const filteredIncomes = useMemo(() => incomes.filter(i => new Date(i.date) >= period.startDate && new Date(i.date) <= period.endDate), [incomes, period]);
-    const filteredExpenses = useMemo(() => expenses.filter(e => new Date(e.date) >= period.startDate && new Date(e.date) <= period.endDate), [expenses, period]);
-
-    const incomeChartData = useMemo(() => {
-        const dataByClient = filteredIncomes.reduce((acc, income) => { acc[income.clientName] = (acc[income.clientName] || 0) + income.baseAmount; return acc; }, {} as {[k:string]:number});
-        return Object.entries(dataByClient).map(([name, value]) => ({ name, value }));
-    }, [filteredIncomes]);
-
-    const expenseChartData = useMemo(() => {
-        const dataByCat = filteredExpenses.reduce((acc, expense) => {
-            const categoryName = professionalCategories.find(c => c.id === expense.categoryId)?.name || 'Sin Categoría';
-            acc[categoryName] = (acc[categoryName] || 0) + expense.baseAmount;
-            return acc;
-        }, {} as {[k:string]:number});
-        return Object.entries(dataByCat).map(([name, value]) => ({ name, value }));
-    }, [filteredExpenses, professionalCategories]);
+        return { kpis, model303, model130, model111, model115, model349, model390, model190, model180, model347, model100 };
+    }, [period, rentaYear, data]);
     
-    const COLORS = ['#FF8042', '#0088FE', '#00C49F', '#FFBB28', '#AF19FF'];
+    const periodQuarter = Math.floor(period.startDate.getMonth() / 3) + 1;
+    const periodYear = period.startDate.getFullYear();
+    const quarterlyStatus = useMemo(() => checkFilingPeriod('303/130/111/115', periodYear, periodQuarter), [periodYear, periodQuarter]);
+    const annualStatus100 = useMemo(() => checkFilingPeriod('100', rentaYear, 0), [rentaYear]);
+    const annualStatus390 = useMemo(() => checkFilingPeriod('390', rentaYear, 0), [rentaYear]);
+    const annualStatus347 = useMemo(() => checkFilingPeriod('347', rentaYear, 0), [rentaYear]);
+
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
+            {/* --- Period Selection --- */}
             <PeriodSelector onPeriodChange={handlePeriodChange} />
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 <Card><h3 className="text-lg font-bold mb-4">Ingresos por Cliente</h3><ResponsiveContainer width="100%" height={300}><BarChart data={incomeChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.2)" /><XAxis dataKey="name" /><YAxis tickFormatter={(tick) => formatCurrency(tick)} /><Tooltip formatter={(value: number) => formatCurrency(value as number)} /><Legend /><Bar dataKey="value" name="Ingresos" fill="#0088FE" /></BarChart></ResponsiveContainer></Card>
-                 <Card><h3 className="text-lg font-bold mb-4">Gastos por Categoría</h3><ResponsiveContainer width="100%" height={300}><PieChart><Pie data={expenseChartData} cx="50%" cy="50%" labelLine={false} outerRadius={80} fill="#8884d8" dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{expenseChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip formatter={(value: number) => formatCurrency(value)} /><Legend /></PieChart></ResponsiveContainer></Card>
-            </div>
+
+            {/* --- Business Health KPIs --- */}
+            <section>
+                <h3 className="text-xl font-bold mb-4">Resumen del Periodo ({periodQuarter}T {periodYear})</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <Card><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Margen de Beneficio</h4><p className={`text-2xl font-bold ${fiscalCalculations.kpis.kpiProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fiscalCalculations.kpis.kpiProfitMargin.toFixed(2)}%</p></Card>
+                </div>
+            </section>
+            
+            {/* --- Quarterly Liquidation Models --- */}
+            <section>
+                <h3 className="text-xl font-bold mb-4">Liquidaciones del Periodo ({periodQuarter}T {periodYear})</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Model 303 */}
+                    <Card><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA. Diferencia entre el IVA cobrado y el pagado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido" value={fiscalCalculations.model303.ivaRepercutido} color="green" /><ModelRow label="IVA Soportado Deducible" value={fiscalCalculations.model303.ivaSoportado} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
+                    {/* Model 130 */}
+                    <Card><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral del 20% sobre el rendimiento neto acumulado del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfit} /><ModelRow label="Cuota (20%)" value={fiscalCalculations.model130.quote} /><ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model130.retenciones} color="green" negative /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
+                    {/* Model 111 */}
+                    {settings.hiresProfessionals && <Card><ModelCardHeader model="111 (Retenciones Prof.)" tutorialLink="http://www.youtube.com/watch?v=UDoDQgFHNu4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH01.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en facturas de otros profesionales." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model111} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
+                    {/* Model 115 */}
+                    {settings.rentsOffice && <Card><ModelCardHeader model="115 (Retenciones Alq.)" tutorialLink="http://www.youtube.com/watch?v=fMfRZo2DvH0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH02.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en la factura del alquiler de tu local u oficina." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model115} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
+                </div>
+                 {/* Model 349 */}
+                {settings.isInROI && <Card className="mt-6">
+                    <ModelCardHeader model="349 (Op. Intracomunitarias)" tutorialLink="http://www.youtube.com/watch?v=mAiFQB-5GYc" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI28.shtml" tooltip="Declaración informativa de compras (adquisiciones) y ventas (entregas) a empresas de otros países de la Unión Europea." />
+                    <div className="mt-4">
+                        {fiscalCalculations.model349.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
+                                        <tr>
+                                            <th className="px-4 py-2">NIF Intracomunitario</th>
+                                            <th className="px-4 py-2">Nombre / Razón Social</th>
+                                            <th className="px-4 py-2 text-center">Clave</th>
+                                            <th className="px-4 py-2 text-right">Importe</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {fiscalCalculations.model349.map(op => (
+                                            <tr key={op.nif} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
+                                                <td className="px-4 py-2 font-mono text-xs">{op.nif}</td>
+                                                <td className="px-4 py-2">{op.name}</td>
+                                                <td className="px-4 py-2 text-center font-semibold">
+                                                    <span title={op.key === 'E' ? 'Entrega de Bienes/Servicios' : 'Adquisición de Bienes/Servicios'}>
+                                                        {op.key}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-right font-bold">{formatCurrency(op.total)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-center text-slate-500 py-4">No se han registrado operaciones intracomunitarias en este periodo.</p>
+                        )}
+                    </div>
+                    <StatusFooter status={quarterlyStatus} />
+                </Card>}
+            </section>
+            
+            <div className="border-t dark:border-slate-700 pt-8" />
+            
+            {/* --- Annual Models --- */}
+            <section>
+                 <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+                    <h3 className="text-xl font-bold">Declaraciones y Resúmenes Anuales</h3>
+                    <div className="w-full sm:w-auto"><Select label="Seleccionar Año Fiscal" value={rentaYear} onChange={e => setRentaYear(parseInt(e.target.value))}>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</Select></div>
+                </div>
+
+                {/* Model 100 */}
+                <Card className="mb-6">
+                    <ModelCardHeader model={`100 (Declaración de la Renta ${rentaYear})`} tutorialLink="http://www.youtube.com/watch?v=_cVdVrUzjPI" link="https://sede.agenciatributaria.gob.es/Sede/irpf/tengo-que-presentar-declaracion/modelo-100-i-sobre-r-anual.html" tooltip="Declaración anual que resume todos tus rendimientos del año para calcular el IRPF final." />
+                     <div className="mt-4 space-y-2 text-sm">
+                        <ModelRow label="Rendimiento Neto Anual" value={fiscalCalculations.model100.annualNetProfit} />
+                        {settings.applySevenPercentDeduction && fiscalCalculations.model100.gastosDificilJustificacion > 0 && (
+                            <ModelRow label="Gastos Difícil Justificación (7%)" value={fiscalCalculations.model100.gastosDificilJustificacion} color="red" negative />
+                        )}
+                        <ModelRow label="Cuota Íntegra (Total IRPF)" value={fiscalCalculations.model100.cuotaIntegra} />
+                        <hr className="dark:border-slate-700 my-1"/>
+                        <ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model100.retencionesSoportadas} color="green" negative />
+                        <ModelRow label="Pagos a Cuenta (Mod. 130)" value={fiscalCalculations.model100.pagosACuenta130} color="green" negative />
+                        <ModelResult label="Resultado Final" value={fiscalCalculations.model100.resultadoFinal} resultText={v => v >= 0 ? 'A PAGAR' : 'A DEVOLVER'} isAbsolute />
+                    </div>
+                    <StatusFooter status={annualStatus100} customText={`para la declaración del año ${rentaYear}`}/>
+                </Card>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Model 390 */}
+                    <Card><ModelCardHeader model="390 (Resumen IVA)" tutorialLink="http://www.youtube.com/watch?v=yVtU7kjaZeo" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G412.shtml" tooltip="Resumen anual informativo de todas tus declaraciones de IVA (Modelo 303) del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Total IVA Repercutido" value={fiscalCalculations.model390.ivaRepercutido} color="green" /><ModelRow label="Total IVA Soportado" value={fiscalCalculations.model390.ivaSoportado} color="red" negative /><ModelResult label="Resultado Anual" value={fiscalCalculations.model390.result} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>
+                    {/* Model 190 */}
+                    {settings.hiresProfessionals && <Card><ModelCardHeader model="190 (Resumen Ret. Prof.)" tutorialLink="http://www.youtube.com/watch?v=PHbwM2KjdY4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI10.shtml" tooltip="Resumen anual de las retenciones a profesionales (Modelo 111), identificando a cada perceptor." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model190} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
+                    {/* Model 180 */}
+                    {settings.rentsOffice && <Card><ModelCardHeader model="180 (Resumen Ret. Alq.)" tutorialLink="http://www.youtube.com/watch?v=FA_IcE6UwW0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI00.shtml" tooltip="Resumen anual de las retenciones de alquileres (Modelo 115), identificando a cada arrendador." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model180} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
+                    {/* Dummy Card to fill space, as 349 is now below */}
+                    <div className="hidden lg:block"></div>
+                </div>
+
+                {/* Model 347 */}
+                <Card className="mt-6">
+                    <ModelCardHeader model="347 (Operaciones con Terceros)" tutorialLink="http://www.youtube.com/watch?v=2rsiDQPOiQk" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI27.shtml" tooltip="Declaración informativa anual de clientes y proveedores con los que has superado 3.005,06€ de operaciones." />
+                    <div className="mt-4">
+                        {fiscalCalculations.model347.length > 0 ? (
+                            <ul className="space-y-2 text-sm max-h-60 overflow-y-auto pr-2">{fiscalCalculations.model347.map(op => (
+                                <li key={op.nif} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md">
+                                    <div><p className="font-semibold">{op.name}</p><p className="text-xs text-slate-500">{op.nif}</p></div>
+                                    <p className="font-bold">{formatCurrency(op.total)}</p>
+                                </li>
+                            ))}</ul>
+                        ) : (
+                            <p className="text-center text-slate-500 py-4">No se han detectado operaciones superiores a 3.005,06€ con ningún tercero este año.</p>
+                        )}
+                    </div>
+                    <StatusFooter status={annualStatus347} customText={`para la declaración del año ${rentaYear}`}/>
+                </Card>
+            </section>
         </div>
     );
 };
 
+// --- UI Components for AnalisisFiscalView ---
+const ModelCardHeader: React.FC<{model: string, link: string, tooltip: string, tutorialLink: string}> = ({model, link, tooltip, tutorialLink}) => (
+    <h4 className="text-lg font-bold flex items-center gap-2">
+        <span>Modelo {model}</span>
+        <a href={link} target="_blank" rel="noopener noreferrer" title="Presentar en la Sede Electrónica"><Icon name="external-link" className="w-4 h-4 text-primary-500 hover:text-primary-700" /></a>
+        <a href={tutorialLink} target="_blank" rel="noopener noreferrer" title="Ver tutorial en YouTube"><Icon name="play" className="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" /></a>
+        <HelpTooltip content={tooltip} />
+    </h4>
+);
+const ModelRow: React.FC<{label: string, value: number, color?: 'green' | 'red', negative?: boolean}> = ({label, value, color, negative}) => {
+    const { formatCurrency } = useContext(AppContext)!;
+    const colorClass = color === 'green' ? 'text-green-500' : color === 'red' ? 'text-red-500' : '';
+    return <div className="flex justify-between"><p>{label}:</p><p className={`font-semibold ${colorClass}`}>{negative && value > 0 ? '-' : ''}{formatCurrency(value)}</p></div>
+};
+const ModelResult: React.FC<{label: string, value: number, resultText?: (v: number) => string, isAbsolute?: boolean}> = ({label, value, resultText, isAbsolute}) => {
+    const { formatCurrency } = useContext(AppContext)!;
+    const finalValue = isAbsolute ? Math.abs(value) : value;
+    const colorClass = value >= 0 ? 'text-red-600' : 'text-green-600';
+    return <div className="flex justify-between text-base pt-2 border-t dark:border-slate-700"><p className="font-bold">{label}:</p><p className={`font-bold ${colorClass}`}>{formatCurrency(finalValue)} {resultText && `(${resultText(value)})`}</p></div>
+};
+const StatusFooter: React.FC<{status: {isOpen: boolean, text: string}, customText?: string}> = ({status, customText}) => (
+    <div className={`mt-4 text-xs font-semibold text-right ${status.isOpen ? 'text-green-600' : 'text-red-600'}`}>
+        {status.text} {customText}
+    </div>
+);
 
-// --- AI Import Modal ---
-const AiImportModal: React.FC<{
-    isOpen: boolean; onClose: () => void;
-    onAnalysisComplete: (data: Partial<Income> | Partial<Expense> | Partial<InvestmentGood>, type: 'income' | 'expense' | 'investment', file: File) => void;
-    apiKey: string;
-}> = ({ isOpen, onClose, onAnalysisComplete, apiKey }) => {
-    const [invoiceType, setInvoiceType] = useState<'income' | 'expense' | 'investment'>('income');
-    const [file, setFile] = useState<File | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [fileName, setFileName] = useState('');
+const GenerarPDFsView: React.FC = () => {
+    const { data } = useContext(AppContext)!;
+    const [documentType, setDocumentType] = useState<'incomeBook' | 'expenseBook' | 'fullReport'>('fullReport');
+    const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const quarter = Math.floor(now.getMonth() / 3);
+        return {
+            startDate: new Date(year, quarter * 3, 1),
+            endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999),
+        };
+    });
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0];
-        if (selectedFile) { setFile(selectedFile); setFileName(selectedFile.name); setError(''); }
-    };
-    
-    const handleAnalyze = async () => {
-        if (!file) { setError('Por favor, selecciona un archivo.'); return; }
-        setIsLoading(true); setError('');
-        try {
-            const extractedData = await extractInvoiceData(file, invoiceType, apiKey);
-            onAnalysisComplete(extractedData, invoiceType, file);
-            handleClose();
-        } catch (err: any) {
-            setError(err.message || 'Ha ocurrido un error inesperado.');
-        } finally {
-            setIsLoading(false);
+    const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
+
+    const handleGenerate = () => {
+        const { startDate, endDate } = period;
+
+        const filteredIncomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
+        const filteredExpenses = data.expenses.filter(e => new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+        const filteredInvestmentGoods = data.investmentGoods.filter(g => new Date(g.purchaseDate) >= startDate && new Date(g.purchaseDate) <= endDate);
+        const filteredTransfers = data.transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+
+        switch (documentType) {
+            case 'incomeBook':
+                generateIncomesPDF(filteredIncomes, { allExpenses: data.expenses, allInvestmentGoods: data.investmentGoods, settings: data.settings, period });
+                break;
+            case 'expenseBook':
+                generateExpensesPDF(filteredExpenses, filteredInvestmentGoods, { allIncomes: data.incomes, allInvestmentGoods: data.investmentGoods, settings: data.settings, period });
+                break;
+            case 'fullReport':
+                const deductibleExpenses = filteredExpenses.filter(e => e.isDeductible);
+                const totalGrossInvoiced = filteredIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
+                const totalExpensesFromInvoices = deductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+
+                const totalAmortization = data.investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
+                    const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+                    const goodStartDate = new Date(good.purchaseDate);
+                    const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+                    const effectiveStartDate = goodStartDate > startDate ? goodStartDate : startDate;
+                    const effectiveEndDate = goodEndDate < endDate ? goodEndDate : endDate;
+                    if (effectiveEndDate > effectiveStartDate) {
+                        const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+                        return sum + (daysInPeriod * dailyAmortization);
+                    }
+                    return sum;
+                }, 0);
+                
+                const monthsInPeriod = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth()) + 1;
+                const cuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * monthsInPeriod;
+                
+                const totalDeductibleExpenses = totalExpensesFromInvoices + cuotaAutonomo + totalAmortization;
+                const netProfit = totalGrossInvoiced - totalDeductibleExpenses;
+                
+                const ivaRepercutido = filteredIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+                const ivaSoportadoFromExpenses = deductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+                const ivaSoportadoFromGoods = data.investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= startDate && new Date(g.purchaseDate) <= endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+                const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
+                const vatResult = ivaRepercutido - ivaSoportado;
+                const irpfToPay = netProfit * 0.2;
+
+                const summary = {
+                    totalGrossInvoiced,
+                    totalExpenses: totalDeductibleExpenses,
+                    netProfit,
+                    ivaRepercutido,
+                    ivaSoportado,
+                    vatResult,
+                    irpfToPay: Math.max(0, irpfToPay)
+                };
+
+                generateComprehensivePeriodPDF(filteredIncomes, deductibleExpenses, data.investmentGoods.filter(g => g.isDeductible), filteredTransfers, data.settings, { startDate, endDate }, summary);
+                break;
         }
     };
-    
-    const handleClose = () => { setFile(null); setFileName(''); setError(''); setIsLoading(false); onClose(); }
 
     return (
-        <Modal isOpen={isOpen} onClose={handleClose} title="Importar Factura con IA">
+        <Card>
+            <h3 className="text-xl font-bold mb-4">Generador de Documentos PDF</h3>
             <div className="space-y-4">
-                <p className="text-sm text-slate-600 dark:text-slate-400">La IA rellenará el formulario con los datos de la factura que subas. Revisa siempre los datos antes de guardar.</p>
-                <Select label="Tipo de Documento" value={invoiceType} onChange={(e) => setInvoiceType(e.target.value as any)}>
-                    <option value="income">Factura Emitida (Ingreso)</option>
-                    <option value="expense">Factura Recibida (Gasto)</option>
-                    <option value="investment">Bien de Inversión</option>
+                <Select label="Tipo de Documento" value={documentType} onChange={e => setDocumentType(e.target.value as any)}>
+                    <option value="fullReport">Informe Fiscal Completo</option>
+                    <option value="incomeBook">Libro de Facturas Emitidas</option>
+                    <option value="expenseBook">Libro de Gastos y Bienes de Inversión</option>
                 </Select>
                 <div>
-                     <label htmlFor="file-upload" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Sube la factura (imagen o PDF)</label>
-                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-600 border-dashed rounded-md"><div className="space-y-1 text-center"><Icon name="upload" className="mx-auto h-12 w-12 text-slate-400" /><div className="flex text-sm text-slate-600 dark:text-slate-400"><label htmlFor="file-upload" className="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none"><span>Selecciona un archivo</span><input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept="image/png, image/jpeg, image/webp, application/pdf" /></label><p className="pl-1">o arrástralo aquí</p></div><p className="text-xs text-slate-500 dark:text-slate-500">PNG, JPG, WEBP, PDF</p></div></div>
-                    {fileName && <p className="text-sm text-center mt-2 text-slate-600 dark:text-slate-400">{fileName}</p>}
+                    <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Selecciona el Periodo</p>
+                    <PeriodSelector onPeriodChange={handlePeriodChange} />
                 </div>
-                {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-                <div className="pt-4"><Button onClick={handleAnalyze} disabled={isLoading || !file} className="w-full">{isLoading ? 'Analizando...' : <><Icon name="sparkles" className="w-5 h-5" /> Analizar Documento</>}</Button></div>
+                <div className="flex justify-end pt-4">
+                    <Button onClick={handleGenerate}>
+                        <Icon name="download" className="w-5 h-5" /> Generar PDF
+                    </Button>
+                </div>
             </div>
-        </Modal>
+        </Card>
     );
 };
 

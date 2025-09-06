@@ -17,15 +17,17 @@ export enum MoneySource {
 }
 
 export enum MoneyLocation {
-    CASH = 'Efectivo',
     PRO_BANK = 'Banco Profesional',
+    CASH_PRO = 'Efectivo Profesional',
     PERS_BANK = 'Banco Personal',
+    CASH = 'Efectivo',
     OTHER = 'Otros (Crypto, etc.)'
 }
 
 export enum TransferJustification {
     SUELDO_AUTONOMO = 'Sueldo del Autónomo',
-    GASTO_NO_RELACIONADO = 'Gasto No Relacionado con la Actividad'
+    GASTO_NO_RELACIONADO = 'Gasto No Relacionado con la Actividad',
+    RETIRO_EFECTIVO_NEGOCIO = 'Retiro de efectivo para el negocio'
 }
 
 export interface Category {
@@ -55,6 +57,7 @@ export interface Income {
   isPaid: boolean;
   location: MoneyLocation;
   attachment?: Attachment;
+  isIntraCommunity?: boolean;
 }
 
 export interface Expense {
@@ -67,21 +70,37 @@ export interface Expense {
   providerNif?: string;
   concept: string;
   baseAmount: number;
+  deductibleBaseAmount?: number;
   vatRate: number; // percentage
+  recargoEquivalenciaRate?: number; // percentage
+  recargoEquivalenciaAmount?: number; // calculated amount
+  irpfRetentionRate?: number; // percentage
+  irpfRetentionAmount?: number; // calculated amount
   categoryId: string;
   location?: MoneyLocation;
   attachment?: Attachment;
   isDeductible: boolean;
+  isIntraCommunity?: boolean;
+  isRentalExpense?: boolean;
+  landlordNif?: string;
+  propertyCadastralRef?: string;
 }
 
 export interface InvestmentGood {
     id: string;
     purchaseDate: string; // ISO string
     description: string;
+    providerName: string;
     providerNif?: string;
     invoiceNumber?: string;
     acquisitionValue: number; // Base imponible
+    vatRate: number;
     usefulLife: number; // in years
+    isDeductible: boolean;
+    categoryId: string;
+    isPaid: boolean;
+    paymentDate?: string;
+    location?: MoneyLocation;
     attachment?: Attachment;
 }
 
@@ -149,6 +168,11 @@ export interface UserSettings {
   defaultIrpfRate: number;
   monthlyAutonomoFee: number;
   geminiApiKey: string;
+  isInRecargoEquivalencia: boolean;
+  applySevenPercentDeduction: boolean;
+  rentsOffice: boolean;
+  isInROI: boolean;
+  hiresProfessionals: boolean;
   initialBalances?: {
       [key in MoneyLocation]?: number;
   };

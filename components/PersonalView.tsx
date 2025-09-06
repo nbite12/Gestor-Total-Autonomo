@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
-import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation } from '../types';
+import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation, InvestmentGood } from '../types';
 import { Card, Button, Modal, Input, Select, Icon } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -8,7 +8,16 @@ import { MovementForm } from './TransactionForms';
 
 
 const formatCurrencyForUI = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-const formatDateForInput = (isoDate: string) => isoDate.split('T')[0];
+const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
+    const date = isoDate ? new Date(isoDate) : new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 
 // --- Savings Goal Form ---
 const SavingsGoalForm: React.FC<{
@@ -17,12 +26,16 @@ const SavingsGoalForm: React.FC<{
 }> = ({ onClose, goalToEdit }) => {
     const context = useContext(AppContext);
     if (!context) throw new Error("Context not available");
-    const { setData } = context;
+    const { saveData } = context;
 
-    const [formData, setFormData] = useState({
-        name: goalToEdit?.name || '',
-        targetAmount: goalToEdit?.targetAmount || 0,
-        deadline: goalToEdit ? formatDateForInput(goalToEdit.deadline) : new Date().toISOString().split('T')[0]
+    const [formData, setFormData] = useState(() => {
+        const defaultDeadline = new Date();
+        defaultDeadline.setMonth(defaultDeadline.getMonth() + 1);
+        return {
+            name: goalToEdit?.name || '',
+            targetAmount: goalToEdit?.targetAmount || 0,
+            deadline: goalToEdit ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput(defaultDeadline)
+        }
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,6 +45,7 @@ const SavingsGoalForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const message = goalToEdit ? "Objetivo de ahorro actualizado." : "Objetivo de ahorro creado.";
         if (goalToEdit) {
             const updatedGoal: SavingsGoal = {
                 ...goalToEdit,
@@ -39,10 +53,10 @@ const SavingsGoalForm: React.FC<{
                 targetAmount: formData.targetAmount,
                 deadline: new Date(formData.deadline).toISOString(),
             };
-            setData(prev => ({
+            saveData(prev => ({
                 ...prev,
                 savingsGoals: prev.savingsGoals.map(g => g.id === goalToEdit.id ? updatedGoal : g)
-            }));
+            }), message);
         } else {
             const newGoal: SavingsGoal = {
                 id: `sg-${Date.now()}`,
@@ -51,7 +65,7 @@ const SavingsGoalForm: React.FC<{
                 currentAmount: 0,
                 deadline: new Date(formData.deadline).toISOString(),
             };
-            setData(prev => ({...prev, savingsGoals: [...prev.savingsGoals, newGoal]}));
+            saveData(prev => ({...prev, savingsGoals: [...prev.savingsGoals, newGoal]}), message);
         }
         onClose();
     };
@@ -60,7 +74,7 @@ const SavingsGoalForm: React.FC<{
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Nombre del Objetivo" name="name" value={formData.name} onChange={handleChange} required />
             <Input label="Importe Objetivo (€)" name="targetAmount" type="number" step="0.01" min="0" value={formData.targetAmount} onChange={handleChange} required />
-            <Input label="Fecha Límite" name="deadline" type="date" value={formData.deadline} onChange={handleChange} required />
+            <Input label="Fecha Límite" name="deadline" type="datetime-local" value={formData.deadline} onChange={handleChange} required />
              <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
                 <Button type="submit">{goalToEdit ? 'Guardar Cambios' : 'Crear Objetivo'}</Button>
@@ -76,7 +90,7 @@ const AddFundsForm: React.FC<{
 }> = ({ goal, onClose }) => {
     const context = useContext(AppContext);
     if (!context) throw new Error("Context not available");
-    const { data, setData } = context;
+    const { data, saveData } = context;
     const [amount, setAmount] = useState(0);
     const [location, setLocation] = useState<MoneyLocation>(MoneyLocation.PERS_BANK);
 
@@ -84,7 +98,7 @@ const AddFundsForm: React.FC<{
         e.preventDefault();
         if (amount <= 0) return;
 
-        setData(prev => {
+        saveData(prev => {
             // Update goal
             const updatedGoals = prev.savingsGoals.map(g => 
                 g.id === goal.id ? { ...g, currentAmount: g.currentAmount + amount } : g
@@ -103,7 +117,7 @@ const AddFundsForm: React.FC<{
             };
 
             return {...prev, savingsGoals: updatedGoals, personalMovements: [...prev.personalMovements, newMovement]};
-        });
+        }, `Aportación de ${formatCurrencyForUI(amount)} a "${goal.name}".`);
         onClose();
     }
 
@@ -125,7 +139,7 @@ const AddFundsForm: React.FC<{
 const PersonalView: React.FC = () => {
   const context = useContext(AppContext);
   if (!context) return <div>Cargando...</div>;
-  const { data, setData, formatCurrency } = context;
+  const { data, saveData, formatCurrency } = context;
   const { savingsGoals, personalCategories } = data;
 
   const [isMovementModalOpen, setMovementModalOpen] = useState(false);
@@ -143,6 +157,7 @@ const PersonalView: React.FC = () => {
 
   const moneyDistribution = useMemo(() => {
         const balances: { [key in MoneyLocation]: number } = {
+            [MoneyLocation.CASH_PRO]: data.settings.initialBalances?.[MoneyLocation.CASH_PRO] || 0,
             [MoneyLocation.CASH]: data.settings.initialBalances?.[MoneyLocation.CASH] || 0,
             [MoneyLocation.PRO_BANK]: data.settings.initialBalances?.[MoneyLocation.PRO_BANK] || 0,
             [MoneyLocation.PERS_BANK]: data.settings.initialBalances?.[MoneyLocation.PERS_BANK] || 0,
@@ -160,6 +175,12 @@ const PersonalView: React.FC = () => {
                 balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
             }
         });
+        data.investmentGoods.forEach(good => {
+            if (good.isPaid && good.location) {
+                const totalAmount = good.acquisitionValue + (good.acquisitionValue * good.vatRate / 100);
+                balances[good.location] = (balances[good.location] || 0) - totalAmount;
+            }
+        });
         data.personalMovements.filter(m => m.isPaid).forEach(movement => {
             if (movement.location) {
                 if (movement.type === 'income') balances[movement.location] = (balances[movement.location] || 0) + movement.amount;
@@ -171,7 +192,7 @@ const PersonalView: React.FC = () => {
             balances[transfer.toLocation] = (balances[transfer.toLocation] || 0) + transfer.amount;
         });
         return balances;
-    }, [data.incomes, data.expenses, data.personalMovements, data.transfers, data.settings.initialBalances]);
+    }, [data.incomes, data.expenses, data.investmentGoods, data.personalMovements, data.transfers, data.settings.initialBalances]);
 
 
   const filteredMovements = useMemo(() => data.personalMovements.filter(m => {
@@ -210,15 +231,15 @@ const PersonalView: React.FC = () => {
   
   const handleDeleteMovement = useCallback((id: string) => {
       if(window.confirm('¿Seguro que quieres borrar este movimiento?')) {
-          setData(prev => ({...prev, personalMovements: prev.personalMovements.filter(m => m.id !== id)}));
+          saveData(prev => ({...prev, personalMovements: prev.personalMovements.filter(m => m.id !== id)}), "Movimiento eliminado.");
       }
-  }, [setData]);
+  }, [saveData]);
 
    const handleDeleteGoal = useCallback((id: string) => {
       if(window.confirm('¿Seguro que quieres borrar este objetivo? No se borrarán las aportaciones ya hechas.')) {
-          setData(prev => ({...prev, savingsGoals: prev.savingsGoals.filter(g => g.id !== id)}));
+          saveData(prev => ({...prev, savingsGoals: prev.savingsGoals.filter(g => g.id !== id)}), "Objetivo de ahorro eliminado.");
       }
-  }, [setData]);
+  }, [saveData]);
 
   const handleOpenGoalForm = (goal: SavingsGoal | null) => {
     setGoalToEdit(goal);

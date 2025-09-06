@@ -26,7 +26,10 @@ export const Icon: React.FC<{ name: string; className?: string }> = ({ name, cla
     'switch-horizontal': <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />,
     'eye': <><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 10.224 7.31 6 12 6c4.69 0 8.577 4.224 9.964 5.683a1.012 1.012 0 010 .639C20.577 13.776 16.69 18 12 18c-4.69 0-8.577-4.224-9.964-5.683z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></>,
     'eye-off': <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 14.334 7.21 18 12 18a10.477 10.477 0 007.456-2.986l-1.524-1.524A3.375 3.375 0 0112 15.75a3.375 3.375 0 01-2.932-1.524L3.98 8.223zM15.75 12c0 .269-.022.533-.064.79l-1.4-1.4a2.25 2.25 0 00-3.182-3.182l-1.4-1.4A9.452 9.452 0 0112 4.5c4.79 0 8.774 3.666 9.994 8.25a.375.375 0 01-.486.486l-1.332-.89a11.169 11.169 0 00-2.413-1.61z" />,
-    microphone: <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+    microphone: <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />,
+    'external-link': <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5 0V6.375c0-.621.504-1.125 1.125-1.125h4.5m-4.5 0l4.5-4.5m0 0v4.5m0-4.5h-4.5" />,
+    'play': <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />,
+    'info': <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
   };
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -154,6 +157,42 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
   );
 };
 
+// --- Unsupported Models Modal Component ---
+export const UnsupportedModelsModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ isOpen, onClose }) => {
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Información Adicional">
+            <div className="space-y-4 text-slate-600 dark:text-slate-300">
+                <div className="flex items-start gap-3">
+                    <Icon name="info" className="w-6 h-6 text-primary-500 flex-shrink-0 mt-1" />
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                        Modelos Fiscales No Incluidos Actualmente
+                    </h3>
+                </div>
+
+                <p>
+                    Nuestra aplicación está diseñada para cubrir los modelos fiscales más comunes para autónomos en régimen de estimación directa que operan en la península. Para garantizar una experiencia simple y eficaz, algunos casos y regímenes específicos aún no están implementados directamente en la app.
+                </p>
+
+                <h4 className="font-semibold pt-2 text-slate-700 dark:text-slate-200">Por el momento, los siguientes modelos no se gestionan en la aplicación:</h4>
+
+                <ul className="list-disc list-inside space-y-2 pl-2">
+                    <li><strong>Modelo 131</strong> (IRPF para régimen de estimación objetiva - Módulos).</li>
+                    <li><strong>Modelos de IGIC Canario</strong> (ej. 420, 425).</li>
+                    <li><strong>Declaración Intrastat</strong>.</li>
+                    <li><strong>Impuesto sobre el Patrimonio</strong> (Modelo 714).</li>
+                    <li><strong>Declaración de bienes en el extranjero</strong> (Modelo 720).</li>
+                    <li><strong>Impuesto de Sociedades</strong> (Modelo 200).</li>
+                </ul>
+
+                <p className="pt-2">
+                    Estamos trabajando constantemente para ampliar la compatibilidad de la aplicación.
+                </p>
+            </div>
+        </Modal>
+    );
+};
+
+
 // --- HelpTooltip Component ---
 export const HelpTooltip: React.FC<{ content: string }> = ({ content }) => {
   return (
@@ -183,12 +222,13 @@ interface SwitchProps {
     checked: boolean;
     onChange: (checked: boolean) => void;
     label: string;
+    disabled?: boolean;
 }
-export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label }) => {
+export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label, disabled = false }) => {
     const switchId = `switch-${Math.random().toString(36).substring(2, 9)}`;
     return (
         <div className="flex items-center justify-between">
-            <label htmlFor={switchId} className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label htmlFor={switchId} className={`text-sm font-medium text-slate-700 dark:text-slate-300 ${disabled ? 'opacity-50' : ''}`}>
                 {label}
             </label>
             <button
@@ -196,9 +236,10 @@ export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label }) => {
                 role="switch"
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
+                disabled={disabled}
                 className={`${
                 checked ? 'bg-primary-500' : 'bg-slate-300 dark:bg-slate-600'
-                } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:ring-offset-slate-800`}
+                } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
                 <span
                 aria-hidden="true"

@@ -8,7 +8,7 @@ const Auth: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { login, register } = useAuth();
+    const { login, register, loginAsGuest } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -69,6 +69,21 @@ const Auth: React.FC = () => {
                         )}
                     </Button>
                 </form>
+
+                <div className="relative my-6">
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t dark:border-slate-700" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white dark:bg-slate-800 px-2 text-slate-500 dark:text-slate-400">
+                        O
+                        </span>
+                    </div>
+                </div>
+
+                <Button variant="secondary" className="w-full" onClick={loginAsGuest}>
+                    Entrar como invitado
+                </Button>
                 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400 mt-6">
                     {isLogin ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}

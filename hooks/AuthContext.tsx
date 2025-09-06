@@ -5,6 +5,7 @@ interface User {
     id: string;
     username: string;
     role: 'user' | 'admin';
+    isGuest?: boolean;
 }
 
 interface AuthContextType {
@@ -14,6 +15,7 @@ interface AuthContextType {
     login: (credentials: any) => Promise<void>;
     register: (credentials: any) => Promise<void>;
     logout: () => void;
+    loginAsGuest: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -64,13 +66,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
     };
 
+    const loginAsGuest = () => {
+        setUser({
+            id: 'guest-user',
+            username: 'Invitado',
+            role: 'user',
+            isGuest: true,
+        });
+        setIsLoading(false);
+    };
+
     const value = {
         user,
         isAuthenticated: !!user,
         isLoading,
         login,
         register,
-        logout
+        logout,
+        loginAsGuest,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

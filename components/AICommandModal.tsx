@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AppContext } from '../App';
-import { Modal, Button, Icon, Input } from './ui';
+import { Modal, Button, Icon } from './ui';
 import { parseNaturalLanguageTransaction, ParsedCommand } from '../services/geminiService';
 import { MoneyLocation, Category, Income, Expense, PersonalMovement, Transfer, TransferJustification } from '../types';
-import { IncomeForm, ExpenseForm, MovementForm } from './TransactionForms';
-import { TransferForm } from './GlobalView';
+import { IncomeForm, ExpenseForm, MovementForm, TransferForm } from './TransactionForms';
 
 const findLocation = (hint: string | undefined): MoneyLocation => {
     if (!hint) return MoneyLocation.PERS_BANK;
@@ -29,7 +28,7 @@ export const AICommandModal: React.FC<{
 }> = ({ isOpen, onClose }) => {
     const context = useContext(AppContext);
     if (!context) return null;
-    const { data, setData } = context;
+    const { data } = context;
 
     const [commandText, setCommandText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -38,45 +37,73 @@ export const AICommandModal: React.FC<{
 
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
+    const isListeningRef = useRef(false);
+
+    useEffect(() => {
+        isListeningRef.current = isListening;
+    }, [isListening]);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = true;
-            recognitionRef.current.interimResults = true;
-            recognitionRef.current.lang = 'es-ES';
-
-            recognitionRef.current.onresult = (event: any) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                setCommandText(commandText + finalTranscript + interimTranscript);
-            };
-
-            recognitionRef.current.onerror = (event: any) => {
-                console.error('Speech recognition error', event.error);
-                setError('Error en el reconocimiento de voz. Inténtalo de nuevo.');
-                setIsListening(false);
-            };
-        }
-    }, [commandText]);
-    
-    const handleListen = () => {
-        if (!recognitionRef.current) {
+        if (!SpeechRecognition) {
             setError('El reconocimiento de voz no es compatible con este navegador.');
             return;
         }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'es-ES';
+
+        recognition.onresult = (event: any) => {
+            let transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    transcript += event.results[i][0].transcript + ' ';
+                }
+            }
+            if (transcript) {
+                setCommandText(prevText => prevText + transcript);
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error', event.error);
+            let errorMessage = 'Error en el reconocimiento de voz. Inténtalo de nuevo.';
+            if (event.error === 'no-speech') return;
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                errorMessage = 'Permiso para micrófono denegado. Habilítalo en los ajustes del navegador.';
+            }
+            setError(errorMessage);
+            setIsListening(false);
+        };
+
+        recognition.onend = () => {
+            if (isListeningRef.current) {
+                recognition.start();
+            } else {
+                setIsListening(false);
+            }
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            if (recognitionRef.current) {
+                isListeningRef.current = false;
+                recognitionRef.current.abort();
+            }
+        };
+    }, []);
+
+    const handleListenToggle = () => {
+        if (!recognitionRef.current) return;
+
         if (isListening) {
             recognitionRef.current.stop();
             setIsListening(false);
         } else {
+            setError('');
             setCommandText('');
             recognitionRef.current.start();
             setIsListening(true);
@@ -89,7 +116,12 @@ export const AICommandModal: React.FC<{
         setError('');
         setParsedData(null);
         try {
-            const result = await parseNaturalLanguageTransaction(commandText, data.settings.geminiApiKey);
+            const result = await parseNaturalLanguageTransaction(
+                commandText,
+                data.settings.geminiApiKey,
+                data.professionalCategories,
+                data.personalCategories
+            );
             setParsedData(result);
         } catch (err: any) {
             setError(err.message || 'Ha ocurrido un error inesperado.');
@@ -123,19 +155,21 @@ export const AICommandModal: React.FC<{
                     clientName: parsedData.partyName || '',
                     date: parsedData.date,
                     location: findLocation(parsedData.locationHint),
-                    isPaid: false, // Default to pending
+                    isPaid: false,
                 } as Partial<Income>;
                 return <IncomeForm onClose={handleCloseAndReset} incomeToEdit={initialData} />
 
             case 'expense':
+                const base = parsedData.baseAmount ?? (parsedData.amount ? parsedData.amount / 1.21 : 0);
                  initialData = {
                     concept: parsedData.concept,
-                    baseAmount: parsedData.amount || parsedData.baseAmount || 0,
+                    baseAmount: parseFloat(base.toFixed(2)),
+                    deductibleBaseAmount: parsedData.suggestedDeductibleBaseAmount,
                     providerName: parsedData.partyName || '',
                     date: parsedData.date,
                     location: findLocation(parsedData.locationHint),
                     categoryId: findCategoryId(parsedData.categoryHint, data.professionalCategories),
-                    isPaid: false, // Default to pending
+                    isPaid: false, // Voice commands create pending transactions
                 } as Partial<Expense>;
                 return <ExpenseForm onClose={handleCloseAndReset} expenseToEdit={initialData} />
 
@@ -147,7 +181,7 @@ export const AICommandModal: React.FC<{
                     date: parsedData.date,
                     location: findLocation(parsedData.locationHint),
                     categoryId: findCategoryId(parsedData.categoryHint, data.personalCategories),
-                    isPaid: false, // Default to pending
+                    isPaid: false,
                 } as Partial<PersonalMovement>;
                 return <MovementForm onClose={handleCloseAndReset} movementToEdit={initialData} />
 
@@ -160,12 +194,11 @@ export const AICommandModal: React.FC<{
                     toLocation: findLocation(parsedData.toLocationHint),
                     justification: TransferJustification.SUELDO_AUTONOMO
                 } as Partial<Transfer>;
-                // FIX: Use the imported TransferForm component instead of the placeholder.
                 return <TransferForm onClose={handleCloseAndReset} transferToEdit={initialData} />
             
             default:
                 setError("No he reconocido la acción. Por favor, inténtalo de nuevo.");
-                setParsedData(null); // Return to input view
+                setParsedData(null);
                 return null;
         }
     }
@@ -196,11 +229,11 @@ export const AICommandModal: React.FC<{
                         placeholder="Escribe o graba tu comando aquí..."
                         value={commandText}
                         onChange={(e) => setCommandText(e.target.value)}
-                        disabled={isLoading || isListening}
+                        disabled={isLoading}
                     />
                     {error && <p className="text-sm text-red-500 text-center">{error}</p>}
                     <div className="flex flex-col sm:flex-row gap-2">
-                        <Button onClick={handleListen} variant="secondary" className="w-full" disabled={isLoading}>
+                        <Button onClick={handleListenToggle} variant="secondary" className="w-full" disabled={isLoading}>
                             <Icon name="microphone" className={`w-5 h-5 ${isListening ? 'text-red-500 animate-pulse' : ''}`} />
                             {isListening ? 'Detener Grabación' : 'Grabar Voz'}
                         </Button>

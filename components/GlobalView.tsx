@@ -2,8 +2,8 @@ import React, { useState, useContext, useMemo, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement } from '../types';
-import { IncomeForm, ExpenseForm, MovementForm } from './TransactionForms';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood } from '../types';
+import { IncomeForm, ExpenseForm, MovementForm, TransferForm } from './TransactionForms';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -31,10 +31,16 @@ const getMonthsRemaining = (deadline: string): number => {
     return months <= 0 ? 1 : months;
 };
 
-const formatDateForInput = (isoDate: string | Date | undefined) => {
-    if (!isoDate) return new Date().toISOString().split('T')[0];
-    return new Date(isoDate).toISOString().split('T')[0];
-}
+const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
+    const date = isoDate ? new Date(isoDate) : new Date();
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 
 
 // --- Potential Income Form Modal ---
@@ -42,13 +48,13 @@ const PotentialIncomeForm: React.FC<{
     onClose: () => void;
     incomeToEdit: PotentialIncome | null;
 }> = ({ onClose, incomeToEdit }) => {
-    const { data: {settings}, setData } = useContext(AppContext)!;
+    const { data: {settings}, saveData } = useContext(AppContext)!;
     
     const [formData, setFormData] = useState<Partial<PotentialIncome>>({
         id: incomeToEdit?.id || `pi-${Date.now()}`,
         concept: incomeToEdit?.concept || '',
         type: incomeToEdit?.type || 'monthly',
-        date: incomeToEdit?.date ? formatDateForInput(incomeToEdit.date) : new Date().toISOString().split('T')[0],
+        date: incomeToEdit?.date ? formatDateForDateTimeLocalInput(incomeToEdit.date) : formatDateForDateTimeLocalInput(),
         source: incomeToEdit?.source || MoneySource.AUTONOMO,
         location: incomeToEdit?.location || MoneyLocation.PRO_BANK,
         amount: incomeToEdit?.amount || 0,
@@ -92,12 +98,12 @@ const PotentialIncomeForm: React.FC<{
             };
         }
         
-        setData(prev => ({
+        saveData(prev => ({
             ...prev,
             potentialIncomes: incomeToEdit 
                 ? prev.potentialIncomes.map(pi => pi.id === incomeToEdit.id ? finalIncome : pi)
                 : [...prev.potentialIncomes, finalIncome]
-        }));
+        }), incomeToEdit ? "Ingreso potencial actualizado." : "Ingreso potencial añadido.");
         onClose();
     };
 
@@ -127,7 +133,7 @@ const PotentialIncomeForm: React.FC<{
                 <option value="one-off">Puntual</option>
             </Select>
             {formData.type === 'one-off' && (
-                <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
+                <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
             )}
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -142,13 +148,13 @@ const PotentialExpenseForm: React.FC<{
     onClose: () => void;
     expenseToEdit: PotentialExpense | null;
 }> = ({ onClose, expenseToEdit }) => {
-    const { data: { personalCategories }, setData } = useContext(AppContext)!;
+    const { data: { personalCategories }, saveData } = useContext(AppContext)!;
     
     const [formData, setFormData] = useState<Partial<PotentialExpense>>({
         id: expenseToEdit?.id || `pe-${Date.now()}`,
         concept: expenseToEdit?.concept || '',
         type: expenseToEdit?.type || 'monthly',
-        date: expenseToEdit?.date ? formatDateForInput(expenseToEdit.date) : new Date().toISOString().split('T')[0],
+        date: expenseToEdit?.date ? formatDateForDateTimeLocalInput(expenseToEdit.date) : formatDateForDateTimeLocalInput(),
         amount: expenseToEdit?.amount || 0,
         categoryId: expenseToEdit?.categoryId || (personalCategories[0]?.id || ''),
     });
@@ -169,12 +175,12 @@ const PotentialExpenseForm: React.FC<{
             date: formData.type === 'one-off' ? new Date(formData.date!).toISOString() : undefined,
         };
         
-        setData(prev => ({
+        saveData(prev => ({
             ...prev,
             potentialExpenses: expenseToEdit 
                 ? prev.potentialExpenses.map(pe => pe.id === expenseToEdit.id ? finalExpense : pe)
                 : [...prev.potentialExpenses, finalExpense],
-        }));
+        }), expenseToEdit ? "Gasto potencial actualizado." : "Gasto potencial añadido.");
         onClose();
     };
 
@@ -190,7 +196,7 @@ const PotentialExpenseForm: React.FC<{
                 <option value="one-off">Puntual</option>
             </Select>
             {formData.type === 'one-off' && (
-                <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
+                <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
             )}
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -200,95 +206,13 @@ const PotentialExpenseForm: React.FC<{
     );
 };
 
-
-// --- Transfer Form Modal ---
-// FIX: Export TransferForm and update props to allow for reuse.
-export const TransferForm: React.FC<{
-    onClose: () => void;
-    transferToEdit: Partial<Transfer> | null;
-}> = ({ onClose, transferToEdit }) => {
-    const { setData } = useContext(AppContext)!;
-
-    const [formData, setFormData] = useState<Partial<Transfer>>({
-        id: transferToEdit?.id || `tr-${Date.now()}`,
-        date: transferToEdit?.date ? formatDateForInput(transferToEdit.date) : new Date().toISOString().split('T')[0],
-        amount: transferToEdit?.amount || 0,
-        fromLocation: transferToEdit?.fromLocation || MoneyLocation.PRO_BANK,
-        toLocation: transferToEdit?.toLocation || MoneyLocation.CASH,
-        concept: transferToEdit?.concept || '',
-        justification: transferToEdit?.justification || TransferJustification.SUELDO_AUTONOMO
-    });
-
-    const [error, setError] = useState('');
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({...prev, [name]: name === 'amount' ? parseFloat(value) : value}));
-        if(name === 'fromLocation' || name === 'toLocation') {
-             setError('');
-        }
-    };
-    
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (formData.fromLocation === formData.toLocation) {
-            setError('La ubicación de origen y destino no pueden ser la misma.');
-            return;
-        }
-        setError('');
-        
-        const finalTransfer: Transfer = {
-            id: formData.id!,
-            date: new Date(formData.date!).toISOString(),
-            amount: formData.amount!,
-            fromLocation: formData.fromLocation!,
-            toLocation: formData.toLocation!,
-            concept: formData.concept!,
-            justification: formData.justification!
-        };
-        
-        setData(prev => ({
-            ...prev,
-            transfers: transferToEdit
-                ? prev.transfers.map(t => t.id === transferToEdit.id ? finalTransfer : t)
-                : [...prev.transfers, finalTransfer]
-        }));
-        onClose();
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Importe (€)" name="amount" type="number" min="0.01" step="0.01" value={formData.amount} onChange={handleChange} required />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select label="Desde" name="fromLocation" value={formData.fromLocation} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-                </Select>
-                 <Select label="Hasta" name="toLocation" value={formData.toLocation} onChange={handleChange}>
-                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-                </Select>
-            </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <Input label="Fecha" name="date" type="date" value={formData.date} onChange={handleChange} required />
-            <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
-            <Select label="Justificación (para informe fiscal)" name="justification" value={formData.justification} onChange={handleChange}>
-                {Object.values(TransferJustification).map(j => <option key={j} value={j}>{j}</option>)}
-            </Select>
-
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{transferToEdit ? 'Guardar Cambios' : 'Añadir Transferencia'}</Button>
-            </div>
-        </form>
-    )
-};
-
 // --- Contabilize Modal ---
 const ContabilizeModal: React.FC<{
     item: Income | Expense | PersonalMovement;
     onClose: () => void;
     onSave: (id: string, paymentDate: string, location: MoneyLocation) => void;
 }> = ({ item, onClose, onSave }) => {
-    const [paymentDate, setPaymentDate] = useState(formatDateForInput(new Date()));
+    const [paymentDate, setPaymentDate] = useState(formatDateForDateTimeLocalInput());
     const [location, setLocation] = useState(item.location || MoneyLocation.PRO_BANK);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -302,7 +226,7 @@ const ContabilizeModal: React.FC<{
             <p>Contabilizar: <strong>{item.concept}</strong></p>
             <Input 
                 label="Fecha de Pago/Cobro"
-                type="date"
+                type="datetime-local"
                 value={paymentDate}
                 onChange={(e) => setPaymentDate(e.target.value)}
                 required
@@ -327,15 +251,15 @@ const PeriodizeExpenseModal: React.FC<{
     expense: Expense;
     onClose: () => void;
 }> = ({ expense, onClose }) => {
-    const { setData } = useContext(AppContext)!;
-    const [paymentDate, setPaymentDate] = useState(formatDateForInput(expense.date));
+    const { saveData } = useContext(AppContext)!;
+    const [paymentDate, setPaymentDate] = useState(formatDateForDateTimeLocalInput(expense.date));
     const [location, setLocation] = useState(expense.location || MoneyLocation.PRO_BANK);
-    const [periodStartDate, setPeriodStartDate] = useState(formatDateForInput(expense.date));
+    const [periodStartDate, setPeriodStartDate] = useState(formatDateForDateTimeLocalInput(expense.date));
     const [periodEndDate, setPeriodEndDate] = useState(() => {
         const date = new Date(expense.date);
         date.setFullYear(date.getFullYear() + 1);
         date.setDate(date.getDate() - 1);
-        return formatDateForInput(date);
+        return formatDateForDateTimeLocalInput(date);
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -349,7 +273,7 @@ const PeriodizeExpenseModal: React.FC<{
             return;
         }
 
-        setData(prev => {
+        saveData(prev => {
             const months = getMonthsInRange(pStartDate, pEndDate);
             if (months <= 0) return prev;
 
@@ -391,7 +315,7 @@ const PeriodizeExpenseModal: React.FC<{
                 .concat([paymentExpense, ...periodizedExpenses]); // Add new ones
             
             return { ...prev, expenses: updatedExpenses };
-        });
+        }, "Gasto periodificado correctamente.");
 
         onClose();
     };
@@ -404,7 +328,7 @@ const PeriodizeExpenseModal: React.FC<{
                 <legend className="text-sm font-medium px-2">Detalles del Pago Real</legend>
                  <Input 
                     label="Fecha de Pago"
-                    type="date"
+                    type="datetime-local"
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
                     required
@@ -422,14 +346,14 @@ const PeriodizeExpenseModal: React.FC<{
                 <legend className="text-sm font-medium px-2">Periodo a Cubrir</legend>
                  <Input 
                     label="Fecha de Inicio del Gasto"
-                    type="date"
+                    type="datetime-local"
                     value={periodStartDate}
                     onChange={(e) => setPeriodStartDate(e.target.value)}
                     required
                 />
                 <Input 
                     label="Fecha de Fin del Gasto"
-                    type="date"
+                    type="datetime-local"
                     value={periodEndDate}
                     onChange={(e) => setPeriodEndDate(e.target.value)}
                     required
@@ -456,15 +380,18 @@ const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => voi
             <Button variant={scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setScope('professional')} className="flex-1">Profesional</Button>
             <Button variant={scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setScope('personal')} className="flex-1">Personal</Button>
           </div>
-          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
-            <Button variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')} className="flex-1">Ingreso / Cobro</Button>
-            <Button variant={type === 'expense' ? 'primary' : 'secondary'} onClick={() => setType('expense')} className="flex-1">Gasto / Pago</Button>
-          </div>
+          
+          {scope === 'professional' && (
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                <Button variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')} className="flex-1">Ingreso / Cobro</Button>
+                <Button variant={type === 'expense' ? 'primary' : 'secondary'} onClick={() => setType('expense')} className="flex-1">Gasto / Pago</Button>
+            </div>
+          )}
           
           <div className="pt-2">
             {scope === 'professional' && type === 'income' && <IncomeForm onClose={onClose} defaultIsPaid={false} />}
             {scope === 'professional' && type === 'expense' && <ExpenseForm onClose={onClose} defaultIsPaid={false} />}
-            {scope === 'personal' && <MovementForm onClose={onClose} defaultIsPaid={false} defaultType={type} />}
+            {scope === 'personal' && <MovementForm onClose={onClose} defaultIsPaid={false} />}
           </div>
         </div>
       </Modal>
@@ -477,8 +404,8 @@ const GlobalView: React.FC = () => {
     const context = useContext(AppContext);
     if (!context) return <div>Cargando...</div>;
 
-    const { data, setData, formatCurrency } = context;
-    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, potentialExpenses, transfers, personalCategories } = data;
+    const { data, saveData, formatCurrency } = context;
+    const { incomes, expenses, personalMovements, settings, savingsGoals, potentialIncomes, potentialExpenses, transfers, personalCategories, investmentGoods } = data;
 
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const end = new Date();
@@ -489,6 +416,7 @@ const GlobalView: React.FC = () => {
     const [includeSavings, setIncludeSavings] = useState(true);
     const [includePotentialIncome, setIncludePotentialIncome] = useState(true);
     const [includePotentialExpenses, setIncludePotentialExpenses] = useState(true);
+    const [includePendingTransactions, setIncludePendingTransactions] = useState(false);
     const [showProjection, setShowProjection] = useState(false);
 
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
@@ -502,6 +430,11 @@ const GlobalView: React.FC = () => {
     const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | PersonalMovement | null>(null);
     const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
     const [isAddPendingModalOpen, setIsAddPendingModalOpen] = useState(false);
+
+    // State for editing pending transactions
+    const [professionalIncomeToEdit, setProfessionalIncomeToEdit] = useState<Income | null>(null);
+    const [professionalExpenseToEdit, setProfessionalExpenseToEdit] = useState<Expense | null>(null);
+    const [personalMovementToEdit, setPersonalMovementToEdit] = useState<PersonalMovement | null>(null);
     
     const [typeFilters, setTypeFilters] = useState({
         proIncome: true,
@@ -523,13 +456,13 @@ const GlobalView: React.FC = () => {
 
     const moneyDistribution = useMemo(() => {
         const balances: { [key in MoneyLocation]: number } = {
+            [MoneyLocation.CASH_PRO]: data.settings.initialBalances?.[MoneyLocation.CASH_PRO] || 0,
             [MoneyLocation.CASH]: data.settings.initialBalances?.[MoneyLocation.CASH] || 0,
             [MoneyLocation.PRO_BANK]: data.settings.initialBalances?.[MoneyLocation.PRO_BANK] || 0,
             [MoneyLocation.PERS_BANK]: data.settings.initialBalances?.[MoneyLocation.PERS_BANK] || 0,
             [MoneyLocation.OTHER]: data.settings.initialBalances?.[MoneyLocation.OTHER] || 0,
         };
 
-        // Process paid professional incomes
         data.incomes.forEach(income => {
             if (income.isPaid && income.location) {
                 const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
@@ -537,7 +470,6 @@ const GlobalView: React.FC = () => {
             }
         });
 
-        // Process paid professional expenses
         data.expenses.forEach(expense => {
             if (expense.isPaid && expense.location) {
                 const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
@@ -545,7 +477,13 @@ const GlobalView: React.FC = () => {
             }
         });
 
-        // Process personal movements
+        data.investmentGoods.forEach(good => {
+            if (good.isPaid && good.location) {
+                const totalAmount = good.acquisitionValue + (good.acquisitionValue * good.vatRate / 100);
+                balances[good.location] = (balances[good.location] || 0) - totalAmount;
+            }
+        });
+
         data.personalMovements.filter(m => m.isPaid).forEach(movement => {
             if (movement.location) {
                 if (movement.type === 'income') {
@@ -556,14 +494,13 @@ const GlobalView: React.FC = () => {
             }
         });
         
-        // Process transfers
         data.transfers.forEach(transfer => {
             balances[transfer.fromLocation] = (balances[transfer.fromLocation] || 0) - transfer.amount;
             balances[transfer.toLocation] = (balances[transfer.toLocation] || 0) + transfer.amount;
         });
 
         return balances;
-    }, [data.incomes, data.expenses, data.personalMovements, data.transfers, data.settings.initialBalances]);
+    }, [data.incomes, data.expenses, data.investmentGoods, data.personalMovements, data.transfers, data.settings.initialBalances]);
     
     const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
     const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
@@ -576,35 +513,37 @@ const GlobalView: React.FC = () => {
         }
 
         const projectedBalances = { ...moneyDistribution };
-
-        pendingIncomes.forEach(income => {
-            if (income.location) {
-                const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
-                projectedBalances[income.location] = (projectedBalances[income.location] || 0) + netAmount;
-            }
-        });
-
-        pendingExpenses.forEach(expense => {
-            if (expense.location) {
-                const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
-                projectedBalances[expense.location] = (projectedBalances[expense.location] || 0) - totalAmount;
-            }
-        });
-
-        pendingPersonalIncomes.forEach(movement => {
-            if (movement.location) {
-                projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) + movement.amount;
-            }
-        });
         
-        pendingPersonalExpenses.forEach(movement => {
-            if (movement.location) {
-                projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) - movement.amount;
-            }
-        });
+        if (includePendingTransactions) {
+            pendingIncomes.forEach(income => {
+                if (income.location) {
+                    const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
+                    projectedBalances[income.location] = (projectedBalances[income.location] || 0) + netAmount;
+                }
+            });
+
+            pendingExpenses.forEach(expense => {
+                if (expense.location) {
+                    const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
+                    projectedBalances[expense.location] = (projectedBalances[expense.location] || 0) - totalAmount;
+                }
+            });
+
+            pendingPersonalIncomes.forEach(movement => {
+                if (movement.location) {
+                    projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) + movement.amount;
+                }
+            });
+            
+            pendingPersonalExpenses.forEach(movement => {
+                if (movement.location) {
+                    projectedBalances[movement.location] = (projectedBalances[movement.location] || 0) - movement.amount;
+                }
+            });
+        }
 
         return projectedBalances;
-    }, [showProjection, moneyDistribution, pendingIncomes, pendingExpenses, pendingPersonalIncomes, pendingPersonalExpenses]);
+    }, [showProjection, moneyDistribution, pendingIncomes, pendingExpenses, pendingPersonalIncomes, pendingPersonalExpenses, includePendingTransactions]);
 
 
     const actualMovements = useMemo(() => {
@@ -682,9 +621,89 @@ const GlobalView: React.FC = () => {
         return monthly + oneOff;
     }, [includePotentialExpenses, potentialExpenses, monthsInPeriod, period]);
 
+    const projectedTaxes = useMemo(() => {
+        const incomesForTaxCalc = incomes.filter(i => {
+            const incomeDate = new Date(i.date);
+            return incomeDate >= period.startDate && incomeDate <= period.endDate && (i.isPaid || includePendingTransactions);
+        });
+
+        if (includePotentialIncome) {
+            const potentialAutonomoIncomes = potentialIncomes.filter(pi => pi.source === MoneySource.AUTONOMO);
+
+            potentialAutonomoIncomes
+                .filter(pi => pi.type === 'one-off' && pi.date && new Date(pi.date) >= period.startDate && new Date(pi.date) <= period.endDate)
+                .forEach(pi => {
+                    incomesForTaxCalc.push({
+                        id: pi.id,
+                        baseAmount: pi.baseAmount || 0,
+                        vatRate: pi.vatRate ?? settings.defaultVatRate,
+                        irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
+                    } as Income);
+                });
+            
+            const monthlyPotentialIncomes = potentialAutonomoIncomes.filter(pi => pi.type === 'monthly');
+            monthlyPotentialIncomes.forEach(pi => {
+                for (let i = 0; i < monthsInPeriod; i++) {
+                    incomesForTaxCalc.push({
+                        id: `${pi.id}-month-${i}`,
+                        baseAmount: pi.baseAmount || 0,
+                        vatRate: pi.vatRate ?? settings.defaultVatRate,
+                        irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
+                    } as Income);
+                }
+            });
+        }
+        
+        const expensesInPeriod = expenses.filter(e => {
+            const expenseDate = new Date(e.date);
+            return expenseDate >= period.startDate && expenseDate <= period.endDate && e.isDeductible && (e.isPaid || includePendingTransactions);
+        });
+        
+        const investmentGoodsInPeriod = investmentGoods.filter(g => {
+            const purchaseDate = new Date(g.purchaseDate);
+            return purchaseDate >= period.startDate && purchaseDate <= period.endDate && g.isDeductible && (g.isPaid || includePendingTransactions);
+        });
+
+        const ivaRepercutido = incomesForTaxCalc.reduce((sum, i) => sum + (i.baseAmount * i.vatRate / 100), 0);
+        const ivaSoportadoFromExpenses = expensesInPeriod.reduce((sum, e) => sum + (e.baseAmount * e.vatRate / 100), 0);
+        const ivaSoportadoFromGoods = investmentGoodsInPeriod.reduce((sum, g) => sum + (g.acquisitionValue * g.vatRate / 100), 0);
+        const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
+        const vatPayment = Math.max(0, ivaRepercutido - ivaSoportado);
+
+        const totalIngresos = incomesForTaxCalc.reduce((sum, i) => sum + i.baseAmount, 0);
+        const totalGastosFacturas = expensesInPeriod.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+        
+        const totalAmortization = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
+            const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+            const goodStartDate = new Date(good.purchaseDate);
+            const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+            
+            const effectiveStartDate = goodStartDate > period.startDate ? goodStartDate : period.startDate;
+            const effectiveEndDate = goodEndDate < period.endDate ? goodEndDate : period.endDate;
+            
+            if (effectiveEndDate > effectiveStartDate) {
+                const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+                return sum + (daysInPeriod * dailyAmortization);
+            }
+            return sum;
+        }, 0);
+        
+        const cuotaAutonomo = settings.monthlyAutonomoFee * monthsInPeriod;
+        const totalGastosDeducibles = totalGastosFacturas + totalAmortization + cuotaAutonomo;
+        const rendimientoNeto = totalIngresos - totalGastosDeducibles;
+        const irpfPayment = Math.max(0, rendimientoNeto * 0.2);
+
+        return { vatPayment, irpfPayment };
+        
+    }, [
+        period.startDate, period.endDate, incomes, expenses, investmentGoods, settings, 
+        monthsInPeriod, potentialIncomes, includePotentialIncome, includePendingTransactions
+    ]);
+
     const summary = useMemo(() => {
         const totalProjectedIncome = actualMovements.totalActualIncome + projectedIncome;
-        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings + projectedExpenses;
+        const taxPayments = projectedTaxes.vatPayment + projectedTaxes.irpfPayment;
+        const totalProjectedExpense = actualMovements.totalActualExpense + projectedSavings + projectedExpenses + taxPayments;
         const netProjectedCashFlow = totalProjectedIncome - totalProjectedExpense;
 
         return {
@@ -695,8 +714,9 @@ const GlobalView: React.FC = () => {
             totalProjectedIncome,
             totalProjectedExpense,
             netProjectedCashFlow,
+            taxPayments,
         }
-    }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses]);
+    }, [actualMovements, projectedIncome, projectedSavings, projectedExpenses, projectedTaxes]);
     
     const typeLabels: { [key: string]: { label: string, color: string } } = {
         proIncome: { label: 'Ingreso Pro.', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
@@ -759,7 +779,7 @@ const GlobalView: React.FC = () => {
 
     // --- Handlers ---
     const handleSaveContabilizar = (id: string, paymentDate: string, location: MoneyLocation) => {
-        setData(prev => {
+        saveData(prev => {
             const isIncome = prev.incomes.some(i => i.id === id);
             const isExpense = prev.expenses.some(e => e.id === id);
             
@@ -770,15 +790,31 @@ const GlobalView: React.FC = () => {
             } else { // Personal Movement
                 return { ...prev, personalMovements: prev.personalMovements.map(m => m.id === id ? { ...m, isPaid: true, paymentDate, location } : m) };
             }
-        });
+        }, "Transacción contabilizada.");
+    };
+
+    const handleDeletePending = (id: string, type: 'income' | 'expense' | 'personal_movement') => {
+        if (!window.confirm('¿Estás seguro de que quieres eliminar esta transacción pendiente? Esta acción no se puede deshacer.')) return;
+        saveData(prev => {
+            switch (type) {
+                case 'income':
+                    return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
+                case 'expense':
+                    return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
+                case 'personal_movement':
+                    return { ...prev, personalMovements: prev.personalMovements.filter(pm => pm.id !== id) };
+                default:
+                    return prev;
+            }
+        }, "Transacción pendiente eliminada.");
     };
 
     const handleGoalContributionChange = (goalId: string, value: string) => {
         const amount = parseFloat(value);
-        setData(prev => ({
+        saveData(prev => ({
             ...prev,
             savingsGoals: prev.savingsGoals.map(g => g.id === goalId ? {...g, plannedContribution: isNaN(amount) ? undefined : amount} : g)
-        }));
+        }), "Aportación de ahorro planificada actualizada.");
     };
     
     const handleOpenIncomeModal = (income?: PotentialIncome) => {
@@ -788,7 +824,7 @@ const GlobalView: React.FC = () => {
 
     const handleDeletePotentialIncome = (id: string) => {
         if (window.confirm('¿Seguro que quieres eliminar este ingreso potencial?')) {
-            setData(prev => ({...prev, potentialIncomes: prev.potentialIncomes.filter(pi => pi.id !== id)}));
+            saveData(prev => ({...prev, potentialIncomes: prev.potentialIncomes.filter(pi => pi.id !== id)}), "Ingreso potencial eliminado.");
         }
     };
     
@@ -799,7 +835,7 @@ const GlobalView: React.FC = () => {
 
     const handleDeletePotentialExpense = (id: string) => {
         if (window.confirm('¿Seguro que quieres eliminar este gasto potencial?')) {
-            setData(prev => ({...prev, potentialExpenses: prev.potentialExpenses.filter(pe => pe.id !== id)}));
+            saveData(prev => ({...prev, potentialExpenses: prev.potentialExpenses.filter(pe => pe.id !== id)}), "Gasto potencial eliminado.");
         }
     };
 
@@ -808,11 +844,61 @@ const GlobalView: React.FC = () => {
         setIsTransferModalOpen(true);
     }
     
-    const handleDeleteTransfer = (id: string) => {
-        if (window.confirm('¿Seguro que quieres eliminar esta transferencia?')) {
-            setData(prev => ({...prev, transfers: prev.transfers.filter(t => t.id !== id)}));
+    const handleEditUnified = (prefixedId: string) => {
+        const [type, ...idParts] = prefixedId.split('-');
+        const id = idParts.join('-');
+
+        switch (type) {
+            case 'inc': {
+                const income = data.incomes.find(i => i.id === id);
+                if (income) setProfessionalIncomeToEdit(income);
+                break;
+            }
+            case 'exp': {
+                const expense = data.expenses.find(e => e.id === id);
+                if (expense) setProfessionalExpenseToEdit(expense);
+                break;
+            }
+            case 'pm': {
+                const movement = data.personalMovements.find(pm => pm.id === id);
+                if (movement) setPersonalMovementToEdit(movement);
+                break;
+            }
+            case 'tr': {
+                const transfer = data.transfers.find(t => t.id === id);
+                if (transfer) handleOpenTransferModal(transfer);
+                break;
+            }
         }
-    }
+    };
+
+    const handleDeleteUnified = (prefixedId: string) => {
+        if (!window.confirm('¿Estás seguro de que quieres eliminar esta transacción?')) return;
+        
+        const [type, ...idParts] = prefixedId.split('-');
+        const id = idParts.join('-');
+
+        let message = "Transacción eliminada.";
+
+        saveData(prev => {
+            switch (type) {
+                case 'inc':
+                    message = "Ingreso profesional eliminado.";
+                    return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
+                case 'exp':
+                    message = "Gasto profesional eliminado.";
+                    return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
+                case 'pm':
+                    message = "Movimiento personal eliminado.";
+                    return { ...prev, personalMovements: prev.personalMovements.filter(pm => pm.id !== id) };
+                case 'tr':
+                    message = "Transferencia eliminada.";
+                    return { ...prev, transfers: prev.transfers.filter(t => t.id !== id) };
+                default:
+                    return prev;
+            }
+        }, message);
+    };
 
 
     const sourceColors: {[key in MoneySource]: string} = {
@@ -822,6 +908,7 @@ const GlobalView: React.FC = () => {
     };
     const locationColors: {[key in MoneyLocation]: string} = {
         [MoneyLocation.PRO_BANK]: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300',
+        [MoneyLocation.CASH_PRO]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
         [MoneyLocation.PERS_BANK]: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
         [MoneyLocation.CASH]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
         [MoneyLocation.OTHER]: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300',
@@ -862,19 +949,20 @@ const GlobalView: React.FC = () => {
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <div>
                         <h3 className="text-xl font-bold">Distribución del Dinero</h3>
-                        <p className="text-sm text-slate-500">{showProjection ? 'Saldos proyectados incluyendo transacciones pendientes.' : 'Saldos actuales en tus cuentas.'}</p>
+                        <p className="text-sm text-slate-500">{showProjection ? `Saldos proyectados ${includePendingTransactions ? 'incluyendo' : 'excluyendo'} transacciones pendientes.` : 'Saldos actuales en tus cuentas.'}</p>
                     </div>
                     <div className="flex items-center gap-4">
-                        <Switch label="Proyectar pendientes" checked={showProjection} onChange={setShowProjection} />
+                        <Switch label="Proyectar saldos" checked={showProjection} onChange={setShowProjection} />
                         <Button size="sm" onClick={() => handleOpenTransferModal()}>
                             <Icon name="switch-horizontal" className="w-4 h-4" /> Transferir
                         </Button>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <BalanceDisplay location={MoneyLocation.CASH} icon="cash" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="office-building" />
+                    <BalanceDisplay location={MoneyLocation.CASH_PRO} icon="briefcase" />
                     <BalanceDisplay location={MoneyLocation.PERS_BANK} icon="user-circle" />
+                    <BalanceDisplay location={MoneyLocation.CASH} icon="cash" />
                     <BalanceDisplay location={MoneyLocation.OTHER} icon="globe" />
                 </div>
             </Card>
@@ -905,8 +993,10 @@ const GlobalView: React.FC = () => {
                                             <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
                                         </div>
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-1">
+                                    <div className="flex justify-end gap-1 mt-1">
+                                        <Button size="sm" variant="ghost" onClick={() => setProfessionalIncomeToEdit(income)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(income.id, 'income')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                             ))}</ul>
@@ -929,9 +1019,11 @@ const GlobalView: React.FC = () => {
                                             <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
                                         </div>
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-1">
+                                    <div className="flex justify-end gap-1 mt-1">
+                                        <Button size="sm" variant="ghost" onClick={() => setProfessionalExpenseToEdit(expense)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
                                         <Button size="sm" variant="ghost" onClick={() => setExpenseToPeriodize(expense)}>Periodizar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(expense.id, 'expense')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                              ))}</ul>
@@ -954,8 +1046,10 @@ const GlobalView: React.FC = () => {
                                             <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
                                         </div>
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-1">
+                                    <div className="flex justify-end gap-1 mt-1">
+                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                             ))}</ul>
@@ -978,8 +1072,10 @@ const GlobalView: React.FC = () => {
                                             <span className="px-2 mt-1 inline-block py-0.5 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
                                         </div>
                                     </div>
-                                    <div className="flex justify-end gap-2 mt-1">
+                                    <div className="flex justify-end gap-1 mt-1">
+                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                              ))}</ul>
@@ -991,44 +1087,6 @@ const GlobalView: React.FC = () => {
                 )}
             </Card>
 
-            <Card>
-                 <h3 className="text-xl font-bold mb-4">Historial de Transferencias</h3>
-                 <div className="overflow-x-auto max-h-64">
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400 sticky top-0">
-                            <tr>
-                                <th scope="col" className="px-4 py-2">Fecha</th>
-                                <th scope="col" className="px-4 py-2">Concepto / Just.</th>
-                                <th scope="col" className="px-4 py-2">Desde</th>
-                                <th scope="col" className="px-4 py-2">Hasta</th>
-                                <th scope="col" className="px-4 py-2 text-right">Importe</th>
-                                <th scope="col" className="px-4 py-2 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {transfers.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(tr => (
-                                <tr key={tr.id} className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
-                                    <td className="px-4 py-2">{new Date(tr.date).toLocaleDateString('es-ES')}</td>
-                                    <td className="px-4 py-2">
-                                        <p className="font-semibold">{tr.concept}</p>
-                                        <p className="text-xs text-slate-500">{tr.justification}</p>
-                                    </td>
-                                    <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${locationColors[tr.fromLocation]}`}>{tr.fromLocation}</span></td>
-                                    <td className="px-4 py-2"><span className={`px-2 py-1 rounded-full text-xs font-medium ${locationColors[tr.toLocation]}`}>{tr.toLocation}</span></td>
-                                    <td className="px-4 py-2 font-semibold text-right">{formatCurrency(tr.amount)}</td>
-                                    <td className="px-4 py-2 text-center">
-                                        <Button size="sm" variant="ghost" onClick={() => handleOpenTransferModal(tr)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeleteTransfer(tr.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                 </div>
-                 {transfers.length === 0 && <p className="text-center text-slate-500 py-8">No hay transferencias registradas.</p>}
-            </Card>
-
-            <PeriodSelector onPeriodChange={handlePeriodChange} />
             
             {/* Main KPIs */}
             <Card>
@@ -1042,7 +1100,7 @@ const GlobalView: React.FC = () => {
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Gastos Proyectados</h4>
                         <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalProjectedExpense)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot.)</p>
+                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot. + {formatCurrency(summary.taxPayments)} imp.)</p>
                     </div>
                     <div className="p-4">
                         <h4 className="text-lg text-slate-500 dark:text-slate-400">Flujo de Caja Neto Proyectado</h4>
@@ -1057,6 +1115,7 @@ const GlobalView: React.FC = () => {
                 <Card>
                     <h3 className="text-lg font-bold mb-4">Controles de Proyección</h3>
                     <div className="space-y-4">
+                        <Switch label="Incluir Movimientos Pendientes" checked={includePendingTransactions} onChange={setIncludePendingTransactions} />
                         <Switch label="Incluir Ahorro Planificado" checked={includeSavings} onChange={setIncludeSavings} />
                         <Switch label="Incluir Ingresos Potenciales" checked={includePotentialIncome} onChange={setIncludePotentialIncome} />
                         <Switch label="Incluir Gastos Potenciales" checked={includePotentialExpenses} onChange={setIncludePotentialExpenses} />
@@ -1193,7 +1252,7 @@ const GlobalView: React.FC = () => {
 
             <Card>
                 <h3 className="text-xl font-bold mb-4">Registro Global de Movimientos</h3>
-                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b dark:border-slate-700">
+                <div className="flex flex-wrap gap-2 mb-4">
                     {Object.entries(typeFilters).map(([key, isActive]) => (
                         <Button
                             key={key}
@@ -1205,7 +1264,12 @@ const GlobalView: React.FC = () => {
                         </Button>
                     ))}
                 </div>
-                <div className="overflow-x-auto max-h-96">
+
+                <div className="py-4 border-t border-b dark:border-slate-700">
+                   <PeriodSelector onPeriodChange={handlePeriodChange} />
+                </div>
+
+                <div className="overflow-x-auto max-h-96 mt-4">
                     <table className="w-full text-sm text-left">
                         <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400 sticky top-0">
                             <tr>
@@ -1214,6 +1278,7 @@ const GlobalView: React.FC = () => {
                                 <th scope="col" className="px-4 py-2">Concepto</th>
                                 <th scope="col" className="px-4 py-2">Detalles</th>
                                 <th scope="col" className="px-4 py-2 text-right">Importe</th>
+                                <th scope="col" className="px-4 py-2 text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1236,6 +1301,10 @@ const GlobalView: React.FC = () => {
                                             </span>
                                         )}
                                         {!t.isPaid && <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400">(Pendiente)</span>}
+                                    </td>
+                                    <td className="px-4 py-2 text-center whitespace-nowrap">
+                                        <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.id)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
                                     </td>
                                 </tr>
                             ))}
@@ -1268,6 +1337,22 @@ const GlobalView: React.FC = () => {
                  </Modal>
             )}
             <AddPendingTransactionModal isOpen={isAddPendingModalOpen} onClose={() => setIsAddPendingModalOpen(false)} />
+
+            {professionalIncomeToEdit && (
+                <Modal isOpen={true} onClose={() => setProfessionalIncomeToEdit(null)} title="Editar Ingreso Profesional">
+                    <IncomeForm onClose={() => setProfessionalIncomeToEdit(null)} incomeToEdit={professionalIncomeToEdit} />
+                </Modal>
+            )}
+            {professionalExpenseToEdit && (
+                <Modal isOpen={true} onClose={() => setProfessionalExpenseToEdit(null)} title="Editar Gasto Profesional">
+                    <ExpenseForm onClose={() => setProfessionalExpenseToEdit(null)} expenseToEdit={professionalExpenseToEdit} />
+                </Modal>
+            )}
+            {personalMovementToEdit && (
+                <Modal isOpen={true} onClose={() => setPersonalMovementToEdit(null)} title="Editar Movimiento Personal">
+                    <MovementForm onClose={() => setPersonalMovementToEdit(null)} movementToEdit={personalMovementToEdit} />
+                </Modal>
+            )}
         </div>
     );
 };
