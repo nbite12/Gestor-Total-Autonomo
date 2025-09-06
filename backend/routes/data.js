@@ -37,6 +37,10 @@ router.get('/', async (req, res) => {
                 income.paymentDate = income.date;
                 needsSave = true;
             }
+            if (income.source === 'B (No Declarado)') {
+                income.source = 'Personal';
+                needsSave = true;
+            }
         }
     }
     
@@ -46,6 +50,20 @@ router.get('/', async (req, res) => {
             if (typeof movement.isPaid === 'undefined') {
                 movement.isPaid = true;
                 movement.paymentDate = movement.date;
+                needsSave = true;
+            }
+            if (movement.source === 'B (No Declarado)') {
+                movement.source = 'Personal';
+                needsSave = true;
+            }
+        }
+    }
+    
+    // PotentialIncomes might have source B
+    if (appData.potentialIncomes && Array.isArray(appData.potentialIncomes)) {
+        for (const income of appData.potentialIncomes) {
+            if (income.source === 'B (No Declarado)') {
+                income.source = 'Personal';
                 needsSave = true;
             }
         }

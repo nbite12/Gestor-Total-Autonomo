@@ -13,7 +13,6 @@ export enum Theme {
 export enum MoneySource {
   AUTONOMO = 'Autónomo (Declarado)',
   PERSONAL = 'Personal',
-  B = 'B (No Declarado)',
 }
 
 export enum MoneyLocation {
