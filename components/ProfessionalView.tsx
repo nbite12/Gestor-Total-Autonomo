@@ -688,12 +688,20 @@ const AnalisisFiscalView: React.FC = () => {
 
 // --- UI Components for AnalisisFiscalView ---
 const ModelCardHeader: React.FC<{model: string, link: string, tooltip: string, tutorialLink: string}> = ({model, link, tooltip, tutorialLink}) => (
-    <h4 className="text-lg font-bold flex items-center flex-wrap gap-x-2 gap-y-1">
-        <span>Modelo {model}</span>
-        <a href={link} target="_blank" rel="noopener noreferrer" title="Presentar en la Sede Electrónica"><Icon name="external-link" className="w-4 h-4 text-primary-500 hover:text-primary-700" /></a>
-        <a href={tutorialLink} target="_blank" rel="noopener noreferrer" title="Ver tutorial en YouTube"><Icon name="play" className="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" /></a>
-        <HelpTooltip content={tooltip} />
-    </h4>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <h4 className="text-lg font-bold">
+            Modelo {model}
+        </h4>
+        <div className="flex items-center gap-x-2 flex-shrink-0">
+            <a href={link} target="_blank" rel="noopener noreferrer" title="Presentar en la Sede Electrónica">
+                <Icon name="external-link" className="w-4 h-4 text-primary-500 hover:text-primary-700" />
+            </a>
+            <a href={tutorialLink} target="_blank" rel="noopener noreferrer" title="Ver tutorial en YouTube">
+                <Icon name="play" className="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" />
+            </a>
+            <HelpTooltip content={tooltip} />
+        </div>
+    </div>
 );
 const ModelRow: React.FC<{label: string, value: number, color?: 'green' | 'red', negative?: boolean}> = ({label, value, color, negative}) => {
     const { formatCurrency } = useContext(AppContext)!;

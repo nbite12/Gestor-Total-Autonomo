@@ -11,10 +11,9 @@ interface UndoToastProps {
 export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo, onClose }) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // FIX: Explicitly use `window.setTimeout` and `window.clearTimeout` to resolve a TypeScript type conflict
-  // where the global `setTimeout` might be incorrectly typed as returning a Node.js `Timeout` object instead of a `number`.
   useEffect(() => {
-    // Fix: `setTimeout` in a browser environment returns a `number`, not `NodeJS.Timeout`.
+    // FIX: Explicitly use `window.setTimeout` and `window.clearTimeout` to resolve a TypeScript type conflict
+    // where the global `setTimeout` might be incorrectly typed as returning a Node.js `Timeout` object instead of a `number`.
     let timer: number;
     // When the toast becomes visible, we want to reset the animation,
     // and then start it after a very brief delay. This ensures the

@@ -198,9 +198,9 @@ export const HelpTooltip: React.FC<{ content: string }> = ({ content }) => {
   return (
     <div className="relative inline-block ml-2 group">
       <Icon name="question" className="w-4 h-4 text-slate-400 cursor-help" />
-      <div className="absolute bottom-full right-0 mb-2 w-64 max-w-[calc(100vw-2rem)] p-2 bg-slate-800 dark:bg-slate-700 text-white text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto">
+      <div className="absolute bottom-full right-0 md:left-1/2 md:-translate-x-1/2 md:right-auto mb-2 w-64 max-w-[calc(100vw-2rem)] p-2 bg-slate-800 dark:bg-slate-700 text-white text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
         {content}
-        <div className="absolute top-full right-1 w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-slate-800 dark:border-t-slate-700 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto"></div>
+        <div className="absolute top-full right-1 md:left-1/2 md:-translate-x-1/2 md:right-auto w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-slate-800 dark:border-t-slate-700"></div>
       </div>
     </div>
   );
