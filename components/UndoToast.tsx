@@ -11,6 +11,8 @@ interface UndoToastProps {
 export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo, onClose }) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // FIX: Explicitly use `window.setTimeout` and `window.clearTimeout` to resolve a TypeScript type conflict
+  // where the global `setTimeout` might be incorrectly typed as returning a Node.js `Timeout` object instead of a `number`.
   useEffect(() => {
     // Fix: `setTimeout` in a browser environment returns a `number`, not `NodeJS.Timeout`.
     let timer: number;
@@ -19,7 +21,7 @@ export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo
     // transition from 100% to 0% width is visually triggered.
     if (isVisible) {
       setIsAnimating(false); // Reset to full width
-      timer = setTimeout(() => {
+      timer = window.setTimeout(() => {
         setIsAnimating(true); // Start shrinking
       }, 50); // A small delay is crucial for the CSS transition to trigger
     } else {
@@ -28,7 +30,7 @@ export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo
     }
     
     // Cleanup the timer if the component unmounts or visibility changes
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [isVisible]);
 
   return (
