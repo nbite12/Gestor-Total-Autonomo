@@ -237,7 +237,7 @@ const AppContainer: React.FC = () => {
     return (
         <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
             <div className="min-h-screen flex flex-col">
-                <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-40">
+                <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-50">
                     <div className="container mx-auto flex justify-between items-center">
                         <h1 className="text-xl sm:text-2xl font-bold text-primary-500">
                            Gestor Total Autónomo
