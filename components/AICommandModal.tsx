@@ -52,19 +52,15 @@ export const AICommandModal: React.FC<{
 
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
         recognition.lang = 'es-ES';
 
         recognition.onresult = (event: any) => {
-            let transcript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    transcript += event.results[i][0].transcript + ' ';
-                }
+            let fullTranscript = '';
+            for (let i = 0; i < event.results.length; i++) {
+                fullTranscript += event.results[i][0].transcript;
             }
-            if (transcript) {
-                setCommandText(prevText => prevText + transcript);
-            }
+            setCommandText(fullTranscript);
         };
 
         recognition.onerror = (event: any) => {
@@ -80,7 +76,9 @@ export const AICommandModal: React.FC<{
 
         recognition.onend = () => {
             if (isListeningRef.current) {
-                recognition.start();
+                try {
+                    recognition.start();
+                } catch(e) { /* Already starting */ }
             } else {
                 setIsListening(false);
             }
@@ -95,23 +93,34 @@ export const AICommandModal: React.FC<{
             }
         };
     }, []);
-
-    const handleListenToggle = () => {
-        if (!recognitionRef.current) return;
-
-        if (isListening) {
-            recognitionRef.current.stop();
-            setIsListening(false);
-        } else {
-            setError('');
-            setCommandText('');
+    
+    const startListening = () => {
+        if (!recognitionRef.current || isListeningRef.current) return;
+        setError('');
+        setCommandText('');
+        try {
             recognitionRef.current.start();
             setIsListening(true);
+        } catch(e) {
+            console.error("Error starting recognition:", e);
         }
     };
+
+    const stopListening = () => {
+        if (!recognitionRef.current || !isListeningRef.current) return;
+        recognitionRef.current.stop();
+        setIsListening(false);
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            startListening();
+        }
+    }, [isOpen]);
     
     const handleProcessCommand = async () => {
         if (!commandText.trim()) return;
+        stopListening();
         setIsLoading(true);
         setError('');
         setParsedData(null);
@@ -131,14 +140,11 @@ export const AICommandModal: React.FC<{
     };
 
     const handleCloseAndReset = () => {
+        stopListening();
         setCommandText('');
         setError('');
         setIsLoading(false);
         setParsedData(null);
-        if (isListening) {
-            recognitionRef.current?.stop();
-            setIsListening(false);
-        }
         onClose();
     };
 
@@ -227,19 +233,21 @@ export const AICommandModal: React.FC<{
             ) : (
                 <div className="space-y-4">
                     <p className="text-sm text-slate-600 dark:text-slate-400">
-                        Describe el movimiento que quieres añadir. Por ejemplo: {isProfessionalModeEnabled ? '"Factura para Acme Inc de 1000€ por diseño web" o ' : ''}"Gasto personal de 45€ en el supermercado con la tarjeta del banco personal".
+                        {isListening 
+                            ? "¡Escuchando! La transcripción aparecerá abajo en tiempo real." 
+                            : `Describe el movimiento que quieres añadir. Por ejemplo: ${isProfessionalModeEnabled ? '"Factura para Acme Inc de 1000€" o ' : ''}"Gasto personal de 45€ en el supermercado".`}
                     </p>
                     <textarea
                         rows={4}
                         className="block w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm dark:bg-slate-800 dark:border-slate-600 dark:placeholder-slate-500"
-                        placeholder="Escribe o graba tu comando aquí..."
+                        placeholder={isListening ? "Escuchando... hable con claridad." : "Pulsa 'Grabar Voz' o escribe tu comando aquí..."}
                         value={commandText}
                         onChange={(e) => setCommandText(e.target.value)}
                         disabled={isLoading}
                     />
                     {error && <p className="text-sm text-red-500 text-center">{error}</p>}
                     <div className="flex flex-col sm:flex-row gap-2">
-                        <Button onClick={handleListenToggle} variant="secondary" className="w-full" disabled={isLoading}>
+                        <Button onClick={isListening ? stopListening : startListening} variant="secondary" className="w-full" disabled={isLoading}>
                             <Icon name="microphone" className={`w-5 h-5 ${isListening ? 'text-red-500 animate-pulse' : ''}`} />
                             {isListening ? 'Detener Grabación' : 'Grabar Voz'}
                         </Button>
