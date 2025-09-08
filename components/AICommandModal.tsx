@@ -38,7 +38,6 @@ export const AICommandModal: React.FC<{
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
     const isListeningRef = useRef(false);
-    const finalTranscriptRef = useRef('');
 
     useEffect(() => {
         isListeningRef.current = isListening;
@@ -58,15 +57,17 @@ export const AICommandModal: React.FC<{
 
         recognition.onresult = (event: any) => {
             let interimTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
+            let finalTranscript = '';
+            
+            for (let i = 0; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
-                    finalTranscriptRef.current += transcript;
+                    finalTranscript += transcript;
                 } else {
                     interimTranscript += transcript;
                 }
             }
-            setCommandText(finalTranscriptRef.current + interimTranscript);
+            setCommandText(finalTranscript + interimTranscript);
         };
 
         recognition.onerror = (event: any) => {
@@ -102,7 +103,6 @@ export const AICommandModal: React.FC<{
     
     const startListening = () => {
         if (!recognitionRef.current || isListeningRef.current) return;
-        finalTranscriptRef.current = '';
         setError('');
         setCommandText('');
         try {
