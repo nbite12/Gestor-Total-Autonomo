@@ -146,6 +146,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
         onClose();
     };
 
+    const handleModalClose = () => {
+        if (isRelaunchable) {
+            onClose();
+        } else {
+            // For initial onboarding, closing via X or backdrop is equivalent to skipping/finishing.
+            // This prevents the user from being stuck with the modal on every reload.
+            handleFinish();
+        }
+    };
+
     const renderContent = () => {
         const currentStepId = visibleSteps[step - 1]?.id;
 
@@ -267,7 +277,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     return (
         <Modal 
             isOpen={isOpen} 
-            onClose={isRelaunchable ? onClose : () => {}}
+            onClose={handleModalClose}
             title={isRelaunchable ? "Asistente de Configuración" : "Configuración Inicial"}
         >
             <div className="min-h-[350px] flex flex-col justify-between">
