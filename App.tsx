@@ -238,23 +238,24 @@ const AppContainer: React.FC = () => {
         <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
             <div className="min-h-screen flex flex-col">
                 <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-50">
-                    <div className="container mx-auto flex justify-between items-center">
-                        <h1 className="text-xl sm:text-2xl font-bold text-primary-500">
+                    <div className="container mx-auto flex justify-between items-center gap-4">
+                        <h1 className="text-xl sm:text-2xl font-bold text-primary-500 whitespace-nowrap overflow-hidden text-ellipsis">
                            Gestor Total Autónomo
                         </h1>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">Hola, {user?.username}</span>
                             <Button variant="ghost" size="sm" onClick={togglePrivacyMode} aria-label="Ocultar/Mostrar saldos">
-                                <Icon name={isPrivacyMode ? 'eye-off' : 'eye'} className="w-6 h-6" />
+                                <Icon name={isPrivacyMode ? 'eye-off' : 'eye'} className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
                             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Cambiar tema">
-                                <Icon name={theme === 'light' ? 'moon' : 'sun'} className="w-6 h-6" />
+                                <Icon name={theme === 'light' ? 'moon' : 'sun'} className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
                              <Button variant={currentView === AppView.SETTINGS ? 'secondary' : 'ghost'} size="sm" onClick={() => setCurrentView(AppView.SETTINGS)} aria-label="Configuración">
-                                <Icon name="cog" className="w-6 h-6" />
+                                <Icon name="cog" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={logout}>
-                                Cerrar Sesión
+                            <Button variant="secondary" onClick={logout} className="px-2 py-1.5 sm:px-3 text-sm sm:gap-1">
+                                <span className="hidden sm:inline">Cerrar Sesión</span>
+                                <Icon name="logout" className="sm:hidden w-5 h-5" />
                             </Button>
                         </div>
                     </div>
