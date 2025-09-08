@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // --- Icon Component ---
 export const Icon: React.FC<{ name: string; className?: string }> = ({ name, className = 'w-6 h-6' }) => {
@@ -31,6 +31,7 @@ export const Icon: React.FC<{ name: string; className?: string }> = ({ name, cla
     'play': <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />,
     'logout': <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />,
     'info': <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+    'check-circle': <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
   };
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -196,12 +197,57 @@ export const UnsupportedModelsModal: React.FC<{ isOpen: boolean; onClose: () => 
 
 // --- HelpTooltip Component ---
 export const HelpTooltip: React.FC<{ content: string }> = ({ content }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleInteraction = (event: MouseEvent | TouchEvent) => {
+      if (isOpen && wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleInteraction);
+    document.addEventListener('touchstart', handleInteraction);
+
+    return () => {
+      document.removeEventListener('mousedown', handleInteraction);
+      document.removeEventListener('touchstart', handleInteraction);
+    };
+  }, [isOpen]);
+
   return (
-    <div className="relative inline-block ml-2 group">
-      <Icon name="question" className="w-4 h-4 text-slate-400 cursor-help" />
-      <div className="absolute bottom-full right-0 md:left-1/2 md:-translate-x-1/2 md:right-auto mb-2 w-64 max-w-[calc(100vw-2rem)] p-2 bg-slate-800 dark:bg-slate-700 text-white text-sm rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
+    <div className="relative inline-block ml-2" ref={wrapperRef}>
+      <button 
+        type="button" 
+        onClick={() => setIsOpen(o => !o)} 
+        aria-label="Mostrar ayuda" 
+        aria-expanded={isOpen}
+      >
+        <Icon name="question" className="w-4 h-4 text-slate-400 cursor-help" />
+      </button>
+
+      {/* Mobile-only backdrop */}
+      {isOpen && <div className="fixed md:hidden inset-0 bg-black bg-opacity-30 z-40" onClick={() => setIsOpen(false)} />}
+      
+      {/* Tooltip Content */}
+      <div
+        className={`
+          transition-opacity duration-300
+          
+          // Mobile: Centered Modal-like box
+          fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-2rem)] max-w-sm p-4 bg-slate-800 dark:bg-slate-700 text-white text-sm rounded-lg shadow-lg z-50
+          
+          // Desktop: Classic tooltip above icon
+          md:absolute md:top-auto md:bottom-full md:left-1/2 md:-translate-x-1/2 md:translate-y-0 md:mb-2 md:w-64 md:max-w-none md:p-2
+          
+          // Visibility
+          ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}
+        `}
+        role="tooltip"
+      >
         {content}
-        <div className="absolute top-full right-1 md:left-1/2 md:-translate-x-1/2 md:right-auto w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-slate-800 dark:border-t-slate-700"></div>
+        <div className="hidden md:block absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-slate-800 dark:border-t-slate-700" />
       </div>
     </div>
   );
