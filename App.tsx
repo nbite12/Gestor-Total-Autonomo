@@ -205,24 +205,11 @@ const AppContainer: React.FC = () => {
         <Button 
             variant={currentView === view ? 'primary' : 'ghost'} 
             onClick={() => setCurrentView(view)}
-            className={`flex flex-col sm:flex-row h-full items-center justify-center gap-2 w-full ${className}`}
+            className={`flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full ${className}`}
             aria-label={`Ir a ${label}`}
         >
-            <Icon name={icon} />
+            <Icon name={icon} className="w-6 h-6 sm:w-auto" />
             <span className="text-xs sm:text-base">{label}</span>
-        </Button>
-    );
-    
-    const AiButton = ({isDesktop = false}: {isDesktop?: boolean}) => (
-         <Button 
-            variant="primary" 
-            onClick={() => setAiModalOpen(true)}
-            className={`rounded-full shadow-lg ${isDesktop ? 'w-14 h-14' : 'w-16 h-16'}`}
-            aria-label="Asistente IA"
-            disabled={!data.settings.geminiApiKey}
-            title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
-        >
-            <Icon name="microphone" className={isDesktop ? 'w-7 h-7' : 'w-8 h-8'}/>
         </Button>
     );
 
@@ -267,32 +254,43 @@ const AppContainer: React.FC = () => {
                     {renderView()}
                 </main>
 
-                <nav className="sticky bottom-0 bg-white dark:bg-slate-800 shadow-[0_-2px_5px_rgba(0,0,0,0.1)] p-2 sm:hidden z-40">
-                    <div className="relative h-14">
-                        <div className="absolute top-0 left-0 right-0 h-full flex justify-between items-stretch gap-1">
-                            {/* Left Column */}
-                            <div className="flex-1 flex justify-center items-center">
-                                <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
-                            </div>
-
-                            {/* Center Spacer */}
-                            <div className="w-16 flex-shrink-0" />
-
-                            {/* Right Column */}
-                            <div className="flex-1 flex justify-center items-center gap-1">
-                                {isProfessionalModeEnabled ? (
-                                    <>
-                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
-                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                    </>
-                                ) : (
-                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                )}
-                            </div>
+                <nav className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 sm:hidden z-40">
+                    <div className="flex items-stretch h-16">
+                        {/* Left Side */}
+                        <div className="flex-1">
+                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
                         </div>
-                        {/* AI Button Overlay */}
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                           <AiButton />
+
+                        {/* Center: AI Mic Button */}
+                        <div className="flex-shrink-0 flex items-center justify-center px-2">
+                            <Button
+                                variant="primary"
+                                onClick={() => setAiModalOpen(true)}
+                                className="rounded-full shadow-lg w-14 h-14 flex items-center justify-center"
+                                disabled={!data.settings.geminiApiKey}
+                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+                                aria-label="Asistente IA"
+                            >
+                                <Icon name="microphone" className="w-7 h-7" />
+                            </Button>
+                        </div>
+                        
+                        {/* Right Side */}
+                        <div className="flex-1 flex">
+                            {isProfessionalModeEnabled ? (
+                                <>
+                                    <div className="flex-1">
+                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1">
+                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </nav>
@@ -306,7 +304,16 @@ const AppContainer: React.FC = () => {
                         
                         {/* Center AI Button */}
                         <div className="flex-shrink-0">
-                           <AiButton isDesktop={true} />
+                           <Button 
+                                variant="primary" 
+                                onClick={() => setAiModalOpen(true)}
+                                className="rounded-full shadow-lg w-14 h-14"
+                                aria-label="Asistente IA"
+                                disabled={!data.settings.geminiApiKey}
+                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+                            >
+                                <Icon name="microphone" className="w-7 h-7"/>
+                            </Button>
                         </div>
 
                         {/* Right Column */}
