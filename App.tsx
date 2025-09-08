@@ -255,89 +255,49 @@ const AppContainer: React.FC = () => {
                 </main>
 
                 <nav className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 sm:hidden z-40">
-                    <div className="relative flex items-stretch h-16">
-                        
-                        {/* Left Side container */}
-                        <div className="flex-1 flex">
-                            {/* The single button on the left takes up all its container space */}
-                            <div className="flex-1">
-                                <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
-                            </div>
-                        </div>
-
-                        {/* Spacer for the microphone button. This reserves space in the flex layout. */}
-                        <div className="w-20 flex-shrink-0" />
-
-                        {/* Right Side container */}
-                        <div className="flex-1 flex">
-                            {isProfessionalModeEnabled ? (
-                                <>
-                                    {/* The two buttons on the right share their container space */}
-                                    <div className="flex-1">
-                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                    </div>
-                                </>
-                            ) : (
-                                // If only one button, it takes all the space
-                                <div className="flex-1">
-                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Center: AI Mic Button, absolutely positioned over the spacer */}
-                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-                            <Button
-                                variant="primary"
-                                onClick={() => setAiModalOpen(true)}
-                                className="rounded-full shadow-lg w-14 h-14 flex items-center justify-center"
-                                disabled={!data.settings.geminiApiKey}
-                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
-                                aria-label="Asistente IA"
-                            >
-                                <Icon name="microphone" className="w-7 h-7" />
-                            </Button>
-                        </div>
+                    <div className="flex items-stretch h-16">
+                         {isProfessionalModeEnabled ? (
+                            <>
+                                <div className="flex-1"><NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" /></div>
+                                <div className="flex-[2] border-x border-slate-200 dark:border-slate-700"><NavButton view={AppView.GLOBAL} icon="globe" label="Global" /></div>
+                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="home" label="Personal" /></div>
+                            </>
+                        ) : (
+                             <>
+                                <div className="flex-1"><NavButton view={AppView.GLOBAL} icon="globe" label="Global" /></div>
+                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="home" label="Personal" /></div>
+                            </>
+                        )}
                     </div>
                 </nav>
 
                 <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md flex items-center gap-2 h-16">
-                        {/* Left Column */}
-                        <div className="flex-1 flex justify-center">
-                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Visión Global" className="max-w-xs" />
-                        </div>
-                        
-                        {/* Center AI Button */}
-                        <div className="flex-shrink-0">
-                           <Button 
-                                variant="primary" 
-                                onClick={() => setAiModalOpen(true)}
-                                className="rounded-full shadow-lg w-14 h-14"
-                                aria-label="Asistente IA"
-                                disabled={!data.settings.geminiApiKey}
-                                title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
-                            >
-                                <Icon name="microphone" className="w-7 h-7"/>
-                            </Button>
-                        </div>
-
-                        {/* Right Column */}
-                        <div className={`flex-1 flex ${isProfessionalModeEnabled ? 'justify-end' : 'justify-center'} gap-2`}>
+                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md flex items-center justify-around gap-2 h-16">
+                        <NavButton view={AppView.GLOBAL} icon="globe" label="Visión Global" className="max-w-xs" />
                         {isProfessionalModeEnabled ? (
-                                <>
-                                    <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" className="max-w-xs"/>
-                                    <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
-                                </>
-                            ) : (
+                            <>
+                                <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" className="max-w-xs"/>
                                 <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
-                            )}
-                        </div>
+                            </>
+                        ) : (
+                            <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
+                        )}
                    </div>
                 </nav>
+
+                {/* FLOATING AI BUTTON */}
+                <div className="fixed bottom-20 sm:bottom-6 right-6 z-50">
+                    <Button
+                        variant="primary"
+                        onClick={() => setAiModalOpen(true)}
+                        className="rounded-full shadow-lg w-16 h-16 flex items-center justify-center transition-transform hover:scale-110 active:scale-100"
+                        disabled={!data.settings.geminiApiKey}
+                        title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
+                        aria-label="Asistente IA"
+                    >
+                        <Icon name="sparkles" className="w-8 h-8" />
+                    </Button>
+                </div>
             </div>
             {isAiModalOpen && <AICommandModal isOpen={isAiModalOpen} onClose={() => setAiModalOpen(false)} />}
              <UndoToast
