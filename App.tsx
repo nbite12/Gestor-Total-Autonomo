@@ -255,14 +255,41 @@ const AppContainer: React.FC = () => {
                 </main>
 
                 <nav className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 sm:hidden z-40">
-                    <div className="flex items-stretch h-16">
-                        {/* Left Side */}
-                        <div className="flex-1">
-                            <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
+                    <div className="relative flex items-stretch h-16">
+                        
+                        {/* Left Side container */}
+                        <div className="flex-1 flex">
+                            {/* The single button on the left takes up all its container space */}
+                            <div className="flex-1">
+                                <NavButton view={AppView.GLOBAL} icon="sparkles" label="Global" />
+                            </div>
                         </div>
 
-                        {/* Center: AI Mic Button */}
-                        <div className="flex-shrink-0 flex items-center justify-center px-2">
+                        {/* Spacer for the microphone button. This reserves space in the flex layout. */}
+                        <div className="w-20 flex-shrink-0" />
+
+                        {/* Right Side container */}
+                        <div className="flex-1 flex">
+                            {isProfessionalModeEnabled ? (
+                                <>
+                                    {/* The two buttons on the right share their container space */}
+                                    <div className="flex-1">
+                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                    </div>
+                                </>
+                            ) : (
+                                // If only one button, it takes all the space
+                                <div className="flex-1">
+                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Center: AI Mic Button, absolutely positioned over the spacer */}
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
                             <Button
                                 variant="primary"
                                 onClick={() => setAiModalOpen(true)}
@@ -273,24 +300,6 @@ const AppContainer: React.FC = () => {
                             >
                                 <Icon name="microphone" className="w-7 h-7" />
                             </Button>
-                        </div>
-                        
-                        {/* Right Side */}
-                        <div className="flex-1 flex">
-                            {isProfessionalModeEnabled ? (
-                                <>
-                                    <div className="flex-1">
-                                        <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="flex-1">
-                                    <NavButton view={AppView.PERSONAL} icon="home" label="Personal" />
-                                </div>
-                            )}
                         </div>
                     </div>
                 </nav>
