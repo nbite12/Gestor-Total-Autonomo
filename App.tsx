@@ -238,11 +238,13 @@ const AppContainer: React.FC = () => {
         <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
             <div className="min-h-screen flex flex-col">
                 <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-50">
-                    <div className="container mx-auto flex justify-between items-center gap-4">
-                        <h1 className="text-xl sm:text-2xl font-bold text-primary-500 whitespace-nowrap overflow-hidden text-ellipsis">
-                           Gestor Total Autónomo
-                        </h1>
-                        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                    <div className="container mx-auto flex justify-between items-center gap-2 sm:gap-4">
+                        <div className="flex-1 min-w-0">
+                            <h1 className="text-xl sm:text-2xl font-bold text-primary-500 whitespace-nowrap overflow-hidden text-ellipsis">
+                            Gestor Total Autónomo
+                            </h1>
+                        </div>
+                        <div className="relative z-10 flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">Hola, {user?.username}</span>
                             <Button variant="ghost" size="sm" onClick={togglePrivacyMode} aria-label="Ocultar/Mostrar saldos">
                                 <Icon name={isPrivacyMode ? 'eye-off' : 'eye'} className="w-5 h-5 sm:w-6 sm:h-6" />
