@@ -76,6 +76,8 @@ export interface Expense {
   irpfRetentionRate?: number; // percentage
   irpfRetentionAmount?: number; // calculated amount
   categoryId: string;
+  // FIX: Add suggestedCategoryName to Expense type for AI suggestions
+  suggestedCategoryName?: string;
   location?: MoneyLocation;
   attachment?: Attachment;
   isDeductible: boolean;

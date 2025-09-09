@@ -149,7 +149,8 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
             <Input label="IRPF (%)" name="irpfRate" type="number" step="0.01" value={formData.irpfRate} onChange={handleChange} required />
         </div>
         <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-            <Switch label="Factura Pagada" name="isPaid" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+            {/* FIX: Removed invalid 'name' prop from Switch component. */}
+            <Switch label="Factura Pagada" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
             {formData.isPaid && (
                 <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
                     {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -158,7 +159,8 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
         </div>
         {data.settings.isInROI && (
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-                <Switch label="Operación Intracomunitaria" name="isIntraCommunity" checked={formData.isIntraCommunity ?? false} onChange={(c) => setFormData(p => ({...p, isIntraCommunity: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Operación Intracomunitaria" checked={formData.isIntraCommunity ?? false} onChange={(c) => setFormData(p => ({...p, isIntraCommunity: c}))} />
             </div>
         )}
 
@@ -283,7 +285,8 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                <Switch label="Es Gasto Deducible" name="isDeductible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Es Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
                 {formData.isDeductible && (
                     <>
                         <Button type="button" variant="secondary" size="sm" onClick={handleDeductibilityCheck} disabled={isCheckingDeductibility || !data.settings.geminiApiKey}>
@@ -300,7 +303,8 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 )}
             </div>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                <Switch label="Gasto Pagado" name="isPaid" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Gasto Pagado" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                     <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
                         {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -375,8 +379,10 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                <Switch label="Amortizable (Deducible)" name="isDeductible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
-                <Switch label="Pagado" name="isPaid" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Amortizable (Deducible)" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Pagado" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                     <Select label="Pagado Desde" name="location" value={formData.location} onChange={handleChange}>
                         {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
@@ -449,7 +455,8 @@ export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Part
                 </Select>
             </div>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                <Switch label="Pagado / Recibido" name="isPaid" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+                {/* FIX: Removed invalid 'name' prop from Switch component. */}
+                <Switch label="Pagado / Recibido" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                      <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
                         {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
@@ -535,7 +542,8 @@ export const SavingsGoalForm: React.FC<{ onClose: () => void; goalToEdit?: Savin
         name: goalToEdit?.name || '',
         targetAmount: goalToEdit?.targetAmount || 1000,
         currentAmount: goalToEdit?.currentAmount || 0,
-        deadline: goalToEdit?.deadline ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput(new Date().setFullYear(new Date().getFullYear() + 1)),
+        // FIX: Correctly create a new Date object for next year. `setFullYear` returns a number.
+        deadline: goalToEdit?.deadline ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput((() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d; })()),
         plannedContribution: goalToEdit?.plannedContribution
     });
     
