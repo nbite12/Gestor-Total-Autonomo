@@ -219,22 +219,24 @@ const PersonalView: React.FC = () => {
              <div className="overflow-y-auto max-h-[40rem] mt-4">
                 <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                     {filteredMovements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(mov => (
-                        <div key={mov.id} className={`flex items-center p-3 transition-colors ${!(mov.isPaid ?? true) ? 'opacity-60 italic' : ''}`}>
-                            <div className={`p-2 rounded-lg mr-4 ${mov.type === 'income' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
-                                <Icon name={mov.type === 'income' ? 'TrendingUp' : 'TrendingDown'} className="w-5 h-5" />
-                            </div>
-                            <div className="flex-grow">
-                                <p className="font-semibold">{mov.concept}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{personalCategories.find(c => c.id === mov.categoryId)?.name || '-'}</p>
-                            </div>
-                            <div className="text-right flex items-center gap-2 ml-4">
+                        <div key={mov.id} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!(mov.isPaid ?? true) ? 'opacity-60 italic' : ''}`}>
+                            <div className="flex items-center gap-4 flex-grow min-w-[200px]">
+                                <div className={`p-2 rounded-lg ${mov.type === 'income' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'} flex-shrink-0`}>
+                                    <Icon name={mov.type === 'income' ? 'TrendingUp' : 'TrendingDown'} className="w-5 h-5" />
+                                </div>
                                 <div>
+                                    <p className="font-semibold">{mov.concept}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{personalCategories.find(c => c.id === mov.categoryId)?.name || '-'}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                <div className="text-right">
                                     <p className={`font-semibold whitespace-nowrap ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                         {mov.type === 'income' ? '+' : '-'}{formatCurrency(mov.amount)}
                                     </p>
                                     {!(mov.isPaid ?? true) && <span className="text-xs text-yellow-500">Pendiente</span>}
                                 </div>
-                                <div className="flex-shrink-0">
+                                <div className="flex items-center">
                                    <Button size="sm" variant="ghost" onClick={() => handleOpenMovementModal(mov)}><Icon name="Pencil" className="w-4 h-4" /></Button>
                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteMovement(mov.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                 </div>

@@ -1458,16 +1458,18 @@ const GlobalView: React.FC = () => {
                         {unifiedTransactions.map(t => {
                             const iconName = t.type === 'transfer' ? 'ArrowRightLeft' : t.amount > 0 ? 'TrendingUp' : 'TrendingDown';
                             return (
-                                <div key={t.id} className={`flex items-center p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
-                                    <div className={`p-2 rounded-lg mr-4 ${t.typeLabel.color}`}>
-                                        <Icon name={iconName} className="w-5 h-5" />
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="font-semibold">{t.concept}</p>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">{t.details}</p>
-                                    </div>
-                                    <div className="text-right flex items-center gap-2 ml-4">
+                                <div key={t.id} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
+                                    <div className="flex items-center gap-4 flex-grow min-w-[200px]">
+                                        <div className={`p-2 rounded-lg ${t.typeLabel.color} flex-shrink-0`}>
+                                            <Icon name={iconName} className="w-5 h-5" />
+                                        </div>
                                         <div>
+                                            <p className="font-semibold">{t.concept}</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">{t.details}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                        <div className="text-right">
                                             <p className={`font-semibold whitespace-nowrap ${
                                                 t.type === 'transfer' ? 'text-slate-500 dark:text-slate-400' :
                                                 t.amount > 0 ? 'text-green-500' : 'text-red-500'
@@ -1476,7 +1478,7 @@ const GlobalView: React.FC = () => {
                                             </p>
                                             {!t.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
                                         </div>
-                                        <div className="flex-shrink-0">
+                                        <div className="flex items-center">
                                             <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.id)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                             <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                         </div>

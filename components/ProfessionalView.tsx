@@ -277,22 +277,24 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
              <div className="overflow-y-auto max-h-[40rem] mt-4">
                 <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                     {incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (
-                        <div key={inc.id} className={`flex items-center p-3 transition-colors ${!inc.isPaid ? 'opacity-60 italic' : ''}`}>
-                            <div className="p-2 rounded-lg mr-4 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                                <Icon name="TrendingUp" className="w-5 h-5" />
-                            </div>
-                            <div className="flex-grow">
-                                <p className="font-semibold">{inc.concept || inc.invoiceNumber}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{inc.clientName} - {formatDate(inc.date)}</p>
-                            </div>
-                            <div className="text-right flex items-center gap-2 ml-4">
+                        <div key={inc.id} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!inc.isPaid ? 'opacity-60 italic' : ''}`}>
+                            <div className="flex items-center gap-4 flex-grow min-w-[200px]">
+                                <div className="p-2 rounded-lg bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 flex-shrink-0">
+                                    <Icon name="TrendingUp" className="w-5 h-5" />
+                                </div>
                                 <div>
+                                    <p className="font-semibold">{inc.concept || inc.invoiceNumber}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{inc.clientName} - {formatDate(inc.date)}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                <div className="text-right">
                                     <p className="font-semibold whitespace-nowrap text-green-500">
                                         {formatCurrency(getTotalFacturaEmitida(inc))}
                                     </p>
                                     {!inc.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
                                 </div>
-                                <div className="flex-shrink-0 flex items-center">
+                                <div className="flex items-center">
                                    {inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="Paperclip" className="w-4 h-4" /></Button>}
                                    <Button size="sm" variant="ghost" onClick={() => onEdit(inc)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                    <Button size="sm" variant="ghost" onClick={() => onDelete(inc.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
@@ -354,22 +356,24 @@ const UnifiedExpenseBook: React.FC<{
                         const total = base + vatAmount;
 
                         return (
-                             <div key={`${item.itemType}-${item.id}`} className={`flex items-center p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
-                                <div className={`p-2 rounded-lg mr-4 ${isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'}`}>
-                                    <Icon name={isExpense ? 'TrendingDown' : 'Package'} className="w-5 h-5" />
-                                </div>
-                                <div className="flex-grow">
-                                    <p className="font-semibold">{concept}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{provider} - {formatDate(date)}</p>
-                                </div>
-                                <div className="text-right flex items-center gap-2 ml-4">
+                             <div key={`${item.itemType}-${item.id}`} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
+                                <div className="flex items-center gap-4 flex-grow min-w-[200px]">
+                                    <div className={`p-2 rounded-lg ${isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'} flex-shrink-0`}>
+                                        <Icon name={isExpense ? 'TrendingDown' : 'Package'} className="w-5 h-5" />
+                                    </div>
                                     <div>
+                                        <p className="font-semibold">{concept}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">{provider} - {formatDate(date)}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                    <div className="text-right">
                                         <p className="font-semibold whitespace-nowrap text-red-500">
                                             {formatCurrency(total)}
                                         </p>
                                         {!item.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
                                     </div>
-                                    <div className="flex-shrink-0 flex items-center">
+                                    <div className="flex items-center">
                                        {item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="Paperclip" className="w-4 h-4" /></Button>}
                                        <Button size="sm" variant="ghost" onClick={() => isExpense ? onEditExpense(item) : onEditInvestment(item)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                        <Button size="sm" variant="ghost" onClick={() => onDelete(item.itemType, item.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
