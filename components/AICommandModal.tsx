@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Modal, Button, Icon } from './ui';
 import { parseNaturalLanguageTransaction, ParsedCommand } from '../services/geminiService';
@@ -37,17 +37,17 @@ export const AICommandModal: React.FC<{
     const [isListening, setIsListening] = useState(false);
 
     const recognitionRef = useRef<any>(null);
+    // FIX: Use ReturnType<typeof setTimeout> for environment-agnostic timeout handle type.
     const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userStoppedRef = useRef(false);
 
-    const stopListening = () => {
-        if (!recognitionRef.current || !isListening) return;
-        userStoppedRef.current = true;
-        if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-        }
+    const stopListening = useCallback(() => {
+        if (!recognitionRef.current) return;
+        userStoppedRef.current = true; // La detención es intencionada
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         recognitionRef.current.stop();
-    };
+        setIsListening(false); // Forzamos el estado a 'detenido' inmediatamente
+    }, []);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -57,43 +57,46 @@ export const AICommandModal: React.FC<{
         }
 
         const recognition = new SpeechRecognition();
-        
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = 'es-ES';
 
         recognition.onresult = (event: any) => {
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-            
             const transcript = event.results[0][0].transcript;
             setCommandText(prev => (prev ? prev.trim() + ' ' : '') + transcript.trim());
-
             silenceTimerRef.current = setTimeout(stopListening, 15000);
         };
-        
+
         recognition.onend = () => {
-            if (!userStoppedRef.current) {
-                recognition.start();
-            } else {
-                setIsListening(false);
+            // Solo reinicia si la escucha está activa Y no fue una parada intencionada
+            if (isListening && !userStoppedRef.current) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    // Si falla el reinicio, paramos todo para evitar bucles.
+                    stopListening();
+                }
             }
         };
 
         recognition.onerror = (event: any) => {
-            console.error('Speech recognition error', event.error);
-             if (event.error === 'no-speech') return;
-            let errorMessage = 'Error en el reconocimiento de voz. Inténtalo de nuevo.';
-            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                errorMessage = 'Permiso para micrófono denegado. Habilítalo en los ajustes del navegador.';
-            }
-            setError(errorMessage);
-            userStoppedRef.current = true; // Stop loop on error
+            console.error('Speech recognition error:', event.error);
+            // --- ESTA ES LA CORRECCIÓN CLAVE ---
+            // Si hay un error, levantamos la bandera para detener el bucle de reinicio.
+            userStoppedRef.current = true;
             setIsListening(false);
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+            // Evitamos mostrar errores por pausas silenciosas
+            if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                setError('Ha ocurrido un error al grabar.');
+            }
         };
 
         recognitionRef.current = recognition;
 
+        // Limpieza al desmontar el componente
         return () => {
             if (recognitionRef.current) {
                 recognitionRef.current.abort();
@@ -102,10 +105,9 @@ export const AICommandModal: React.FC<{
                 clearTimeout(silenceTimerRef.current);
             }
         };
-    }, []);
-    
+    }, [isListening, stopListening]);
+
     const startListening = () => {
-        if (isListening || !recognitionRef.current) return;
         setCommandText('');
         setError('');
         setParsedData(null);
@@ -115,30 +117,11 @@ export const AICommandModal: React.FC<{
             recognitionRef.current.start();
             silenceTimerRef.current = setTimeout(stopListening, 15000);
         } catch(e) {
-            console.error("Error starting recognition:", e);
-            setIsListening(false);
+             console.error("Error starting recognition:", e);
+             stopListening();
         }
     };
     
-    const handleCloseAndReset = () => {
-        stopListening();
-        setCommandText('');
-        setError('');
-        setIsLoading(false);
-        setParsedData(null);
-        onClose();
-    };
-
-    useEffect(() => {
-        if (isOpen) {
-             // Delay slightly to ensure modal is visible before starting
-            setTimeout(() => startListening(), 100);
-        } else {
-            stopListening();
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]);
-
     const handleProcessCommand = async () => {
         if (!commandText.trim()) return;
         stopListening();
@@ -158,6 +141,15 @@ export const AICommandModal: React.FC<{
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleCloseAndReset = () => {
+        stopListening();
+        setCommandText('');
+        setError('');
+        setIsLoading(false);
+        setParsedData(null);
+        onClose();
     };
 
     const renderConfirmationForm = () => {
