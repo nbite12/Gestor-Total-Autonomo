@@ -51,7 +51,7 @@ export const AICommandModal: React.FC<{
         }
 
         const recognition = new SpeechRecognition();
-        recognition.continuous = false; // Set to false for single, distinct commands to fix mobile repetition bug.
+        recognition.continuous = true; // Allow user to pause while speaking.
         recognition.interimResults = true;
         recognition.lang = 'es-ES';
 
