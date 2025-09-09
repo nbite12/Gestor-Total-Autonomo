@@ -50,25 +50,25 @@ export const AICommandModal: React.FC<{
         recognition.interimResults = true;
         recognition.lang = 'es-ES';
 
-        let finalTranscriptAccumulator = '';
-
-        recognition.onstart = () => {
-            finalTranscriptAccumulator = ''; // Reset for each new session.
-        };
-
         recognition.onresult = (event: any) => {
+            let finalTranscript = '';
             let interimTranscript = '';
-            // Iterate from the last result index processed. This is the key to prevent duplication.
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcript = event.results[i][0].transcript;
-                if (event.results[i].isFinal) {
-                    finalTranscriptAccumulator += transcript;
+            
+            // Iterate through the entire results list from the browser's speech recognition session
+            for (let i = 0; i < event.results.length; i++) {
+                const transcriptPart = event.results[i][0].transcript;
+                if(event.results[i].isFinal) {
+                    // Concatenate all final parts to form the stable transcript
+                    finalTranscript += transcriptPart;
                 } else {
-                    interimTranscript += transcript;
+                    // The interim part is the last non-final part
+                    interimTranscript += transcriptPart;
                 }
             }
-            // Update the view with the accumulated final transcript and the current interim part.
-            setCommandText(finalTranscriptAccumulator + interimTranscript);
+
+            // By rebuilding the transcript from the full results list each time,
+            // we prevent the duplication bug that can occur on some browsers.
+            setCommandText(finalTranscript + interimTranscript);
         };
 
         recognition.onerror = (event: any) => {
