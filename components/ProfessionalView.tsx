@@ -289,7 +289,7 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
                             </div>
                             <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                 <div className="text-right">
-                                    <p className="font-semibold whitespace-nowrap text-green-500">
+                                    <p className="font-semibold break-words text-green-500">
                                         {formatCurrency(getTotalFacturaEmitida(inc))}
                                     </p>
                                     {!inc.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
@@ -368,7 +368,7 @@ const UnifiedExpenseBook: React.FC<{
                                 </div>
                                 <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                     <div className="text-right">
-                                        <p className="font-semibold whitespace-nowrap text-red-500">
+                                        <p className="font-semibold break-words text-red-500">
                                             {formatCurrency(total)}
                                         </p>
                                         {!item.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
@@ -574,10 +574,10 @@ const AnalisisFiscalView: React.FC = () => {
             <section>
                 <h3 className="text-xl font-bold mb-4">Resumen del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    <Card><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Margen de Beneficio</h4><p className={`text-2xl font-bold ${fiscalCalculations.kpis.kpiProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fiscalCalculations.kpis.kpiProfitMargin.toFixed(2)}%</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
+                    <Card><h4 className="text-sm font-medium text-slate-500">Margen de Beneficio</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fiscalCalculations.kpis.kpiProfitMargin.toFixed(2)}%</p></Card>
                 </div>
             </section>
             
@@ -712,13 +712,13 @@ const ModelCardHeader: React.FC<{model: string, link: string, tooltip: string, t
 const ModelRow: React.FC<{label: string, value: number, color?: 'green' | 'red', negative?: boolean}> = ({label, value, color, negative}) => {
     const { formatCurrency } = useContext(AppContext)!;
     const colorClass = color === 'green' ? 'text-green-500' : color === 'red' ? 'text-red-500' : '';
-    return <div className="flex justify-between"><p>{label}:</p><p className={`font-semibold ${colorClass}`}>{negative && value > 0 ? '-' : ''}{formatCurrency(value)}</p></div>
+    return <div className="flex justify-between"><p>{label}:</p><p className={`font-semibold break-words ${colorClass}`}>{negative && value > 0 ? '-' : ''}{formatCurrency(value)}</p></div>
 };
 const ModelResult: React.FC<{label: string, value: number, resultText?: (v: number) => string, isAbsolute?: boolean}> = ({label, value, resultText, isAbsolute}) => {
     const { formatCurrency } = useContext(AppContext)!;
     const finalValue = isAbsolute ? Math.abs(value) : value;
     const colorClass = value >= 0 ? 'text-red-600' : 'text-green-600';
-    return <div className="flex justify-between text-base pt-2 border-t dark:border-slate-700"><p className="font-bold">{label}:</p><p className={`font-bold ${colorClass}`}>{formatCurrency(finalValue)} {resultText && `(${resultText(value)})`}</p></div>
+    return <div className="flex justify-between text-base pt-2 border-t dark:border-slate-700"><p className="font-bold">{label}:</p><p className={`font-bold break-words ${colorClass}`}>{formatCurrency(finalValue)} {resultText && `(${resultText(value)})`}</p></div>
 };
 const StatusFooter: React.FC<{status: {isOpen: boolean, text: string}, customText?: string}> = ({status, customText}) => (
     <div className={`mt-4 text-xs font-semibold text-right ${status.isOpen ? 'text-green-600' : 'text-red-600'}`}>

@@ -52,7 +52,7 @@ const CategoryManager: React.FC<{
                             transition={{ duration: 0.2 }}
                             className="flex justify-between items-center p-2 bg-slate-100 dark:bg-slate-700 rounded"
                         >
-                            <span>{cat.name}</span>
+                            <span className="break-words">{cat.name}</span>
                             <Button size="sm" variant="ghost" onClick={() => onDelete(cat.id)}>
                                 <Icon name="Trash2" className="w-4 h-4 text-red-500" />
                             </Button>

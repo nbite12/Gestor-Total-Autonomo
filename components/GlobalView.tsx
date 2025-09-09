@@ -1056,7 +1056,7 @@ const GlobalView: React.FC = () => {
                         <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                     </div>
                     <div className="text-center my-4">
-                        <p className="text-7xl lg:text-8xl font-thin tracking-tight text-gray-800 dark:text-white">
+                        <p className="text-7xl lg:text-8xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
                             {formatCurrency(netCapitalSummary.netAvailableCapital)}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-slate-400">Estimación después de obligaciones</p>
@@ -1470,7 +1470,7 @@ const GlobalView: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                         <div className="text-right">
-                                            <p className={`font-semibold whitespace-nowrap ${
+                                            <p className={`font-semibold break-words ${
                                                 t.type === 'transfer' ? 'text-slate-500 dark:text-slate-400' :
                                                 t.amount > 0 ? 'text-green-500' : 'text-red-500'
                                             }`}>

@@ -148,15 +148,15 @@ const PersonalView: React.FC = () => {
        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
            <Card className="text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Fondos Personales Actuales</h3>
-                <p className={`text-4xl font-bold ${summary.totalBalance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.totalBalance)}</p>
+                <p className={`text-4xl font-bold break-words ${summary.totalBalance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.totalBalance)}</p>
            </Card>
            <Card className="text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Ingresos (Periodo)</h3>
-                <p className="text-3xl font-bold text-green-500">{formatCurrency(summary.totalIncome)}</p>
+                <p className="text-3xl font-bold text-green-500 break-words">{formatCurrency(summary.totalIncome)}</p>
            </Card>
            <Card className="text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Gastos (Periodo)</h3>
-                <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalExpense)}</p>
+                <p className="text-3xl font-bold text-red-500 break-words">{formatCurrency(summary.totalExpense)}</p>
            </Card>
        </div>
        
@@ -231,7 +231,7 @@ const PersonalView: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                 <div className="text-right">
-                                    <p className={`font-semibold whitespace-nowrap ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                                    <p className={`font-semibold break-words ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                         {mov.type === 'income' ? '+' : '-'}{formatCurrency(mov.amount)}
                                     </p>
                                     {!(mov.isPaid ?? true) && <span className="text-xs text-yellow-500">Pendiente</span>}
