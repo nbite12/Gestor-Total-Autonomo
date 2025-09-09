@@ -21,14 +21,34 @@ export const AiModal: React.FC<AiModalProps> = ({ isOpen, onClose, onAnalysisCom
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [fileName, setFileName] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0];
+    const processFile = (selectedFile: File | undefined) => {
         if (selectedFile) {
             setFile(selectedFile);
             setFileName(selectedFile.name);
             setError('');
         }
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        processFile(e.target.files?.[0]);
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+        processFile(e.dataTransfer.files?.[0]);
     };
     
     const handleAnalyze = async () => {
@@ -73,7 +93,11 @@ export const AiModal: React.FC<AiModalProps> = ({ isOpen, onClose, onAnalysisCom
 
                 <div>
                     <label htmlFor="ai-file-upload" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Sube el documento (imagen o PDF)</label>
-                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-600 border-dashed rounded-md">
+                    <div 
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors ${isDragging ? 'border-primary-500 bg-blue-500/10' : 'border-slate-300 dark:border-slate-600'}`}>
                         <div className="space-y-1 text-center">
                             <Icon name="upload" className="mx-auto h-12 w-12 text-slate-400" />
                             <div className="flex text-sm text-slate-600 dark:text-slate-400">

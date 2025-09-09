@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Input } from './ui';
+// @ts-ignore
+import { motion } from 'framer-motion';
 
 interface PeriodSelectorProps {
   onPeriodChange: (startDate: Date, endDate: Date) => void;
 }
 
-type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T' | 'YTD' | 'ANO_COMPLETO' | 'CUSTOM';
+type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T';
 
 const getCurrentQuarterPeriod = (): Period => {
     const month = new Date().getMonth();
@@ -18,8 +19,6 @@ const getCurrentQuarterPeriod = (): Period => {
 
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }) => {
   const [activePeriod, setActivePeriod] = useState<Period>(getCurrentQuarterPeriod());
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
   
   const getPeriodDates = (period: Period, year = new Date().getFullYear()) => {
     const today = new Date();
@@ -39,77 +38,46 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
         return { start: new Date(year, 6, 1), end: new Date(year, 8, 30, 23, 59, 59, 999) };
       case '4T':
         return { start: new Date(year, 9, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
-      case 'YTD':
-        return { start: new Date(year, 0, 1), end: endOfToday };
-      case 'ANO_COMPLETO':
-        return { start: new Date(year, 0, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
       default:
         return { start: new Date(), end: new Date() };
     }
   };
 
   useEffect(() => {
-    if (activePeriod !== 'CUSTOM') {
-      const { start, end } = getPeriodDates(activePeriod);
-      onPeriodChange(start, end);
-    }
+    const { start, end } = getPeriodDates(activePeriod);
+    onPeriodChange(start, end);
      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePeriod]);
 
-  const handleCustomApply = () => {
-    if (customStart && customEnd) {
-      const start = new Date(customStart);
-      const end = new Date(customEnd);
-      end.setHours(23, 59, 59, 999); // Include the whole end day
-      onPeriodChange(start, end);
-    }
-  };
-
   const periods: { key: Period, label: string }[] = [
     { key: 'HOY', label: 'Hoy' },
-    { key: 'ESTE_MES', label: 'Este Mes' },
+    { key: 'ESTE_MES', label: 'Mes' },
     { key: '1T', label: '1T' },
     { key: '2T', label: '2T' },
     { key: '3T', label: '3T' },
     { key: '4T', label: '4T' },
-    { key: 'YTD', label: 'Año (YTD)' },
-    { key: 'ANO_COMPLETO', label: 'Año Completo' },
-    { key: 'CUSTOM', label: 'Personalizado' },
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md mb-6">
-      <div className="flex flex-wrap items-center gap-2">
-        {periods.map((p) => (
-          <Button
-            key={p.key}
-            variant={activePeriod === p.key ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setActivePeriod(p.key)}
-          >
-            {p.label}
-          </Button>
-        ))}
-      </div>
-      {activePeriod === 'CUSTOM' && (
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-          <Input
-            label="Fecha Inicio"
-            type="date"
-            value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
-          />
-          <Input
-            label="Fecha Fin"
-            type="date"
-            value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
-          />
-          <Button onClick={handleCustomApply} className="w-full sm:w-auto">
-            Aplicar
-          </Button>
-        </div>
-      )}
+    <div className="w-full p-1 space-x-1 list-none rounded-xl bg-black/10 dark:bg-white/10 flex mb-6">
+      {periods.map(p => (
+        <button
+          key={p.key}
+          onClick={() => setActivePeriod(p.key)}
+          className={`relative w-full rounded-lg py-1.5 text-sm font-medium transition focus:outline-none ${
+            activePeriod === p.key ? 'text-gray-900 dark:text-gray-900' : 'text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
+          }`}
+        >
+          {activePeriod === p.key && (
+            <motion.div
+              layoutId="active-period-pill"
+              className="absolute inset-0 bg-white rounded-lg shadow-md"
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            />
+          )}
+          <span className="relative z-10">{p.label}</span>
+        </button>
+      ))}
     </div>
   );
 };

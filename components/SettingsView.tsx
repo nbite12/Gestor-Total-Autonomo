@@ -3,6 +3,8 @@ import { AppContext } from '../App';
 import { UserSettings, Category, Income, Expense, MoneyLocation } from '../types';
 import { Card, Button, Input, Icon, Switch, HelpTooltip, UnsupportedModelsModal, Modal } from './ui';
 import { OnboardingModal } from './OnboardingModal';
+// @ts-ignore
+import { motion, AnimatePresence } from 'framer-motion';
 
 declare const JSZip: any;
 
@@ -35,18 +37,28 @@ const CategoryManager: React.FC<{
                     containerClassName="flex-grow"
                 />
                 <Button onClick={handleAdd} className="self-end">
-                    <Icon name="plus" className="w-5 h-5" />
+                    <Icon name="Plus" className="w-5 h-5" />
                 </Button>
             </div>
-            <ul className="space-y-2">
-                {categories.map(cat => (
-                    <li key={cat.id} className="flex justify-between items-center p-2 bg-slate-100 dark:bg-slate-700 rounded">
-                        <span>{cat.name}</span>
-                        <Button size="sm" variant="ghost" onClick={() => onDelete(cat.id)}>
-                            <Icon name="trash" className="w-4 h-4 text-red-500" />
-                        </Button>
-                    </li>
-                ))}
+            <ul className="space-y-2 max-h-48 overflow-y-auto">
+                <AnimatePresence>
+                    {categories.map(cat => (
+                        <motion.li 
+                            key={cat.id}
+                            layout
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex justify-between items-center p-2 bg-slate-100 dark:bg-slate-700 rounded"
+                        >
+                            <span>{cat.name}</span>
+                            <Button size="sm" variant="ghost" onClick={() => onDelete(cat.id)}>
+                                <Icon name="Trash2" className="w-4 h-4 text-red-500" />
+                            </Button>
+                        </motion.li>
+                    ))}
+                </AnimatePresence>
             </ul>
         </Card>
     );
@@ -233,7 +245,7 @@ const SettingsView: React.FC = () => {
             Vuelve a ejecutar el asistente inicial para reconfigurar los ajustes principales de la aplicación de forma guiada.
         </p>
         <Button variant="secondary" onClick={() => setIsSetupWizardOpen(true)}>
-            <Icon name="cog" className="w-5 h-5" />
+            <Icon name="Settings" className="w-5 h-5" />
             Iniciar Asistente de Configuración
         </Button>
       </Card>
@@ -245,7 +257,7 @@ const SettingsView: React.FC = () => {
                 Consulta información importante sobre las funcionalidades y limitaciones actuales de la aplicación.
             </p>
             <Button variant="secondary" onClick={() => setIsUnsupportedModalOpen(true)}>
-                <Icon name="info" className="w-5 h-5" />
+                <Icon name="Info" className="w-5 h-5" />
                 Ver Modelos Fiscales No Soportados
             </Button>
         </Card>
@@ -282,33 +294,25 @@ const SettingsView: React.FC = () => {
                         <Input label="IRPF por defecto (%)" name="defaultIrpfRate" type="number" value={settings.defaultIrpfRate} onChange={handleChange} />
                         <Input label="Cuota de Autónomo Mensual (€)" name="monthlyAutonomoFee" type="number" step="0.01" value={settings.monthlyAutonomoFee} onChange={handleChange} />
                     </div>
-                    <div className="mt-6 space-y-4 border-t dark:border-slate-700 pt-4">
-                        <div className="flex items-center">
-                            <Switch label="Estoy en el régimen de Recargo de Equivalencia" checked={settings.isInRecargoEquivalencia} onChange={(c) => setSettings(p => ({...p, isInRecargoEquivalencia: c}))} />
-                            <HelpTooltip content="Activa esta opción si eres comerciante minorista. Esto cambiará la forma en que se gestiona el IVA de tus compras." />
-                        </div>
-                        <div className="flex items-center">
-                            <Switch label="Aplicar deducción del 7% por gastos de difícil justificación" checked={settings.applySevenPercentDeduction} onChange={(c) => setSettings(p => ({...p, applySevenPercentDeduction: c}))} />
-                            <HelpTooltip content="Activa esta opción si tributas por estimación directa simplificada para aplicar una deducción de hasta 2.000€ en tu IRPF." />
-                        </div>
-                    </div>
                 </div>
             )}
 
             {isProfessionalModeEnabled && (
-                 <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                 <div className="border-t border-slate-900/10 dark:border-white/10 pt-6">
                     <h3 className="text-lg font-bold">Perfil Fiscal del Autónomo</h3>
                     <p className="text-sm text-slate-500 mt-1">Marca las opciones que apliquen a tu actividad para personalizar los modelos fiscales que se muestran.</p>
-                    <div className="mt-4 space-y-4">
-                        <div className="flex items-center">
+                    <div className="mt-4 flex flex-col">
+                        <div className="flex items-center py-2">
                             <Switch label="Alquilo una oficina o local para mi actividad" checked={settings.rentsOffice ?? false} onChange={(c) => setSettings(p => ({...p, rentsOffice: c}))} />
                             <HelpTooltip content="Activa esta opción si pagas un alquiler por tu lugar de trabajo. Esto habilitará los modelos 115 y 180." />
                         </div>
-                        <div className="flex items-center">
+                        <div className="border-b border-slate-900/10 dark:border-white/10" />
+                        <div className="flex items-center py-2">
                             <Switch label="Estoy dado de alta en el ROI (Op. Intracomunitarias)" checked={settings.isInROI ?? false} onChange={(c) => setSettings(p => ({...p, isInROI: c}))} />
                             <HelpTooltip content="Activa esta opción si compras o vendes a empresas de la Unión Europea. Esto habilitará el modelo 349." />
                         </div>
-                        <div className="flex items-center">
+                        <div className="border-b border-slate-900/10 dark:border-white/10" />
+                        <div className="flex items-center py-2">
                             <Switch label="Contrato a otros profesionales con retención" checked={settings.hiresProfessionals ?? false} onChange={(c) => setSettings(p => ({...p, hiresProfessionals: c}))} />
                             <HelpTooltip content="Activa esta opción si pagas facturas que llevan retención de IRPF (a abogados, diseñadores, etc.). Esto habilitará los modelos 111 y 190." />
                         </div>
@@ -316,7 +320,7 @@ const SettingsView: React.FC = () => {
                 </div>
             )}
             
-            <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+            <div className="border-t border-slate-900/10 dark:border-white/10 pt-6">
                 <h3 className="text-lg font-bold">Saldos Iniciales</h3>
                 <p className="text-sm text-slate-500 mt-1">Establece el valor inicial de cada cuenta para un cálculo de saldos preciso.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -416,7 +420,7 @@ const SettingsView: React.FC = () => {
                             className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                             aria-label={showApiKey ? "Ocultar clave" : "Mostrar clave"}
                         >
-                            <Icon name={showApiKey ? 'eye-off' : 'eye'} className="h-5 w-5" />
+                            <Icon name={showApiKey ? 'EyeOff' : 'Eye'} className="h-5 w-5" />
                         </button>
                     </div>
                 </div>
@@ -450,10 +454,10 @@ const SettingsView: React.FC = () => {
           <h3 className="text-lg font-bold mb-4">Gestión de Datos</h3>
           <div className="flex flex-col sm:flex-row gap-4">
               <Button onClick={handleExportData} variant="secondary">
-                  <Icon name="download" className="w-5 h-5"/> Exportar Todos Mis Datos (ZIP)
+                  <Icon name="Download" className="w-5 h-5"/> Exportar Todos Mis Datos (ZIP)
               </Button>
                <Button onClick={handleImportData} variant="secondary">
-                  <Icon name="upload" className="w-5 h-5"/> Importar Todos Mis Datos (ZIP)
+                  <Icon name="Upload" className="w-5 h-5"/> Importar Todos Mis Datos (ZIP)
               </Button>
           </div>
        </Card>
@@ -465,7 +469,7 @@ const SettingsView: React.FC = () => {
               Estas acciones son irreversibles. Asegúrate de tener una copia de seguridad si no quieres perder tus datos.
           </p>
           <Button variant="danger" onClick={handleDeleteAllData}>
-            <Icon name="trash" className="w-5 h-5"/> Borrar Todos los Datos
+            <Icon name="Trash2" className="w-5 h-5"/> Borrar Todos los Datos
           </Button>
        </div>
        
@@ -475,7 +479,7 @@ const SettingsView: React.FC = () => {
                   <h3 className="text-lg font-bold">Créditos y Términos y Condiciones</h3>
                   <p className="text-sm text-slate-500">Ver información sobre el autor y los términos de uso.</p>
               </div>
-              <Icon name="external-link" className="w-5 h-5 text-slate-400" />
+              <Icon name="ExternalLink" className="w-5 h-5 text-slate-400" />
           </div>
        </Card>
 

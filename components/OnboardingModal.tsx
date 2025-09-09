@@ -3,6 +3,9 @@ import { AppContext } from '../App';
 import { UserSettings, MoneyLocation, Category } from '../types';
 import { Modal, Button, Icon, Input, Switch } from './ui';
 import { DEFAULT_PROFESSIONAL_CATEGORIES, DEFAULT_PERSONAL_CATEGORIES } from '../constants';
+// @ts-ignore
+import { motion } from 'framer-motion';
+
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -10,18 +13,19 @@ interface OnboardingModalProps {
   isRelaunchable?: boolean;
 }
 
-const ProgressBar: React.FC<{ currentStep: number, totalSteps: number }> = ({ currentStep, totalSteps }) => (
-    <div className="flex justify-center items-center gap-3 my-4">
-        {Array.from({ length: totalSteps }).map((_, i) => (
-            <div
-                key={i}
-                className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    i < currentStep ? 'bg-primary-500' : 'bg-slate-300 dark:bg-slate-600'
-                }`}
+const ProgressBar: React.FC<{ currentStep: number, totalSteps: number }> = ({ currentStep, totalSteps }) => {
+    const progress = (currentStep / totalSteps) * 100;
+    return (
+        <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-1.5 my-4">
+            <motion.div
+                className="bg-blue-500 h-1.5 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ ease: "easeInOut", duration: 0.5 }}
             />
-        ))}
-    </div>
-);
+        </div>
+    );
+};
 
 
 const CategoryEditor: React.FC<{
@@ -175,11 +179,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
                     <div className="space-y-4">
                         <h3 className="text-xl font-semibold text-center">¿Cómo usarás la aplicación?</h3>
                         <p className="text-sm text-center text-slate-500 pb-4">Esto determinará qué funcionalidades estarán activas.</p>
-                        <button onClick={() => handleSwitchChange('professionalModeEnabled', true)} className={`w-full p-4 border-2 rounded-lg text-left transition-all ${settingsData.professionalModeEnabled ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-slate-300 dark:border-slate-600 hover:border-primary-400'}`}>
+                        <button onClick={() => handleSwitchChange('professionalModeEnabled', true)} className={`w-full p-4 border-2 rounded-lg text-left transition-all ${settingsData.professionalModeEnabled ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900 bg-primary-500/10' : 'border-slate-300 dark:border-slate-600 hover:border-primary-400'}`}>
                             <h4 className="font-bold">Profesional y Personal</h4>
                             <p className="text-sm text-slate-500">Gestión completa de facturas, impuestos, y finanzas personales.</p>
                         </button>
-                        <button onClick={() => handleSwitchChange('professionalModeEnabled', false)} className={`w-full p-4 border-2 rounded-lg text-left transition-all ${!settingsData.professionalModeEnabled ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-slate-300 dark:border-slate-600 hover:border-primary-400'}`}>
+                        <button onClick={() => handleSwitchChange('professionalModeEnabled', false)} className={`w-full p-4 border-2 rounded-lg text-left transition-all ${!settingsData.professionalModeEnabled ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900 bg-primary-500/10' : 'border-slate-300 dark:border-slate-600 hover:border-primary-400'}`}>
                             <h4 className="font-bold">Solo Personal</h4>
                             <p className="text-sm text-slate-500">Gestión de cuentas, gastos personales y objetivos de ahorro.</p>
                         </button>

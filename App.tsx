@@ -201,17 +201,24 @@ const AppContainer: React.FC = () => {
         }
     };
     
-    const NavButton: React.FC<{view: AppView, icon: string, label: string, className?: string}> = ({view, icon, label, className = ''}) => (
-        <Button 
-            variant={currentView === view ? 'primary' : 'ghost'} 
-            onClick={() => setCurrentView(view)}
-            className={`flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full ${className}`}
-            aria-label={`Ir a ${label}`}
-        >
-            <Icon name={icon} className="w-6 h-6 sm:w-auto" />
-            <span className="text-xs sm:text-base">{label}</span>
-        </Button>
-    );
+    const NavButton: React.FC<{view: AppView, icon: string, label: string, className?: string}> = ({view, icon, label, className = ''}) => {
+        const isActive = currentView === view;
+        return (
+            <Button 
+                variant="ghost" // Esencial para mantener el efecto de cristal
+                onClick={() => setCurrentView(view)}
+                className={`flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full transition-colors duration-300 rounded-lg ${
+                    isActive 
+                    ? 'text-blue-500' // Tinte azul para el estado activo
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
+                } ${className}`}
+                aria-label={`Ir a ${label}`}
+            >
+                <Icon name={icon} className="w-6 h-6 sm:w-5 sm:h-5" />
+                <span className="text-xs sm:text-sm">{label}</span>
+            </Button>
+        );
+    };
 
     if (isDataLoading) {
         return (
@@ -223,8 +230,8 @@ const AppContainer: React.FC = () => {
     
     return (
         <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
-            <div className="min-h-screen flex flex-col">
-                <header className="bg-white dark:bg-slate-800 shadow-md p-4 sticky top-0 z-50">
+            <div className="min-h-screen flex flex-col font-sans text-gray-800 dark:text-gray-200 animated-gradient-bg">
+                <header className="bg-white/30 dark:bg-black/20 backdrop-blur-lg border-b border-white/20 p-4 sticky top-0 z-50">
                     <div className="container mx-auto flex justify-between items-center gap-2 sm:gap-4">
                         <div className="flex-1 min-w-0">
                             <h1 className="text-xl sm:text-2xl font-bold text-primary-500 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -234,53 +241,53 @@ const AppContainer: React.FC = () => {
                         <div className="relative z-10 flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:block">Hola, {user?.username}</span>
                             <Button variant="ghost" size="sm" onClick={togglePrivacyMode} aria-label="Ocultar/Mostrar saldos">
-                                <Icon name={isPrivacyMode ? 'eye-off' : 'eye'} className="w-5 h-5 sm:w-6 sm:h-6" />
+                                <Icon name={isPrivacyMode ? 'EyeOff' : 'Eye'} className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
                             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Cambiar tema">
-                                <Icon name={theme === 'light' ? 'moon' : 'sun'} className="w-5 h-5 sm:w-6 sm:h-6" />
+                                <Icon name={theme === 'light' ? 'Moon' : 'Sun'} className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
                              <Button variant={currentView === AppView.SETTINGS ? 'secondary' : 'ghost'} size="sm" onClick={() => setCurrentView(AppView.SETTINGS)} aria-label="Configuración">
-                                <Icon name="cog" className="w-5 h-5 sm:w-6 sm:h-6" />
+                                <Icon name="Settings" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </Button>
                             <Button variant="secondary" onClick={logout} className="px-2 py-1.5 sm:px-3 text-sm sm:gap-1">
                                 <span className="hidden sm:inline">Cerrar Sesión</span>
-                                <Icon name="logout" className="sm:hidden w-5 h-5" />
+                                <Icon name="LogOut" className="sm:hidden w-5 h-5" />
                             </Button>
                         </div>
                     </div>
                 </header>
                 
-                <main className="flex-grow container mx-auto p-4 sm:p-6 pb-24 sm:pb-6">
+                <main className="flex-grow container mx-auto p-6 sm:p-8 pb-24 sm:pb-8">
                     {renderView()}
                 </main>
 
-                <nav className="fixed inset-x-0 bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 sm:hidden z-40">
+                <nav className="fixed inset-x-0 bottom-0 bg-white/30 dark:bg-black/20 backdrop-blur-lg border-t border-white/20 sm:hidden z-40">
                     <div className="flex items-stretch h-16">
                          {isProfessionalModeEnabled ? (
                             <>
-                                <div className="flex-1"><NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Profesional" /></div>
-                                <div className="flex-[2] border-x border-slate-200 dark:border-slate-700"><NavButton view={AppView.GLOBAL} icon="globe" label="Global" /></div>
-                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="home" label="Personal" /></div>
+                                <div className="flex-1"><NavButton view={AppView.PROFESSIONAL} icon="Briefcase" label="Profesional" /></div>
+                                <div className="flex-[2] border-x border-slate-200 dark:border-slate-700"><NavButton view={AppView.GLOBAL} icon="Globe" label="Global" /></div>
+                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="Home" label="Personal" /></div>
                             </>
                         ) : (
                              <>
-                                <div className="flex-1"><NavButton view={AppView.GLOBAL} icon="globe" label="Global" /></div>
-                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="home" label="Personal" /></div>
+                                <div className="flex-1"><NavButton view={AppView.GLOBAL} icon="Globe" label="Global" /></div>
+                                <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="Home" label="Personal" /></div>
                             </>
                         )}
                     </div>
                 </nav>
 
                 <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                   <div className="bg-white dark:bg-slate-800 p-2 rounded-lg shadow-md flex items-center justify-around gap-2 h-16">
-                        <NavButton view={AppView.GLOBAL} icon="globe" label="Visión Global" className="max-w-xs" />
+                   <div className="bg-white/30 dark:bg-black/20 backdrop-blur-lg p-2 rounded-2xl shadow-md flex items-center justify-around gap-2 h-16">
+                        <NavButton view={AppView.GLOBAL} icon="Globe" label="Visión Global" className="max-w-xs" />
                         {isProfessionalModeEnabled ? (
                             <>
-                                <NavButton view={AppView.PROFESSIONAL} icon="briefcase" label="Área Profesional" className="max-w-xs"/>
-                                <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
+                                <NavButton view={AppView.PROFESSIONAL} icon="Briefcase" label="Área Profesional" className="max-w-xs"/>
+                                <NavButton view={AppView.PERSONAL} icon="Home" label="Área Personal" className="max-w-xs"/>
                             </>
                         ) : (
-                            <NavButton view={AppView.PERSONAL} icon="home" label="Área Personal" className="max-w-xs"/>
+                            <NavButton view={AppView.PERSONAL} icon="Home" label="Área Personal" className="max-w-xs"/>
                         )}
                    </div>
                 </nav>
@@ -295,7 +302,7 @@ const AppContainer: React.FC = () => {
                         title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente IA"}
                         aria-label="Asistente IA"
                     >
-                        <Icon name="sparkles" className="w-8 h-8" />
+                        <Icon name="Sparkles" className="w-8 h-8" />
                     </Button>
                 </div>
             </div>

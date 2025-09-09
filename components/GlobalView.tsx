@@ -1045,7 +1045,7 @@ const GlobalView: React.FC = () => {
 
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
@@ -1056,10 +1056,10 @@ const GlobalView: React.FC = () => {
                         <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                     </div>
                     <div className="text-center my-4">
-                        <p className={`text-5xl font-bold ${netCapitalSummary.netAvailableCapital >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        <p className="text-7xl lg:text-8xl font-thin tracking-tight text-gray-800 dark:text-white">
                             {formatCurrency(netCapitalSummary.netAvailableCapital)}
                         </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Estimación después de obligaciones</p>
+                        <p className="text-sm text-gray-500 dark:text-slate-400">Estimación después de obligaciones</p>
                     </div>
                     <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
                         <div className="flex justify-between">
@@ -1091,16 +1091,16 @@ const GlobalView: React.FC = () => {
                     <div className="flex items-center gap-4">
                         <Switch label="Proyectar saldos" checked={showProjection} onChange={setShowProjection} />
                         <Button size="sm" onClick={() => handleOpenTransferModal()}>
-                            <Icon name="switch-horizontal" className="w-4 h-4" /> Transferir
+                            <Icon name="ArrowRightLeft" className="w-4 h-4" /> Transferir
                         </Button>
                     </div>
                 </div>
                 <div className={`grid grid-cols-1 sm:grid-cols-2 ${isProfessionalModeEnabled ? 'lg:grid-cols-5' : 'md:grid-cols-3'} gap-4`}>
-                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="office-building" />}
-                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.CASH_PRO} icon="briefcase" />}
-                    <BalanceDisplay location={MoneyLocation.PERS_BANK} icon="user-circle" />
-                    <BalanceDisplay location={MoneyLocation.CASH} icon="cash" />
-                    <BalanceDisplay location={MoneyLocation.OTHER} icon="globe" />
+                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.PRO_BANK} icon="Building2" />}
+                    {isProfessionalModeEnabled && <BalanceDisplay location={MoneyLocation.CASH_PRO} icon="Briefcase" />}
+                    <BalanceDisplay location={MoneyLocation.PERS_BANK} icon="UserCircle" />
+                    <BalanceDisplay location={MoneyLocation.CASH} icon="Banknote" />
+                    <BalanceDisplay location={MoneyLocation.OTHER} icon="Globe" />
                 </div>
             </Card>
 
@@ -1108,7 +1108,7 @@ const GlobalView: React.FC = () => {
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <h3 className="text-xl font-bold">Transacciones Pendientes</h3>
                     <Button size="sm" variant="secondary" onClick={() => setIsAddPendingModalOpen(true)}>
-                        <Icon name="plus" className="w-4 h-4" /> Añadir Transacción Pendiente
+                        <Icon name="Plus" className="w-4 h-4" /> Añadir Transacción Pendiente
                     </Button>
                 </div>
                 {pendingIncomes.length === 0 && pendingExpenses.length === 0 && pendingPersonalIncomes.length === 0 && pendingPersonalExpenses.length === 0 ? (
@@ -1133,9 +1133,9 @@ const GlobalView: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-1 mt-1">
-                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalIncomeToEdit(income)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalIncomeToEdit(income)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                                 <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(income)}>Contabilizar</Button>
-                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(income.id, 'income')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(income.id, 'income')} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                             </div>
                                         </li>
                                     ))}</ul>
@@ -1159,10 +1159,10 @@ const GlobalView: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-1 mt-1">
-                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalExpenseToEdit(expense)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => setProfessionalExpenseToEdit(expense)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                                 <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(expense)}>Contabilizar</Button>
                                                 <Button size="sm" variant="ghost" onClick={() => setExpenseToPeriodize(expense)}>Periodizar</Button>
-                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(expense.id, 'expense')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeletePending(expense.id, 'expense')} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                             </div>
                                         </li>
                                     ))}</ul>
@@ -1188,9 +1188,9 @@ const GlobalView: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex justify-end gap-1 mt-1">
-                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                             ))}</ul>
@@ -1214,9 +1214,9 @@ const GlobalView: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex justify-end gap-1 mt-1">
-                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setPersonalMovementToEdit(mov)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                         <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(mov)}>Contabilizar</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                        <Button size="sm" variant="ghost" onClick={() => handleDeletePending(mov.id, 'personal_movement')} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </li>
                              ))}</ul>
@@ -1265,7 +1265,7 @@ const GlobalView: React.FC = () => {
                  <Card>
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-lg font-bold">Ingresos Potenciales</h3>
-                        <Button size="sm" onClick={() => handleOpenIncomeModal()}> <Icon name="plus" className="w-4 h-4" /> Añadir</Button>
+                        <Button size="sm" onClick={() => handleOpenIncomeModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                     </div>
                     <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
                         {potentialIncomes.length > 0 ? potentialIncomes.map(pi => (
@@ -1276,8 +1276,8 @@ const GlobalView: React.FC = () => {
                                        <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatCurrency(getNetPotentialIncome(pi))}</p>
                                    </div>
                                    <div className="flex-shrink-0">
-                                       <Button variant="ghost" size="sm" onClick={() => handleOpenIncomeModal(pi)}><Icon name="pencil" className="w-4 h-4" /></Button>
-                                       <Button variant="ghost" size="sm" onClick={() => handleDeletePotentialIncome(pi.id)}><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                       <Button variant="ghost" size="sm" onClick={() => handleOpenIncomeModal(pi)}><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                       <Button variant="ghost" size="sm" onClick={() => handleDeletePotentialIncome(pi.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                    </div>
                                </div>
                                <div className="flex flex-wrap gap-2 mt-1">
@@ -1294,7 +1294,7 @@ const GlobalView: React.FC = () => {
             <Card>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold">Gastos Potenciales</h3>
-                    <Button size="sm" onClick={() => handleOpenExpenseModal()}> <Icon name="plus" className="w-4 h-4" /> Añadir</Button>
+                    <Button size="sm" onClick={() => handleOpenExpenseModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                 </div>
                 <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
                     {potentialExpenses.length > 0 ? potentialExpenses.map(pe => {
@@ -1307,8 +1307,8 @@ const GlobalView: React.FC = () => {
                                    <p className="text-lg font-bold text-red-600 dark:text-red-400">{formatCurrency(pe.amount)}</p>
                                </div>
                                <div className="flex-shrink-0">
-                                   <Button variant="ghost" size="sm" onClick={() => handleOpenExpenseModal(pe)}><Icon name="pencil" className="w-4 h-4" /></Button>
-                                   <Button variant="ghost" size="sm" onClick={() => handleDeletePotentialExpense(pe.id)}><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
+                                   <Button variant="ghost" size="sm" onClick={() => handleOpenExpenseModal(pe)}><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                   <Button variant="ghost" size="sm" onClick={() => handleDeletePotentialExpense(pe.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                </div>
                            </div>
                            <div className="flex flex-wrap gap-2 mt-1">
@@ -1324,7 +1324,7 @@ const GlobalView: React.FC = () => {
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold">Planificación de Ahorro</h3>
                     <Button size="sm" onClick={() => handleOpenGoalForm()}>
-                        <Icon name="plus" className="w-4 h-4" /> Nuevo Objetivo
+                        <Icon name="Plus" className="w-4 h-4" /> Nuevo Objetivo
                     </Button>
                 </div>
                 <div className="space-y-4">
@@ -1350,7 +1350,7 @@ const GlobalView: React.FC = () => {
                                     if (amountRemaining <= 0) {
                                         return (
                                             <div className="md:col-span-3 flex items-center gap-2 text-green-500">
-                                                <Icon name="sparkles" className="w-5 h-5" />
+                                                <Icon name="Sparkles" className="w-5 h-5" />
                                                 <p className="font-semibold">¡Objetivo conseguido!</p>
                                             </div>
                                         );
@@ -1405,8 +1405,8 @@ const GlobalView: React.FC = () => {
                                             </div>
                                             <div className="md:col-span-1 flex justify-end items-center self-start pt-6 gap-1">
                                                 <Button size="sm" variant="secondary" onClick={() => setGoalToAddFunds(goal)}>Aportar</Button>
-                                                <Button size="sm" variant="ghost" onClick={() => handleOpenGoalForm(goal)} title="Editar objetivo"><Icon name="pencil" className="w-4 h-4"/></Button>
-                                                <Button size="sm" variant="ghost" onClick={() => handleDeleteGoal(goal.id)} title="Eliminar objetivo"><Icon name="trash" className="w-4 h-4 text-red-500"/></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleOpenGoalForm(goal)} title="Editar objetivo"><Icon name="Pencil" className="w-4 h-4"/></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => handleDeleteGoal(goal.id)} title="Eliminar objetivo"><Icon name="Trash2" className="w-4 h-4 text-red-500"/></Button>
                                             </div>
                                         </>
                                     );
@@ -1453,47 +1453,38 @@ const GlobalView: React.FC = () => {
                    <PeriodSelector onPeriodChange={handlePeriodChange} />
                 </div>
 
-                <div className="overflow-x-auto max-h-96 mt-4">
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400 sticky top-0">
-                            <tr>
-                                <th scope="col" className="px-4 py-2">Fecha</th>
-                                <th scope="col" className="px-4 py-2">Tipo</th>
-                                <th scope="col" className="px-4 py-2">Concepto</th>
-                                <th scope="col" className="px-4 py-2">Detalles</th>
-                                <th scope="col" className="px-4 py-2 text-right">Importe</th>
-                                <th scope="col" className="px-4 py-2 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {unifiedTransactions.map(t => (
-                                <tr key={t.id} className={`border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
-                                    <td className="px-4 py-2 whitespace-nowrap">{t.date.toLocaleDateString('es-ES')}</td>
-                                    <td className="px-4 py-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${t.typeLabel.color}`}>
-                                            {t.typeLabel.label}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-2">{t.concept}</td>
-                                    <td className="px-4 py-2 text-slate-500">{t.details}</td>
-                                    <td className="px-4 py-2 font-semibold text-right whitespace-nowrap">
-                                        {t.type === 'transfer' ? (
-                                            <span className="text-slate-500">{formatCurrency(t.amount)}</span>
-                                        ) : (
-                                            <span className={t.amount > 0 ? 'text-green-500' : 'text-red-500'}>
+                <div className="overflow-y-auto max-h-[40rem] mt-4">
+                    <div className="divide-y divide-slate-200/50 dark:divide-white/10">
+                        {unifiedTransactions.map(t => {
+                            const iconName = t.type === 'transfer' ? 'ArrowRightLeft' : t.amount > 0 ? 'TrendingUp' : 'TrendingDown';
+                            return (
+                                <div key={t.id} className={`flex items-center p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
+                                    <div className={`p-2 rounded-lg mr-4 ${t.typeLabel.color}`}>
+                                        <Icon name={iconName} className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-grow">
+                                        <p className="font-semibold">{t.concept}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">{t.details}</p>
+                                    </div>
+                                    <div className="text-right flex items-center gap-2 ml-4">
+                                        <div>
+                                            <p className={`font-semibold whitespace-nowrap ${
+                                                t.type === 'transfer' ? 'text-slate-500 dark:text-slate-400' :
+                                                t.amount > 0 ? 'text-green-500' : 'text-red-500'
+                                            }`}>
                                                 {formatCurrency(t.amount)}
-                                            </span>
-                                        )}
-                                        {!t.isPaid && <span className="ml-2 text-xs text-yellow-600 dark:text-yellow-400">(Pendiente)</span>}
-                                    </td>
-                                    <td className="px-4 py-2 text-center whitespace-nowrap">
-                                        <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.id)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                        <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                            </p>
+                                            {!t.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
+                                        </div>
+                                        <div className="flex-shrink-0">
+                                            <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.id)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                            <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
                 {unifiedTransactions.length === 0 && (
                     <p className="text-center text-slate-500 py-8">No hay movimientos que coincidan con los filtros para este periodo.</p>

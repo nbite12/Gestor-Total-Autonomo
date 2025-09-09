@@ -128,12 +128,24 @@ const PersonalView: React.FC = () => {
     setCelebrationType(isGoalCompleted ? 'goalComplete' : 'contribution');
   };
 
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+        return (
+        <div className="p-2 bg-black/80 text-white text-sm rounded-lg shadow-lg backdrop-blur-sm">
+            <p className="font-bold">{`${payload[0].name}`}</p>
+            <p>{`Total: ${formatCurrency(payload[0].value)}`}</p>
+        </div>
+        );
+    }
+    return null;
+  };
+
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
        <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
        {/* Dashboard Summary */}
-       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
            <Card className="text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Fondos Personales Actuales</h3>
                 <p className={`text-4xl font-bold ${summary.totalBalance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.totalBalance)}</p>
@@ -148,13 +160,13 @@ const PersonalView: React.FC = () => {
            </Card>
        </div>
        
-       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
            {/* Savings Goals */}
            <Card>
                <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-bold">Objetivos de Ahorro</h2>
                   <Button onClick={() => handleOpenGoalForm(null)} size="sm">
-                      <Icon name="plus" className="w-4 h-4" /> Nuevo Objetivo
+                      <Icon name="Plus" className="w-4 h-4" /> Nuevo Objetivo
                   </Button>
                </div>
                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
@@ -171,8 +183,8 @@ const PersonalView: React.FC = () => {
                                </div>
                                <div className="flex justify-end items-center gap-1 mt-2">
                                    <Button size="sm" variant="secondary" onClick={() => setGoalToAddFunds(goal)}>Aportar</Button>
-                                   <Button size="sm" variant="ghost" onClick={() => handleOpenGoalForm(goal)} title="Editar objetivo"><Icon name="pencil" className="w-4 h-4"/></Button>
-                                   <Button size="sm" variant="ghost" onClick={() => handleDeleteGoal(goal.id)} title="Eliminar objetivo"><Icon name="trash" className="w-4 h-4 text-red-500"/></Button>
+                                   <Button size="sm" variant="ghost" onClick={() => handleOpenGoalForm(goal)} title="Editar objetivo"><Icon name="Pencil" className="w-4 h-4"/></Button>
+                                   <Button size="sm" variant="ghost" onClick={() => handleDeleteGoal(goal.id)} title="Eliminar objetivo"><Icon name="Trash2" className="w-4 h-4 text-red-500"/></Button>
                                </div>
                            </div>
                        );
@@ -188,7 +200,7 @@ const PersonalView: React.FC = () => {
                         <Pie data={expenseChartData} cx="50%" cy="50%" labelLine={false} outerRadius={100} fill="#8884d8" dataKey="value" nameKey="name">
                             {expenseChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                        <Tooltip content={<CustomTooltip />} />
                         <Legend />
                     </PieChart>
                 </ResponsiveContainer>
@@ -200,43 +212,36 @@ const PersonalView: React.FC = () => {
             <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
                 <h2 className="text-xl font-bold">Movimientos Personales</h2>
                 <Button onClick={() => handleOpenMovementModal()}>
-                    <Icon name="plus" className="w-5 h-5" /> Añadir Movimiento
+                    <Icon name="Plus" className="w-5 h-5" /> Añadir Movimiento
                 </Button>
             </div>
             <PeriodSelector onPeriodChange={handlePeriodChange} />
-             <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
-                        <tr>
-                            <th scope="col" className="px-6 py-3">Fecha</th>
-                            <th scope="col" className="px-6 py-3">Concepto</th>
-                            <th scope="col" className="px-6 py-3">Categoría</th>
-                            <th scope="col" className="px-6 py-3">Estado</th>
-                            <th scope="col" className="px-6 py-3">Importe</th>
-                            <th scope="col" className="px-6 py-3">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredMovements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(mov => (
-                            <tr key={mov.id} className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
-                                <td className="px-6 py-4">{new Date(mov.date).toLocaleDateString('es-ES')}</td>
-                                <td className="px-6 py-4">{mov.concept}</td>
-                                <td className="px-6 py-4">{personalCategories.find(c => c.id === mov.categoryId)?.name || '-'}</td>
-                                <td className="px-6 py-4">
-                                    {mov.isPaid ? 
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`}>{mov.type === 'income' ? 'Recibido' : 'Pagado'}</span> :
-                                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>
-                                    }
-                                </td>
-                                <td className={`px-6 py-4 font-semibold ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>{mov.type === 'income' ? '+' : '-'}{formatCurrency(mov.amount)}</td>
-                                <td className="px-6 py-4 flex gap-2">
-                                   <Button size="sm" variant="ghost" onClick={() => handleOpenMovementModal(mov)}><Icon name="pencil" className="w-4 h-4" /></Button>
-                                   <Button size="sm" variant="ghost" onClick={() => handleDeleteMovement(mov.id)}><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+             <div className="overflow-y-auto max-h-[40rem] mt-4">
+                <div className="divide-y divide-slate-200/50 dark:divide-white/10">
+                    {filteredMovements.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(mov => (
+                        <div key={mov.id} className={`flex items-center p-3 transition-colors ${!(mov.isPaid ?? true) ? 'opacity-60 italic' : ''}`}>
+                            <div className={`p-2 rounded-lg mr-4 ${mov.type === 'income' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
+                                <Icon name={mov.type === 'income' ? 'TrendingUp' : 'TrendingDown'} className="w-5 h-5" />
+                            </div>
+                            <div className="flex-grow">
+                                <p className="font-semibold">{mov.concept}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{personalCategories.find(c => c.id === mov.categoryId)?.name || '-'}</p>
+                            </div>
+                            <div className="text-right flex items-center gap-2 ml-4">
+                                <div>
+                                    <p className={`font-semibold whitespace-nowrap ${mov.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                                        {mov.type === 'income' ? '+' : '-'}{formatCurrency(mov.amount)}
+                                    </p>
+                                    {!(mov.isPaid ?? true) && <span className="text-xs text-yellow-500">Pendiente</span>}
+                                </div>
+                                <div className="flex-shrink-0">
+                                   <Button size="sm" variant="ghost" onClick={() => handleOpenMovementModal(mov)}><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                   <Button size="sm" variant="ghost" onClick={() => handleDeleteMovement(mov.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
              </div>
              {filteredMovements.length === 0 && <p className="text-center text-slate-500 py-8">No hay movimientos registrados para este periodo.</p>}
         </Card>

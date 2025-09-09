@@ -228,11 +228,11 @@ const ProfessionalView: React.FC = () => {
     );
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             <div className="flex flex-wrap justify-between items-center gap-4">
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Área Profesional</h2>
                 <div title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Importar factura con IA"}>
-                    <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="sparkles" className="w-5 h-5"/> Importar con IA</Button>
+                    <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="Sparkles" className="w-5 h-5"/> Importar con IA</Button>
                 </div>
             </div>
             <div className="border-b border-slate-200 dark:border-slate-700">
@@ -270,12 +270,38 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Libro de Ingresos</h3>
                 <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                    <Button onClick={() => onEdit()}><Icon name="plus" /> Añadir Ingreso</Button>
+                    <Button size="sm" variant="secondary" onClick={() => generateIncomesPDF(incomes)} disabled={incomes.length === 0}><Icon name="Download" className="w-4 h-4" /> PDF</Button>
+                    <Button onClick={() => onEdit()}><Icon name="Plus" /> Añadir Ingreso</Button>
                 </div>
             </div>
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">Fecha</th><th className="px-4 py-2">Nº Factura</th><th className="px-4 py-2">Cliente</th><th className="px-4 py-2 text-right">Base</th><th className="px-4 py-2 text-right">IVA</th><th className="px-4 py-2 text-right">IRPF</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2">Estado</th><th className="px-2 py-2">Adj.</th><th className="px-4 py-2 text-center">Acciones</th></tr></thead>
-                    <tbody>{incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (<tr key={inc.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2">{formatDate(inc.date)}</td><td className="px-4 py-2">{inc.invoiceNumber}</td><td className="px-4 py-2">{inc.clientName}</td><td className="px-4 py-2 text-right">{formatCurrency(inc.baseAmount)}</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIVA(inc.baseAmount, inc.vatRate))} ({inc.vatRate}%)</td><td className="px-4 py-2 text-right">{formatCurrency(getCuotaIRPF(inc.baseAmount, inc.irpfRate))} ({inc.irpfRate}%)</td><td className="px-4 py-2 text-right font-bold">{formatCurrency(getTotalFacturaEmitida(inc))}</td><td className="px-4 py-2 text-center">{inc.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagada</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td><td className="px-2 py-2 text-center">{inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td><td className="px-4 py-2 flex justify-center gap-1"><Button size="sm" variant="ghost" onClick={() => onEdit(inc)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button><Button size="sm" variant="ghost" onClick={() => onDelete(inc.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button></td></tr>))}</tbody></table></div>
+             <div className="overflow-y-auto max-h-[40rem] mt-4">
+                <div className="divide-y divide-slate-200/50 dark:divide-white/10">
+                    {incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (
+                        <div key={inc.id} className={`flex items-center p-3 transition-colors ${!inc.isPaid ? 'opacity-60 italic' : ''}`}>
+                            <div className="p-2 rounded-lg mr-4 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                                <Icon name="TrendingUp" className="w-5 h-5" />
+                            </div>
+                            <div className="flex-grow">
+                                <p className="font-semibold">{inc.concept || inc.invoiceNumber}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{inc.clientName} - {formatDate(inc.date)}</p>
+                            </div>
+                            <div className="text-right flex items-center gap-2 ml-4">
+                                <div>
+                                    <p className="font-semibold whitespace-nowrap text-green-500">
+                                        {formatCurrency(getTotalFacturaEmitida(inc))}
+                                    </p>
+                                    {!inc.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
+                                </div>
+                                <div className="flex-shrink-0 flex items-center">
+                                   {inc.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(inc.attachment!)} title={inc.attachment.name}><Icon name="Paperclip" className="w-4 h-4" /></Button>}
+                                   <Button size="sm" variant="ghost" onClick={() => onEdit(inc)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                   <Button size="sm" variant="ghost" onClick={() => onDelete(inc.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </Card>
     );
 };
@@ -310,73 +336,49 @@ const UnifiedExpenseBook: React.FC<{
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Libro de Gastos y Bienes de Inversión</h3>
                 <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses, investmentGoods)} disabled={unifiedExpenses.length === 0}><Icon name="download" className="w-4 h-4" /> PDF</Button>
-                    <Button onClick={() => onEditExpense()}><Icon name="plus" /> Añadir Gasto</Button>
-                    <Button onClick={() => onEditInvestment()} variant="secondary"><Icon name="plus" /> Añadir Bien Inversión</Button>
+                    <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses, investmentGoods)} disabled={unifiedExpenses.length === 0}><Icon name="Download" className="w-4 h-4" /> PDF</Button>
+                    <Button onClick={() => onEditExpense()}><Icon name="Plus" /> Añadir Gasto</Button>
+                    <Button onClick={() => onEditInvestment()} variant="secondary"><Icon name="Plus" /> Añadir Bien Inversión</Button>
                 </div>
             </div>
-             <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
-                        <tr>
-                            <th className="px-4 py-2">Fecha</th>
-                            <th className="px-4 py-2">Tipo</th>
-                            <th className="px-4 py-2">Proveedor</th>
-                            <th className="px-4 py-2">Concepto</th>
-                            <th className="px-4 py-2 text-right">Base</th>
-                            <th className="px-4 py-2 text-right">IVA</th>
-                            <th className="px-4 py-2 text-right">IRPF Ret.</th>
-                            <th className="px-4 py-2 text-right">Total</th>
-                            <th className="px-4 py-2">Estado</th>
-                            <th className="px-4 py-2">Deducibilidad</th>
-                            <th className="px-2 py-2">Adj.</th>
-                            <th className="px-4 py-2 text-center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {unifiedExpenses.map(item => {
-                            const isExpense = item.itemType === 'expense';
-                            const date = isExpense ? item.date : item.purchaseDate;
-                            const provider = isExpense ? item.providerName : item.providerName;
-                            const concept = isExpense ? item.concept : item.description;
-                            const base = isExpense ? item.baseAmount : item.acquisitionValue;
-                            const vatRate = isExpense ? item.vatRate : item.vatRate;
-                            const vatAmount = base * (vatRate / 100);
-                            const irpfAmount = (isExpense && item.irpfRetentionAmount) ? item.irpfRetentionAmount : 0;
-                            const total = base + vatAmount;
+             <div className="overflow-y-auto max-h-[40rem] mt-4">
+                <div className="divide-y divide-slate-200/50 dark:divide-white/10">
+                    {unifiedExpenses.map(item => {
+                        const isExpense = item.itemType === 'expense';
+                        const date = isExpense ? item.date : item.purchaseDate;
+                        const concept = isExpense ? item.concept : item.description;
+                        const provider = item.providerName;
+                        const base = isExpense ? item.baseAmount : item.acquisitionValue;
+                        const vatRate = item.vatRate;
+                        const vatAmount = base * (vatRate / 100);
+                        const total = base + vatAmount;
 
-                            let deductibilityInfo;
-                            if (isExpense) {
-                                if (!item.isDeductible) deductibilityInfo = <span className="text-red-500">No Deducible</span>;
-                                else if (item.deductibleBaseAmount != null) deductibilityInfo = `Parcial (${formatCurrency(item.deductibleBaseAmount)})`;
-                                else deductibilityInfo = `Total (${formatCurrency(item.baseAmount)})`;
-                            } else {
-                                if (item.isDeductible) deductibilityInfo = `Amortizable (${formatCurrency(item.acquisitionValue/item.usefulLife)}/año)`;
-                                else deductibilityInfo = <span className="text-red-500">No Deducible</span>;
-                            }
-
-                            return (
-                                <tr key={`${item.itemType}-${item.id}`} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
-                                    <td className="px-4 py-2">{formatDate(date)}</td>
-                                    <td className="px-4 py-2"><span className={`px-2 py-1 text-xs font-semibold rounded-full ${isExpense ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' : 'bg-slate-100 text-slate-800 dark:bg-slate-600 dark:text-slate-200'}`}>{isExpense ? 'Gasto' : 'Bien Inversión'}</span></td>
-                                    <td className="px-4 py-2">{provider}</td>
-                                    <td className="px-4 py-2">{concept}</td>
-                                    <td className="px-4 py-2 text-right">{formatCurrency(base)}</td>
-                                    <td className="px-4 py-2 text-right">{formatCurrency(vatAmount)} ({vatRate}%)</td>
-                                    <td className="px-4 py-2 text-right">{formatCurrency(irpfAmount)}</td>
-                                    <td className="px-4 py-2 text-right font-bold">{formatCurrency(total)}</td>
-                                    <td className="px-4 py-2 text-center">{item.isPaid ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Pagado</span> : <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pendiente</span>}</td>
-                                    <td className="px-4 py-2 text-xs">{deductibilityInfo}</td>
-                                    <td className="px-2 py-2 text-center">{item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="paperclip" className="w-4 h-4" /></Button>}</td>
-                                    <td className="px-4 py-2 flex justify-center gap-1">
-                                        <Button size="sm" variant="ghost" onClick={() => isExpense ? onEditExpense(item) : onEditInvestment(item)} title="Editar"><Icon name="pencil" className="w-4 h-4" /></Button>
-                                        <Button size="sm" variant="ghost" onClick={() => onDelete(item.itemType, item.id)} title="Eliminar"><Icon name="trash" className="w-4 h-4 text-red-500" /></Button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                        return (
+                             <div key={`${item.itemType}-${item.id}`} className={`flex items-center p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
+                                <div className={`p-2 rounded-lg mr-4 ${isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'}`}>
+                                    <Icon name={isExpense ? 'TrendingDown' : 'Package'} className="w-5 h-5" />
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="font-semibold">{concept}</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{provider} - {formatDate(date)}</p>
+                                </div>
+                                <div className="text-right flex items-center gap-2 ml-4">
+                                    <div>
+                                        <p className="font-semibold whitespace-nowrap text-red-500">
+                                            {formatCurrency(total)}
+                                        </p>
+                                        {!item.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
+                                    </div>
+                                    <div className="flex-shrink-0 flex items-center">
+                                       {item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="Paperclip" className="w-4 h-4" /></Button>}
+                                       <Button size="sm" variant="ghost" onClick={() => isExpense ? onEditExpense(item) : onEditInvestment(item)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                       <Button size="sm" variant="ghost" onClick={() => onDelete(item.itemType, item.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         </Card>
     );
@@ -567,7 +569,7 @@ const AnalisisFiscalView: React.FC = () => {
             {/* --- Business Health KPIs --- */}
             <section>
                 <h3 className="text-xl font-bold mb-4">Resumen del Periodo ({periodQuarter}T {periodYear})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     <Card><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
                     <Card><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
                     <Card><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
@@ -578,7 +580,7 @@ const AnalisisFiscalView: React.FC = () => {
             {/* --- Quarterly Liquidation Models --- */}
             <section>
                 <h3 className="text-xl font-bold mb-4">Liquidaciones del Periodo ({periodQuarter}T {periodYear})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {/* Model 303 */}
                     <Card><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA. Diferencia entre el IVA cobrado y el pagado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido" value={fiscalCalculations.model303.ivaRepercutido} color="green" /><ModelRow label="IVA Soportado Deducible" value={fiscalCalculations.model303.ivaSoportado} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
                     {/* Model 130 */}
@@ -637,7 +639,7 @@ const AnalisisFiscalView: React.FC = () => {
                 </div>
 
                 {/* Model 100 */}
-                <Card className="mb-6">
+                <Card className="mb-8">
                     <ModelCardHeader model={`100 (Declaración de la Renta ${rentaYear})`} tutorialLink="http://www.youtube.com/watch?v=_cVdVrUzjPI" link="https://sede.agenciatributaria.gob.es/Sede/irpf/tengo-que-presentar-declaracion/modelo-100-i-sobre-r-anual.html" tooltip="Declaración anual que resume todos tus rendimientos del año para calcular el IRPF final." />
                      <div className="mt-4 space-y-2 text-sm">
                         <ModelRow label="Rendimiento Neto Anual" value={fiscalCalculations.model100.annualNetProfit} />
@@ -653,7 +655,7 @@ const AnalisisFiscalView: React.FC = () => {
                     <StatusFooter status={annualStatus100} customText={`para la declaración del año ${rentaYear}`}/>
                 </Card>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {/* Model 390 */}
                     <Card><ModelCardHeader model="390 (Resumen IVA)" tutorialLink="http://www.youtube.com/watch?v=yVtU7kjaZeo" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G412.shtml" tooltip="Resumen anual informativo de todas tus declaraciones de IVA (Modelo 303) del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Total IVA Repercutido" value={fiscalCalculations.model390.ivaRepercutido} color="green" /><ModelRow label="Total IVA Soportado" value={fiscalCalculations.model390.ivaSoportado} color="red" negative /><ModelResult label="Resultado Anual" value={fiscalCalculations.model390.result} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>
                     {/* Model 190 */}
@@ -694,10 +696,10 @@ const ModelCardHeader: React.FC<{model: string, link: string, tooltip: string, t
         </h4>
         <div className="flex items-center gap-x-2 flex-shrink-0">
             <a href={link} target="_blank" rel="noopener noreferrer" title="Presentar en la Sede Electrónica">
-                <Icon name="external-link" className="w-4 h-4 text-primary-500 hover:text-primary-700" />
+                <Icon name="ExternalLink" className="w-4 h-4 text-primary-500 hover:text-primary-700" />
             </a>
             <a href={tutorialLink} target="_blank" rel="noopener noreferrer" title="Ver tutorial en YouTube">
-                <Icon name="play" className="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" />
+                <Icon name="Play" className="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" />
             </a>
             <HelpTooltip content={tooltip} />
         </div>
@@ -811,7 +813,7 @@ const GenerarPDFsView: React.FC = () => {
                 </div>
                 <div className="flex justify-end pt-4">
                     <Button onClick={handleGenerate}>
-                        <Icon name="download" className="w-5 h-5" /> Generar PDF
+                        <Icon name="Download" className="w-5 h-5" /> Generar PDF
                     </Button>
                 </div>
             </div>

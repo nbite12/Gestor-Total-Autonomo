@@ -10,26 +10,34 @@
         document.documentElement.classList.add('dark');
       }
     </script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
             colors: {
               primary: {
-                DEFAULT: 'hsl(25, 95%, 53%)',
-                '50': 'hsl(25, 95%, 95%)',
-                '100': 'hsl(25, 95%, 85%)',
-                '200': 'hsl(25, 95%, 75%)',
-                '300': 'hsl(25, 95%, 65%)',
-                '400': 'hsl(25, 95%, 55%)',
-                '500': 'hsl(25, 95%, 53%)',
-                '600': 'hsl(25, 95%, 48%)',
-                '700': 'hsl(25, 95%, 42%)',
-                '800': 'hsl(25, 95%, 36%)',
-                '900': 'hsl(25, 95%, 30%)',
-                '950': 'hsl(25, 95%, 20%)',
+                DEFAULT: 'hsl(217, 91%, 60%)',
+                '50': 'hsl(217, 91%, 95%)',
+                '100': 'hsl(217, 91%, 90%)',
+                '200': 'hsl(217, 91%, 80%)',
+                '300': 'hsl(217, 91%, 70%)',
+                '400': 'hsl(217, 91%, 65%)',
+                '500': 'hsl(217, 91%, 60%)',
+                '600': 'hsl(217, 91%, 55%)',
+                '700': 'hsl(217, 91%, 50%)',
+                '800': 'hsl(217, 91%, 45%)',
+                '900': 'hsl(217, 91%, 40%)',
+                '950': 'hsl(217, 91%, 30%)',
               },
             },
           },
@@ -42,6 +50,23 @@
     <!-- JSZip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
+      /* Subtle Gradient Animation */
+      @keyframes subtle-gradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      .animated-gradient-bg {
+        background: linear-gradient(-45deg, #A8B2FF, #A1E4FF, #85F4D3, #C0A8FF);
+        background-size: 400% 400%;
+        animation: subtle-gradient 25s ease infinite;
+      }
+
+      html, body, #root {
+        height: 100%;
+      }
+      
       .celebration-overlay {
         position: fixed;
         top: 0;
@@ -156,6 +181,15 @@
           80% { opacity: 1; transform: translate(-50%, -50%); }
           100% { opacity: 0; transform: translate(-50%, -60%); }
       }
+
+      /* AI Listening Glow */
+      @keyframes listening-glow {
+        0%, 100% { box-shadow: 0 0 8px 0 rgba(0, 122, 255, 0.4); }
+        50% { box-shadow: 0 0 16px 3px rgba(0, 122, 255, 0.6); }
+      }
+      .listening-active {
+        animation: listening-glow 2s infinite;
+      }
     </style>
 <script type="importmap">
 {
@@ -166,12 +200,14 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
     "vite": "https://aistudiocdn.com/vite@^7.1.4",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.2"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.2",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.417.0",
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^11.3.11"
   }
 }
 </script>
 </head>
-  <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 transition-colors duration-300 overflow-x-hidden">
+  <body class="animated-gradient-bg dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

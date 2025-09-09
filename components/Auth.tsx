@@ -28,7 +28,7 @@ const Auth: React.FC = () => {
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-4">
+        <div className="flex items-center justify-center min-h-screen p-4">
             <Card className="w-full max-w-md">
                 <div className="text-center mb-6">
                     <h1 className="text-2xl font-bold text-primary-500 mb-2">
@@ -72,10 +72,10 @@ const Auth: React.FC = () => {
 
                 <div className="relative my-6">
                     <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t dark:border-slate-700" />
+                        <span className="w-full border-t border-white/20" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white dark:bg-slate-800 px-2 text-slate-500 dark:text-slate-400">
+                        <span className="bg-white/40 dark:bg-black/20 backdrop-blur-xl px-2 text-slate-500 dark:text-slate-400 rounded-full">
                         O
                         </span>
                     </div>
