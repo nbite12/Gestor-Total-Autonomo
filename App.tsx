@@ -201,22 +201,37 @@ const AppContainer: React.FC = () => {
         }
     };
     
-    const NavButton: React.FC<{view: AppView, icon: string, label: string, className?: string}> = ({view, icon, label, className = ''}) => {
+    const NavButton = ({ view, icon, label, className = '' }: {view: AppView, icon: string, label: string, className?: string}) => {
         const isActive = currentView === view;
+        const buttonRef = useRef<HTMLButtonElement>(null);
+
+        const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+            if (!buttonRef.current || isActive) return;
+            const rect = buttonRef.current.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width * 100;
+            const y = (e.clientY - rect.top) / rect.height * 100;
+
+            buttonRef.current.style.setProperty('--x', `${x}%`);
+            buttonRef.current.style.setProperty('--y', `${y}%`);
+        };
+
         return (
-            <Button 
-                variant="ghost" // Esencial para mantener el efecto de cristal
+            <button
+                ref={buttonRef}
                 onClick={() => setCurrentView(view)}
-                className={`flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full transition-colors duration-300 rounded-lg ${
-                    isActive 
-                    ? 'text-blue-500' // Tinte azul para el estado activo
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
+                onMouseMove={handleMouseMove}
+                className={`glass-button flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full p-2 text-center transition-colors duration-300 ${
+                    isActive
+                        ? 'active text-blue-500' // Clase para el estado activo
+                        : 'text-gray-700 dark:text-gray-300'
                 } ${className}`}
                 aria-label={`Ir a ${label}`}
             >
-                <Icon name={icon} className="w-6 h-6 sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm">{label}</span>
-            </Button>
+                <div className="relative z-10 flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                    <Icon name={icon} className="w-6 h-6 sm:w-5 sm:h-5" />
+                    <span className="text-xs sm:text-sm font-medium">{label}</span>
+                </div>
+            </button>
         );
     };
 
@@ -261,12 +276,12 @@ const AppContainer: React.FC = () => {
                     {renderView()}
                 </main>
 
-                <nav className="fixed inset-x-0 bottom-0 bg-white/30 dark:bg-black/20 backdrop-blur-lg border-t border-white/20 sm:hidden z-40">
-                    <div className="flex items-stretch h-16">
+                <nav className="fixed inset-x-0 bottom-0 border-t border-white/20 sm:hidden z-40 p-2">
+                    <div className="flex items-stretch h-16 gap-2">
                          {isProfessionalModeEnabled ? (
                             <>
                                 <div className="flex-1"><NavButton view={AppView.PROFESSIONAL} icon="Briefcase" label="Profesional" /></div>
-                                <div className="flex-[2] border-x border-slate-200 dark:border-slate-700"><NavButton view={AppView.GLOBAL} icon="Globe" label="Global" /></div>
+                                <div className="flex-[2]"><NavButton view={AppView.GLOBAL} icon="Globe" label="Global" /></div>
                                 <div className="flex-1"><NavButton view={AppView.PERSONAL} icon="Home" label="Personal" /></div>
                             </>
                         ) : (
@@ -279,7 +294,7 @@ const AppContainer: React.FC = () => {
                 </nav>
 
                 <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                   <div className="bg-white/30 dark:bg-black/20 backdrop-blur-lg p-2 rounded-2xl shadow-md flex items-center justify-around gap-2 h-16">
+                   <div className="flex items-center justify-around gap-2 h-16">
                         <NavButton view={AppView.GLOBAL} icon="Globe" label="Visión Global" className="max-w-xs" />
                         {isProfessionalModeEnabled ? (
                             <>

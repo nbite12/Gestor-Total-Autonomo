@@ -21,7 +21,7 @@ export const UndoToast: React.FC<UndoToastProps> = ({ isVisible, message, onUndo
                     transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                     role="status"
                     aria-live="polite"
-                    className="fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-sm sm:max-w-md bg-white/40 dark:bg-black/20 backdrop-blur-xl saturate-150 border border-white/20 text-slate-800 dark:text-slate-100 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden"
+                    className="fixed top-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full max-w-md bg-white/40 dark:bg-black/20 backdrop-blur-xl saturate-150 border border-white/20 text-slate-800 dark:text-slate-100 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden"
                 >
                     {/* Main content with padding */}
                     <div className="flex items-center justify-between gap-4 p-4">

@@ -1458,7 +1458,7 @@ const GlobalView: React.FC = () => {
                         {unifiedTransactions.map(t => {
                             const iconName = t.type === 'transfer' ? 'ArrowRightLeft' : t.amount > 0 ? 'TrendingUp' : 'TrendingDown';
                             return (
-                                <div key={t.id} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
+                                <div key={t.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''}`}>
                                     <div className="flex items-center gap-4 flex-grow min-w-[200px]">
                                         <div className={`p-2 rounded-lg ${t.typeLabel.color} flex-shrink-0`}>
                                             <Icon name={iconName} className="w-5 h-5" />
@@ -1468,7 +1468,7 @@ const GlobalView: React.FC = () => {
                                             <p className="text-sm text-gray-500 dark:text-gray-400">{t.details}</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                    <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                         <div className="text-right">
                                             <p className={`font-semibold whitespace-nowrap ${
                                                 t.type === 'transfer' ? 'text-slate-500 dark:text-slate-400' :

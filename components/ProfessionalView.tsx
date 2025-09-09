@@ -277,7 +277,7 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
              <div className="overflow-y-auto max-h-[40rem] mt-4">
                 <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                     {incomes.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(inc => (
-                        <div key={inc.id} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!inc.isPaid ? 'opacity-60 italic' : ''}`}>
+                        <div key={inc.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!inc.isPaid ? 'opacity-60 italic' : ''}`}>
                             <div className="flex items-center gap-4 flex-grow min-w-[200px]">
                                 <div className="p-2 rounded-lg bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 flex-shrink-0">
                                     <Icon name="TrendingUp" className="w-5 h-5" />
@@ -287,7 +287,7 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
                                     <p className="text-sm text-gray-500 dark:text-gray-400">{inc.clientName} - {formatDate(inc.date)}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                            <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                 <div className="text-right">
                                     <p className="font-semibold whitespace-nowrap text-green-500">
                                         {formatCurrency(getTotalFacturaEmitida(inc))}
@@ -356,7 +356,7 @@ const UnifiedExpenseBook: React.FC<{
                         const total = base + vatAmount;
 
                         return (
-                             <div key={`${item.itemType}-${item.id}`} className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
+                             <div key={`${item.itemType}-${item.id}`} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
                                 <div className="flex items-center gap-4 flex-grow min-w-[200px]">
                                     <div className={`p-2 rounded-lg ${isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'} flex-shrink-0`}>
                                         <Icon name={isExpense ? 'TrendingDown' : 'Package'} className="w-5 h-5" />
@@ -366,7 +366,7 @@ const UnifiedExpenseBook: React.FC<{
                                         <p className="text-sm text-gray-500 dark:text-gray-400">{provider} - {formatDate(date)}</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
+                                <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                     <div className="text-right">
                                         <p className="font-semibold whitespace-nowrap text-red-500">
                                             {formatCurrency(total)}
