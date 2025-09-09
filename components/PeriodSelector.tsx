@@ -64,7 +64,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
         <button
           key={p.key}
           onClick={() => setActivePeriod(p.key)}
-          className={`relative w-full rounded-lg py-1.5 text-sm font-medium transition focus:outline-none ${
+          className={`relative flex-1 rounded-lg py-1.5 text-sm font-medium transition focus:outline-none ${
             activePeriod === p.key ? 'text-gray-900 dark:text-gray-900' : 'text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
           }`}
         >
