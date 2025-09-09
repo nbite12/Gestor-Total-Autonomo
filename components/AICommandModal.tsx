@@ -51,7 +51,7 @@ export const AICommandModal: React.FC<{
         }
 
         const recognition = new SpeechRecognition();
-        recognition.continuous = true;
+        recognition.continuous = false; // Set to false for single, distinct commands to fix mobile repetition bug.
         recognition.interimResults = true;
         recognition.lang = 'es-ES';
 
@@ -59,6 +59,7 @@ export const AICommandModal: React.FC<{
             let interimTranscript = '';
             let finalTranscript = '';
             
+            // This logic correctly reconstructs the current utterance from result parts.
             for (let i = 0; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
@@ -81,14 +82,10 @@ export const AICommandModal: React.FC<{
             setIsListening(false);
         };
 
+        // When recognition ends (either by stopping or automatically), just update the state.
+        // This prevents the buggy auto-restart loop that caused repetitions on mobile.
         recognition.onend = () => {
-            if (isListeningRef.current) {
-                try {
-                    recognition.start();
-                } catch(e) { /* Already starting */ }
-            } else {
-                setIsListening(false);
-            }
+            setIsListening(false);
         };
 
         recognitionRef.current = recognition;
