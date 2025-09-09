@@ -37,7 +37,32 @@ export const AICommandModal: React.FC<{
 
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
+    const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    const stopListening = () => {
+        if (!recognitionRef.current) return;
+        recognitionRef.current.stop();
+        setIsListening(false);
+        if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+        }
+    };
+    
+    const startListening = () => {
+        if (!recognitionRef.current || isListening) return;
+        setError('');
+        setCommandText('');
+        try {
+            recognitionRef.current.start();
+            setIsListening(true);
+            silenceTimerRef.current = setTimeout(() => {
+                stopListening();
+            }, 15000);
+        } catch(e) {
+            console.error("Error starting recognition:", e);
+        }
+    };
+    
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -51,40 +76,41 @@ export const AICommandModal: React.FC<{
         recognition.lang = 'es-ES';
 
         recognition.onresult = (event: any) => {
+            if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+            }
+
             let finalTranscript = '';
-            let interimTranscript = '';
-            
-            // Iterate through the entire results list from the browser's speech recognition session
-            for (let i = 0; i < event.results.length; i++) {
-                const transcriptPart = event.results[i][0].transcript;
-                if(event.results[i].isFinal) {
-                    // Concatenate all final parts to form the stable transcript
-                    finalTranscript += transcriptPart;
-                } else {
-                    // The interim part is the last non-final part
-                    interimTranscript += transcriptPart;
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
                 }
             }
 
-            // By rebuilding the transcript from the full results list each time,
-            // we prevent the duplication bug that can occur on some browsers.
-            setCommandText(finalTranscript + interimTranscript);
+            if (finalTranscript) {
+                 setCommandText(prev => (prev.trim() + ' ' + finalTranscript.trim()).trim());
+            }
+            
+            silenceTimerRef.current = setTimeout(() => {
+                stopListening();
+            }, 15000);
         };
 
         recognition.onerror = (event: any) => {
             console.error('Speech recognition error', event.error);
-            // Don't show an error for "no-speech" which happens on silent pauses.
-            if (event.error === 'no-speech') return;
+             if (event.error === 'no-speech') return;
             let errorMessage = 'Error en el reconocimiento de voz. Inténtalo de nuevo.';
             if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                 errorMessage = 'Permiso para micrófono denegado. Habilítalo en los ajustes del navegador.';
             }
             setError(errorMessage);
             setIsListening(false);
+             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
 
         recognition.onend = () => {
             setIsListening(false);
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
 
         recognitionRef.current = recognition;
@@ -93,33 +119,20 @@ export const AICommandModal: React.FC<{
             if (recognitionRef.current) {
                 recognitionRef.current.abort();
             }
+            if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+            }
         };
     }, []);
     
-    const startListening = () => {
-        if (!recognitionRef.current || isListening) return;
-        setError('');
-        setCommandText('');
-        try {
-            recognitionRef.current.start();
-            setIsListening(true);
-        } catch(e) {
-            console.error("Error starting recognition:", e);
-        }
-    };
-
-    const stopListening = () => {
-        if (!recognitionRef.current || !isListening) return;
-        recognitionRef.current.stop();
-        setIsListening(false);
-    };
-
-    useEffect(() => {
+     useEffect(() => {
         if (isOpen) {
             startListening();
+        } else {
+            stopListening();
         }
     }, [isOpen]);
-    
+
     const handleProcessCommand = async () => {
         if (!commandText.trim()) return;
         stopListening();
@@ -236,7 +249,7 @@ export const AICommandModal: React.FC<{
                 <div className="space-y-4">
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                         {isListening 
-                            ? "¡Escuchando! La transcripción aparecerá abajo en tiempo real." 
+                            ? "¡Escuchando! Di tu comando. Me detendré tras 15 segundos de silencio." 
                             : `Describe el movimiento que quieres añadir. Por ejemplo: ${isProfessionalModeEnabled ? '"Factura para Acme Inc de 1000€" o ' : ''}"Gasto personal de 45€ en el supermercado".`}
                     </p>
                     <textarea
