@@ -37,11 +37,6 @@ export const AICommandModal: React.FC<{
 
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
-    const isListeningRef = useRef(false);
-
-    useEffect(() => {
-        isListeningRef.current = isListening;
-    }, [isListening]);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -51,30 +46,36 @@ export const AICommandModal: React.FC<{
         }
 
         const recognition = new SpeechRecognition();
-        recognition.continuous = true; // Allow user to pause while speaking.
+        recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'es-ES';
 
+        let finalTranscriptAccumulator = '';
+
+        recognition.onstart = () => {
+            finalTranscriptAccumulator = ''; // Reset for each new session.
+        };
+
         recognition.onresult = (event: any) => {
             let interimTranscript = '';
-            let finalTranscript = '';
-            
-            // This logic correctly reconstructs the current utterance from result parts.
-            for (let i = 0; i < event.results.length; i++) {
+            // Iterate from the last result index processed. This is the key to prevent duplication.
+            for (let i = event.resultIndex; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
-                    finalTranscript += transcript;
+                    finalTranscriptAccumulator += transcript;
                 } else {
                     interimTranscript += transcript;
                 }
             }
-            setCommandText(finalTranscript + interimTranscript);
+            // Update the view with the accumulated final transcript and the current interim part.
+            setCommandText(finalTranscriptAccumulator + interimTranscript);
         };
 
         recognition.onerror = (event: any) => {
             console.error('Speech recognition error', event.error);
-            let errorMessage = 'Error en el reconocimiento de voz. Inténtalo de nuevo.';
+            // Don't show an error for "no-speech" which happens on silent pauses.
             if (event.error === 'no-speech') return;
+            let errorMessage = 'Error en el reconocimiento de voz. Inténtalo de nuevo.';
             if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                 errorMessage = 'Permiso para micrófono denegado. Habilítalo en los ajustes del navegador.';
             }
@@ -82,8 +83,6 @@ export const AICommandModal: React.FC<{
             setIsListening(false);
         };
 
-        // When recognition ends (either by stopping or automatically), just update the state.
-        // This prevents the buggy auto-restart loop that caused repetitions on mobile.
         recognition.onend = () => {
             setIsListening(false);
         };
@@ -92,14 +91,13 @@ export const AICommandModal: React.FC<{
 
         return () => {
             if (recognitionRef.current) {
-                isListeningRef.current = false;
                 recognitionRef.current.abort();
             }
         };
     }, []);
     
     const startListening = () => {
-        if (!recognitionRef.current || isListeningRef.current) return;
+        if (!recognitionRef.current || isListening) return;
         setError('');
         setCommandText('');
         try {
@@ -111,7 +109,7 @@ export const AICommandModal: React.FC<{
     };
 
     const stopListening = () => {
-        if (!recognitionRef.current || !isListeningRef.current) return;
+        if (!recognitionRef.current || !isListening) return;
         recognitionRef.current.stop();
         setIsListening(false);
     };
