@@ -37,17 +37,34 @@ export const AICommandModal: React.FC<{
     const [isListening, setIsListening] = useState(false);
 
     const recognitionRef = useRef<any>(null);
-    // FIX: Use ReturnType<typeof setTimeout> for environment-agnostic timeout handle type.
     const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userStoppedRef = useRef(false);
 
     const stopListening = useCallback(() => {
-        if (!recognitionRef.current) return;
-        userStoppedRef.current = true; // La detención es intencionada
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        recognitionRef.current.stop();
-        setIsListening(false); // Forzamos el estado a 'detenido' inmediatamente
+        if (recognitionRef.current) {
+            userStoppedRef.current = true;
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            recognitionRef.current.stop();
+        }
+        setIsListening(false);
     }, []);
+
+    const startListening = useCallback(() => {
+        if (recognitionRef.current) {
+            setCommandText('');
+            setError('');
+            setParsedData(null);
+            userStoppedRef.current = false;
+            setIsListening(true);
+            try {
+                recognitionRef.current.start();
+                silenceTimerRef.current = setTimeout(() => stopListening(), 15000);
+            } catch (e) {
+                console.error("Error starting recognition:", e);
+                stopListening();
+            }
+        }
+    }, [stopListening]);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -60,71 +77,62 @@ export const AICommandModal: React.FC<{
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = 'es-ES';
+        
+        recognitionRef.current = recognition;
 
         recognition.onresult = (event: any) => {
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             const transcript = event.results[0][0].transcript;
             setCommandText(prev => (prev ? prev.trim() + ' ' : '') + transcript.trim());
-            silenceTimerRef.current = setTimeout(stopListening, 15000);
+            silenceTimerRef.current = setTimeout(() => stopListening(), 15000);
         };
 
         recognition.onend = () => {
-            // Solo reinicia si la escucha está activa Y no fue una parada intencionada
-            if (isListening && !userStoppedRef.current) {
+            if (!userStoppedRef.current) {
                 try {
-                    recognition.start();
+                    if (recognitionRef.current) {
+                       recognitionRef.current.start();
+                    }
                 } catch (e) {
-                    // Si falla el reinicio, paramos todo para evitar bucles.
-                    stopListening();
+                    console.error("Error restarting recognition:", e);
+                    setIsListening(false);
                 }
+            } else {
+                setIsListening(false);
             }
         };
 
         recognition.onerror = (event: any) => {
             console.error('Speech recognition error:', event.error);
-            // --- ESTA ES LA CORRECCIÓN CLAVE ---
-            // Si hay un error, levantamos la bandera para detener el bucle de reinicio.
             userStoppedRef.current = true;
             setIsListening(false);
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-            // Evitamos mostrar errores por pausas silenciosas
             if (event.error !== 'no-speech' && event.error !== 'aborted') {
                 setError('Ha ocurrido un error al grabar.');
             }
         };
 
-        recognitionRef.current = recognition;
-
-        // Limpieza al desmontar el componente
         return () => {
-            if (recognitionRef.current) {
-                recognitionRef.current.abort();
-            }
-            if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
+            if (recognition) {
+                recognition.abort();
             }
         };
-    }, [isListening, stopListening]);
+    }, [stopListening]);
 
-    const startListening = () => {
-        setCommandText('');
-        setError('');
-        setParsedData(null);
-        userStoppedRef.current = false;
-        setIsListening(true);
-        try {
-            recognitionRef.current.start();
-            silenceTimerRef.current = setTimeout(stopListening, 15000);
-        } catch(e) {
-             console.error("Error starting recognition:", e);
-             stopListening();
+    useEffect(() => {
+        if (isOpen) {
+            startListening();
+        } else {
+            stopListening();
         }
-    };
+    }, [isOpen, startListening, stopListening]);
     
     const handleProcessCommand = async () => {
         if (!commandText.trim()) return;
-        stopListening();
+        if(isListening) {
+           stopListening();
+        }
         setIsLoading(true);
         setError('');
         setParsedData(null);
