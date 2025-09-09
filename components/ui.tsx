@@ -127,21 +127,29 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-md z-50 flex justify-center items-center p-4" onClick={onClose}>
-      <Card 
-        className="w-full max-w-lg flex flex-col max-h-[95vh]" 
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-white/20">
-          <h3 className="text-xl font-semibold">{title}</h3>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar modal">
-            <Icon name="X" className="w-5 h-5" />
-          </Button>
-        </div>
-        <div className="p-6 overflow-y-auto">
-          {children}
-        </div>
-      </Card>
+    <div 
+      className="fixed inset-0 bg-black/30 backdrop-blur-md z-50 overflow-y-auto" 
+      onClick={onClose}
+      aria-labelledby="modal-title"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="flex items-center justify-center min-h-full p-4">
+        <Card 
+          className="w-full max-w-lg flex flex-col" 
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-white/20">
+            <h3 id="modal-title" className="text-xl font-semibold">{title}</h3>
+            <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar modal">
+              <Icon name="X" className="w-5 h-5" />
+            </Button>
+          </div>
+          <div className="p-6 overflow-y-auto">
+            {children}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 };
