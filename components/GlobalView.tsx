@@ -1,9 +1,11 @@
-import React, { useState, useContext, useMemo, useCallback } from 'react';
+import React, { useState, useContext, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal } from '../types';
-import { IncomeForm, ExpenseForm, MovementForm, TransferForm, SavingsGoalForm, AddFundsForm, formatDateForDateTimeLocalInput } from './TransactionForms';
+// FIX: Import DatePickerInput from TransactionForms to use the shared component
+import { IncomeForm, ExpenseForm, MovementForm, TransferForm, SavingsGoalForm, AddFundsForm, DatePickerInput } from './TransactionForms';
+import { DatePicker } from './DatePicker';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -31,7 +33,6 @@ const getMonthsRemaining = (deadline: string): number => {
     return months <= 0 ? 1 : months;
 };
 
-
 // --- Potential Income Form Modal ---
 const PotentialIncomeForm: React.FC<{
     onClose: () => void;
@@ -43,7 +44,7 @@ const PotentialIncomeForm: React.FC<{
         id: incomeToEdit?.id || `pi-${Date.now()}`,
         concept: incomeToEdit?.concept || '',
         type: incomeToEdit?.type || 'monthly',
-        date: incomeToEdit?.date ? formatDateForDateTimeLocalInput(incomeToEdit.date) : formatDateForDateTimeLocalInput(),
+        date: incomeToEdit?.date || new Date().toISOString(),
         source: incomeToEdit?.source || MoneySource.AUTONOMO,
         location: incomeToEdit?.location || MoneyLocation.PRO_BANK,
         amount: incomeToEdit?.amount || 0,
@@ -122,7 +123,7 @@ const PotentialIncomeForm: React.FC<{
                 <option value="one-off">Puntual</option>
             </Select>
             {formData.type === 'one-off' && (
-                <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
             )}
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -143,7 +144,7 @@ const PotentialExpenseForm: React.FC<{
         id: expenseToEdit?.id || `pe-${Date.now()}`,
         concept: expenseToEdit?.concept || '',
         type: expenseToEdit?.type || 'monthly',
-        date: expenseToEdit?.date ? formatDateForDateTimeLocalInput(expenseToEdit.date) : formatDateForDateTimeLocalInput(),
+        date: expenseToEdit?.date || new Date().toISOString(),
         amount: expenseToEdit?.amount || 0,
         categoryId: expenseToEdit?.categoryId || (personalCategories[0]?.id || ''),
     });
@@ -185,7 +186,7 @@ const PotentialExpenseForm: React.FC<{
                 <option value="one-off">Puntual</option>
             </Select>
             {formData.type === 'one-off' && (
-                <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
             )}
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -201,7 +202,7 @@ const ContabilizeModal: React.FC<{
     onClose: () => void;
     onSave: (id: string, paymentDate: string, location: MoneyLocation) => void;
 }> = ({ item, onClose, onSave }) => {
-    const [paymentDate, setPaymentDate] = useState(formatDateForDateTimeLocalInput());
+    const [paymentDate, setPaymentDate] = useState(new Date().toISOString());
     const [location, setLocation] = useState(item.location || MoneyLocation.PRO_BANK);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -213,11 +214,10 @@ const ContabilizeModal: React.FC<{
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <p>Contabilizar: <strong>{item.concept}</strong></p>
-            <Input 
+            <DatePickerInput 
                 label="Fecha de Pago/Cobro"
-                type="datetime-local"
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
+                selectedDate={paymentDate}
+                onDateChange={(d) => setPaymentDate(d.toISOString())}
                 required
             />
             <Select
@@ -241,14 +241,14 @@ const PeriodizeExpenseModal: React.FC<{
     onClose: () => void;
 }> = ({ expense, onClose }) => {
     const { saveData } = useContext(AppContext)!;
-    const [paymentDate, setPaymentDate] = useState(formatDateForDateTimeLocalInput(expense.date));
+    const [paymentDate, setPaymentDate] = useState(expense.date);
     const [location, setLocation] = useState(expense.location || MoneyLocation.PRO_BANK);
-    const [periodStartDate, setPeriodStartDate] = useState(formatDateForDateTimeLocalInput(expense.date));
+    const [periodStartDate, setPeriodStartDate] = useState(expense.date);
     const [periodEndDate, setPeriodEndDate] = useState(() => {
         const date = new Date(expense.date);
         date.setFullYear(date.getFullYear() + 1);
         date.setDate(date.getDate() - 1);
-        return formatDateForDateTimeLocalInput(date);
+        return date.toISOString();
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -315,11 +315,10 @@ const PeriodizeExpenseModal: React.FC<{
              <p>Periodizar: <strong>{expense.concept}</strong></p>
              <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
                 <legend className="text-sm font-medium px-2">Detalles del Pago Real</legend>
-                 <Input 
+                 <DatePickerInput 
                     label="Fecha de Pago"
-                    type="datetime-local"
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
+                    selectedDate={paymentDate}
+                    onDateChange={(d) => setPaymentDate(d.toISOString())}
                     required
                 />
                 <Select
@@ -333,18 +332,16 @@ const PeriodizeExpenseModal: React.FC<{
 
              <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
                 <legend className="text-sm font-medium px-2">Periodo a Cubrir</legend>
-                 <Input 
+                 <DatePickerInput 
                     label="Fecha de Inicio del Gasto"
-                    type="datetime-local"
-                    value={periodStartDate}
-                    onChange={(e) => setPeriodStartDate(e.target.value)}
+                    selectedDate={periodStartDate}
+                    onDateChange={(d) => setPeriodStartDate(d.toISOString())}
                     required
                 />
-                <Input 
+                <DatePickerInput 
                     label="Fecha de Fin del Gasto"
-                    type="datetime-local"
-                    value={periodEndDate}
-                    onChange={(e) => setPeriodEndDate(e.target.value)}
+                    selectedDate={periodEndDate}
+                    onDateChange={(d) => setPeriodEndDate(d.toISOString())}
                     required
                 />
              </fieldset>
@@ -1026,15 +1023,15 @@ const GlobalView: React.FC = () => {
         const currentBalance = moneyDistribution[location];
         const projectedBalance = projectedMoneyDistribution[location];
         return (
-            <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+            <div className="flex items-center gap-4 p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
                 <Icon name={icon} className="w-8 h-8 text-primary-500 flex-shrink-0" />
                 <div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{location}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{location}</p>
                     <p className={`text-lg font-bold transition-colors ${showProjection && currentBalance !== projectedBalance ? 'text-primary-600 dark:text-primary-400' : ''}`}>
                         {formatCurrency(showProjection ? projectedBalance : currentBalance)}
                     </p>
                     {showProjection && currentBalance !== projectedBalance && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
                             Actual: {formatCurrency(currentBalance)}
                         </p>
                     )}
@@ -1047,46 +1044,46 @@ const GlobalView: React.FC = () => {
     return (
         <div className="space-y-8">
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
+            <h2 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
             {isProfessionalModeEnabled && (
-                <Card>
+                <Card className="p-6">
                     <div className="flex justify-between items-start">
-                        <h3 className="text-xl font-bold">Capital Neto Disponible</h3>
+                        <h3 className="text-xl font-semibold">Capital Neto Disponible</h3>
                         <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                     </div>
                     <div className="text-center my-4">
                         <p className="text-7xl lg:text-8xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
                             {formatCurrency(netCapitalSummary.netAvailableCapital)}
                         </p>
-                        <p className="text-sm text-gray-500 dark:text-slate-400">Estimación después de obligaciones</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
                     </div>
                     <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
                         <div className="flex justify-between">
-                            <span className="text-slate-500 dark:text-slate-400">Total en Cuentas y Efectivo</span>
+                            <span className="text-gray-600 dark:text-gray-400">Total en Cuentas y Efectivo</span>
                             <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.currentTotalBalance)}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-slate-500 dark:text-slate-400">Cobros Pendientes</span>
+                            <span className="text-gray-600 dark:text-gray-400">Cobros Pendientes</span>
                             <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-slate-500 dark:text-slate-400">Pagos Pendientes</span>
+                            <span className="text-gray-600 dark:text-gray-400">Pagos Pendientes</span>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-slate-500 dark:text-slate-400">Impuestos Trimestrales (Est.)</span>
+                            <span className="text-gray-600 dark:text-gray-400">Impuestos Trimestrales (Est.)</span>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
                         </div>
                     </div>
                 </Card>
             )}
 
-            <Card>
+            <Card className="p-6">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                     <div>
-                        <h3 className="text-xl font-bold">Distribución del Dinero</h3>
-                        <p className="text-sm text-slate-500">{showProjection ? `Saldos proyectados ${includePendingTransactions ? 'incluyendo' : 'excluyendo'} transacciones pendientes.` : 'Saldos actuales en tus cuentas.'}</p>
+                        <h3 className="text-xl font-semibold">Distribución del Dinero</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{showProjection ? `Saldos proyectados ${includePendingTransactions ? 'incluyendo' : 'excluyendo'} transacciones pendientes.` : 'Saldos actuales en tus cuentas.'}</p>
                     </div>
                     <div className="flex items-center gap-4">
                         <Switch label="Proyectar saldos" checked={showProjection} onChange={setShowProjection} />
@@ -1104,15 +1101,15 @@ const GlobalView: React.FC = () => {
                 </div>
             </Card>
 
-            <Card>
+            <Card className="p-6">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
-                    <h3 className="text-xl font-bold">Transacciones Pendientes</h3>
+                    <h3 className="text-xl font-semibold">Transacciones Pendientes</h3>
                     <Button size="sm" variant="secondary" onClick={() => setIsAddPendingModalOpen(true)}>
                         <Icon name="Plus" className="w-4 h-4" /> Añadir Transacción Pendiente
                     </Button>
                 </div>
                 {pendingIncomes.length === 0 && pendingExpenses.length === 0 && pendingPersonalIncomes.length === 0 && pendingPersonalExpenses.length === 0 ? (
-                    <p className="text-center text-slate-500 py-8">No hay transacciones pendientes. ¡Añade una para empezar a planificar!</p>
+                    <p className="text-center text-gray-600 dark:text-gray-400 py-8">No hay transacciones pendientes. ¡Añade una para empezar a planificar!</p>
                 ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
                     {isProfessionalModeEnabled && (
@@ -1121,11 +1118,11 @@ const GlobalView: React.FC = () => {
                                 <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400">Pendiente de Cobro (Profesional)</h4>
                                 {pendingIncomes.length > 0 ? (
                                     <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
-                                        <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                        <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <p>{income.concept}</p>
-                                                    <p className="text-xs text-slate-500">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                                    <p className="text-xs text-gray-600 dark:text-gray-400">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
                                                 </div>
                                                 <div className="text-right flex-shrink-0 ml-2">
                                                     <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
@@ -1140,18 +1137,18 @@ const GlobalView: React.FC = () => {
                                         </li>
                                     ))}</ul>
                                 ) : (
-                                    <p className="text-sm text-slate-400 italic">No hay cobros profesionales pendientes.</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 italic">No hay cobros profesionales pendientes.</p>
                                 )}
                             </div>
                             <div>
                                 <h4 className="font-semibold mb-2 text-red-600 dark:text-red-400">Pendiente de Pago (Profesional)</h4>
                                 {pendingExpenses.length > 0 ? (
                                     <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
-                                        <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                        <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <p>{expense.concept}</p>
-                                                    <p className="text-xs text-slate-500">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                                    <p className="text-xs text-gray-600 dark:text-gray-400">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
                                                 </div>
                                                 <div className="text-right flex-shrink-0 ml-2">
                                                     <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
@@ -1167,7 +1164,7 @@ const GlobalView: React.FC = () => {
                                         </li>
                                     ))}</ul>
                                 ) : (
-                                    <p className="text-sm text-slate-400 italic">No hay pagos profesionales pendientes.</p>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 italic">No hay pagos profesionales pendientes.</p>
                                 )}
                             </div>
                         </>
@@ -1176,11 +1173,11 @@ const GlobalView: React.FC = () => {
                         <h4 className="font-semibold mb-2 text-green-500 dark:text-green-300">Pendiente de Ingreso (Personal)</h4>
                          {pendingPersonalIncomes.length > 0 ? (
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalIncomes.map(mov => (
-                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <p>{mov.concept}</p>
-                                            <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                            <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
                                         </div>
                                         <div className="text-right flex-shrink-0 ml-2">
                                             <p className="font-semibold">{formatCurrency(mov.amount)}</p>
@@ -1195,18 +1192,18 @@ const GlobalView: React.FC = () => {
                                 </li>
                             ))}</ul>
                         ) : (
-                            <p className="text-sm text-slate-400 italic">No hay ingresos personales pendientes.</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 italic">No hay ingresos personales pendientes.</p>
                         )}
                     </div>
                      <div>
                         <h4 className="font-semibold mb-2 text-red-500 dark:text-red-300">Pendiente de Gasto (Personal)</h4>
                          {pendingPersonalExpenses.length > 0 ? (
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalExpenses.map(mov => (
-                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-md text-sm">
+                                <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <p>{mov.concept}</p>
-                                            <p className="text-xs text-slate-500">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                            <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
                                         </div>
                                         <div className="text-right flex-shrink-0 ml-2">
                                             <p className="font-semibold">{formatCurrency(mov.amount)}</p>
@@ -1221,7 +1218,7 @@ const GlobalView: React.FC = () => {
                                 </li>
                              ))}</ul>
                          ) : (
-                            <p className="text-sm text-slate-400 italic">No hay gastos personales pendientes.</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 italic">No hay gastos personales pendientes.</p>
                          )}
                     </div>
                 </div>
@@ -1230,31 +1227,31 @@ const GlobalView: React.FC = () => {
 
             
             {/* Main KPIs */}
-            <Card>
-                 <h3 className="text-xl font-bold mb-4">Resumen y Proyección del Periodo</h3>
+            <Card className="p-6">
+                 <h3 className="text-xl font-semibold mb-4">Resumen y Proyección del Periodo</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center divide-y md:divide-y-0 md:divide-x dark:divide-slate-700">
                     <div className="p-4">
-                        <h4 className="text-lg text-slate-500 dark:text-slate-400">Ingresos Proyectados</h4>
+                        <h4 className="text-lg text-gray-600 dark:text-gray-400">Ingresos Proyectados</h4>
                         <p className="text-3xl font-bold text-green-500">{formatCurrency(summary.totalProjectedIncome)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualIncome)} reales + {formatCurrency(summary.projectedIncome)} pot.)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">({formatCurrency(summary.totalActualIncome)} reales + {formatCurrency(summary.projectedIncome)} pot.)</p>
                     </div>
                     <div className="p-4">
-                        <h4 className="text-lg text-slate-500 dark:text-slate-400">Gastos Proyectados</h4>
+                        <h4 className="text-lg text-gray-600 dark:text-gray-400">Gastos Proyectados</h4>
                         <p className="text-3xl font-bold text-red-500">{formatCurrency(summary.totalProjectedExpense)}</p>
-                        <p className="text-xs text-slate-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot.{isProfessionalModeEnabled && ` + ${formatCurrency(summary.taxPayments)} imp.`})</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">({formatCurrency(summary.totalActualExpense)} reales + {formatCurrency(summary.projectedSavings)} ahorro + {formatCurrency(summary.projectedExpenses)} pot.{isProfessionalModeEnabled && ` + ${formatCurrency(summary.taxPayments)} imp.`})</p>
                     </div>
                     <div className="p-4">
-                        <h4 className="text-lg text-slate-500 dark:text-slate-400">Flujo de Caja Neto Proyectado</h4>
+                        <h4 className="text-lg text-gray-600 dark:text-gray-400">Flujo de Caja Neto Proyectado</h4>
                         <p className={`text-4xl font-bold ${summary.netProjectedCashFlow >= 0 ? 'text-primary-500' : 'text-red-600'}`}>{formatCurrency(summary.netProjectedCashFlow)}</p>
-                        <p className="text-xs text-slate-400">Dinero neto disponible estimado</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Dinero neto disponible estimado</p>
                     </div>
                 </div>
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Planning Panels */}
-                <Card>
-                    <h3 className="text-lg font-bold mb-4">Controles de Proyección</h3>
+                <Card className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Controles de Proyección</h3>
                     <div className="space-y-4">
                         <Switch label="Incluir Movimientos Pendientes" checked={includePendingTransactions} onChange={setIncludePendingTransactions} />
                         <Switch label="Incluir Ahorro Planificado" checked={includeSavings} onChange={setIncludeSavings} />
@@ -1262,14 +1259,14 @@ const GlobalView: React.FC = () => {
                         <Switch label="Incluir Gastos Potenciales" checked={includePotentialExpenses} onChange={setIncludePotentialExpenses} />
                     </div>
                 </Card>
-                 <Card>
+                 <Card className="p-6">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold">Ingresos Potenciales</h3>
+                        <h3 className="text-lg font-semibold">Ingresos Potenciales</h3>
                         <Button size="sm" onClick={() => handleOpenIncomeModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                     </div>
                     <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
                         {potentialIncomes.length > 0 ? potentialIncomes.map(pi => (
-                           <div key={pi.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700 rounded-md">
+                           <div key={pi.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
                                <div className="flex justify-between items-start">
                                    <div>
                                        <p className="font-semibold">{pi.concept}</p>
@@ -1286,21 +1283,21 @@ const GlobalView: React.FC = () => {
                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{pi.type === 'monthly' ? 'Mensual' : `Puntual`}</span>
                                </div>
                            </div>
-                        )) : <p className="text-sm text-center text-slate-500">Añade ingresos futuros para proyectar tu crecimiento.</p>}
+                        )) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade ingresos futuros para proyectar tu crecimiento.</p>}
                     </div>
                 </Card>
             </div>
             
-            <Card>
+            <Card className="p-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold">Gastos Potenciales</h3>
+                    <h3 className="text-lg font-semibold">Gastos Potenciales</h3>
                     <Button size="sm" onClick={() => handleOpenExpenseModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                 </div>
                 <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
                     {potentialExpenses.length > 0 ? potentialExpenses.map(pe => {
                         const category = personalCategories.find(c => c.id === pe.categoryId);
                         return (
-                       <div key={pe.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700 rounded-md">
+                       <div key={pe.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
                            <div className="flex justify-between items-start">
                                <div>
                                    <p className="font-semibold">{pe.concept}</p>
@@ -1316,13 +1313,13 @@ const GlobalView: React.FC = () => {
                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{pe.type === 'monthly' ? 'Mensual' : `Puntual`}</span>
                            </div>
                        </div>
-                    )}) : <p className="text-sm text-center text-slate-500">Añade gastos futuros (suscripciones, etc.) para una proyección más precisa.</p>}
+                    )}) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade gastos futuros (suscripciones, etc.) para una proyección más precisa.</p>}
                 </div>
             </Card>
 
-            <Card>
+            <Card className="p-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold">Planificación de Ahorro</h3>
+                    <h3 className="text-xl font-semibold">Planificación de Ahorro</h3>
                     <Button size="sm" onClick={() => handleOpenGoalForm()}>
                         <Icon name="Plus" className="w-4 h-4" /> Nuevo Objetivo
                     </Button>
@@ -1342,7 +1339,7 @@ const GlobalView: React.FC = () => {
                             <div key={goal.id} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start border-t dark:border-slate-700 pt-4 first:border-t-0">
                                 <div className="md:col-span-1">
                                     <p className="font-semibold">{goal.name}</p>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-gray-600 dark:text-gray-400">
                                         Restante: {formatCurrency(Math.max(0, amountRemaining))}
                                     </p>
                                 </div>
@@ -1413,12 +1410,12 @@ const GlobalView: React.FC = () => {
                                 })()}
                             </div>
                         );
-                    }) : <p className="text-center text-slate-500">Crea objetivos en el Área Personal para planificar tu ahorro.</p>}
+                    }) : <p className="text-center text-gray-600 dark:text-gray-400">Crea objetivos en el Área Personal para planificar tu ahorro.</p>}
                 </div>
             </Card>
 
-            <Card>
-                <h3 className="text-xl font-bold mb-4">Registro Global de Movimientos</h3>
+            <Card className="p-6">
+                <h3 className="text-xl font-semibold mb-4">Registro Global de Movimientos</h3>
                 <div className="flex flex-wrap gap-2 mb-4">
                      {isProfessionalModeEnabled && (
                         <>
@@ -1449,7 +1446,7 @@ const GlobalView: React.FC = () => {
                     </Button>
                 </div>
 
-                <div className="py-4 border-t border-b dark:border-slate-700">
+                <div className="border-t border-b dark:border-slate-700">
                    <PeriodSelector onPeriodChange={handlePeriodChange} />
                 </div>
 
@@ -1465,13 +1462,13 @@ const GlobalView: React.FC = () => {
                                         </div>
                                         <div>
                                             <p className="font-semibold">{t.concept}</p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">{t.details}</p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">{t.details}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                         <div className="text-right">
                                             <p className={`font-semibold break-words ${
-                                                t.type === 'transfer' ? 'text-slate-500 dark:text-slate-400' :
+                                                t.type === 'transfer' ? 'text-gray-600 dark:text-gray-400' :
                                                 t.amount > 0 ? 'text-green-500' : 'text-red-500'
                                             }`}>
                                                 {formatCurrency(t.amount)}
@@ -1489,7 +1486,7 @@ const GlobalView: React.FC = () => {
                     </div>
                 </div>
                 {unifiedTransactions.length === 0 && (
-                    <p className="text-center text-slate-500 py-8">No hay movimientos que coincidan con los filtros para este periodo.</p>
+                    <p className="text-center text-gray-600 dark:text-gray-400 py-8">No hay movimientos que coincidan con los filtros para este periodo.</p>
                 )}
             </Card>
 

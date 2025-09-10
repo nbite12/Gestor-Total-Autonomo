@@ -210,20 +210,16 @@ const AppContainer: React.FC = () => {
             const rect = buttonRef.current.getBoundingClientRect();
             const x = (e.clientX - rect.left) / rect.width * 100;
             const y = (e.clientY - rect.top) / rect.height * 100;
-
             buttonRef.current.style.setProperty('--x', `${x}%`);
             buttonRef.current.style.setProperty('--y', `${y}%`);
         };
-
         return (
             <button
                 ref={buttonRef}
                 onClick={() => setCurrentView(view)}
                 onMouseMove={handleMouseMove}
-                className={`glass-button flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full p-2 text-center transition-colors duration-300 ${
-                    isActive
-                        ? 'active text-blue-500' // Clase para el estado activo
-                        : 'text-gray-700 dark:text-gray-300'
+                className={`glass-button flex flex-col sm:flex-row h-full items-center justify-center gap-1 sm:gap-2 w-full p-2 text-center transition-all duration-300 ${
+                    isActive ? 'active text-blue-500 font-semibold' : 'text-gray-800 dark:text-gray-200'
                 } ${className}`}
                 aria-label={`Ir a ${label}`}
             >
@@ -245,12 +241,12 @@ const AppContainer: React.FC = () => {
     
     return (
         <AppContext.Provider value={{ data, saveData, formatCurrency, resetData, isPrivacyMode, togglePrivacyMode, isProfessionalModeEnabled }}>
-            <div className="min-h-screen flex flex-col font-sans text-gray-800 dark:text-gray-200 animated-gradient-bg">
+            <div className="min-h-screen flex flex-col font-sans text-gray-800 dark:text-gray-200 animated-gradient-bg overflow-x-hidden">
                 <header className="bg-white/30 dark:bg-black/20 backdrop-blur-lg border-b border-white/20 p-4 sticky top-0 z-50">
                     <div className="container mx-auto flex justify-between items-center gap-2 sm:gap-4">
                         <div className="flex-1 min-w-0">
-                            <h1 className="text-xl sm:text-2xl font-bold text-primary-500 whitespace-nowrap overflow-hidden text-ellipsis">
-                            Gestor Total Autónomo
+                            <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white">
+                              LifeOS
                             </h1>
                         </div>
                         <div className="relative z-10 flex items-center gap-1 sm:gap-2 flex-shrink-0">
@@ -272,11 +268,11 @@ const AppContainer: React.FC = () => {
                     </div>
                 </header>
                 
-                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-24 sm:pb-8">
+                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-24 sm:pb-6">
                     {renderView()}
                 </main>
 
-                <nav className="fixed inset-x-0 bottom-0 border-t border-white/20 sm:hidden z-40 p-2">
+                <nav className="fixed inset-x-0 bottom-0 sm:hidden z-40 p-2 glass-dock">
                     <div className="flex items-stretch h-16 gap-2">
                          {isProfessionalModeEnabled ? (
                             <>

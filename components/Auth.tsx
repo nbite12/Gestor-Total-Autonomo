@@ -29,7 +29,7 @@ const Auth: React.FC = () => {
 
     return (
         <div className="flex items-center justify-center min-h-screen p-4">
-            <Card className="w-full max-w-md">
+            <Card className="w-full max-w-md p-6">
                 <div className="text-center mb-6">
                     <h1 className="text-2xl font-bold text-primary-500 mb-2">
                         Gestor Total Autónomo

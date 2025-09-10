@@ -1,9 +1,10 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
 import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource, Transfer, TransferJustification, Category, SavingsGoal } from '../types';
-import { Button, Input, Select, Icon, Switch, HelpTooltip } from './ui';
+import { Button, Input, Select, Icon, Switch, HelpTooltip, Card } from './ui';
 import { AiModal } from './AiModal';
 import { suggestDeductibility } from '../services/geminiService';
+import { DatePicker } from './DatePicker';
 
 // --- Helper Functions ---
 const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -12,31 +13,6 @@ const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reje
     reader.onload = () => resolve((reader.result as string).split(',')[1]);
     reader.onerror = error => reject(error);
 });
-
-export const formatDateForDateTimeLocalInput = (isoDate?: string | Date): string => {
-    const date = isoDate ? new Date(isoDate) : new Date();
-
-    // Check if the provided string was just a date (YYYY-MM-DD). If so, new Date() might interpret it as UTC midnight.
-    // To correct this, we can use a regex and re-parse it to respect local timezone.
-    if (typeof isoDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
-        // Using replace with '/' helps some browsers interpret the date as local time, not UTC.
-        const dateWithTz = new Date(isoDate.replace(/-/g, '/'));
-        const year = dateWithTz.getFullYear();
-        const month = (dateWithTz.getMonth() + 1).toString().padStart(2, '0');
-        const day = dateWithTz.getDate().toString().padStart(2, '0');
-        // Default to midnight as time is not specified
-        return `${year}-${month}-${day}T00:00`;
-    }
-
-    // For full ISO strings or Date objects, format to local time for the input.
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
 
 const formatCurrencyForUI = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 
@@ -58,6 +34,54 @@ const findBestCategoryId = (suggestion: string | undefined, categories: Category
     return undefined;
 };
 
+// Helper component for Date Picker
+// FIX: Export DatePickerInput to be used in other components.
+export const DatePickerInput: React.FC<{ label: string; selectedDate: string | undefined; onDateChange: (date: Date) => void; required?: boolean }> = ({ label, selectedDate, onDateChange, required }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const popoverRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [popoverRef]);
+    
+    const dateValue = selectedDate ? new Date(selectedDate) : undefined;
+    
+    return (
+        <div className="relative">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                {label} {required && <span className="text-red-500">*</span>}
+            </label>
+            <Button type="button" variant="secondary" onClick={() => setIsOpen(!isOpen)} className="w-full justify-start font-normal text-left h-auto py-2">
+                <Icon name="Calendar" className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span className="flex-grow">
+                    {dateValue ? dateValue.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Seleccionar fecha'}
+                </span>
+            </Button>
+            {isOpen && (
+                <div ref={popoverRef} className="absolute z-10 mt-2 bg-transparent">
+                    <Card className="p-0">
+                        <DatePicker
+                            selected={dateValue}
+                            onSelect={(date) => {
+                                if (date) onDateChange(date);
+                                setIsOpen(false);
+                            }}
+                        />
+                    </Card>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 // --- Form Components ---
 export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income> | null; defaultIsPaid?: boolean; }> = ({ onClose, incomeToEdit, defaultIsPaid = true }) => {
@@ -65,13 +89,12 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   const [formData, setFormData] = useState<Partial<Income>>({
     id: incomeToEdit?.id || `inc-${Date.now()}`,
     invoiceNumber: incomeToEdit?.invoiceNumber || '',
-    date: incomeToEdit?.date ? formatDateForDateTimeLocalInput(incomeToEdit.date) : formatDateForDateTimeLocalInput(),
+    date: incomeToEdit?.date || new Date().toISOString(),
     clientName: incomeToEdit?.clientName || '',
     clientNif: incomeToEdit?.clientNif || '',
     clientAddress: incomeToEdit?.clientAddress || '',
     concept: incomeToEdit?.concept || '',
     baseAmount: incomeToEdit?.baseAmount || 0,
-    // FIX: Corrected typo from defaultVratRate to defaultVatRate
     vatRate: incomeToEdit?.vatRate ?? data.settings.defaultVatRate,
     irpfRate: incomeToEdit?.irpfRate ?? data.settings.defaultIrpfRate,
     isPaid: incomeToEdit?.isPaid ?? defaultIsPaid,
@@ -95,7 +118,7 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
       setFormData(prev => ({
           ...prev,
           ...extractedData,
-          date: extractedData.date ? formatDateForDateTimeLocalInput(extractedData.date) : prev.date
+          date: extractedData.date ? new Date(extractedData.date).toISOString() : prev.date
       }));
       handleFileChange(file);
   };
@@ -135,7 +158,7 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input label="Nº Factura" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
-          <Input label="Fecha Expedición" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+          <DatePickerInput label="Fecha Expedición" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
         </div>
         <Input label="Nombre o Razón Social Cliente" name="clientName" value={formData.clientName} onChange={handleChange} required />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -149,7 +172,6 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
             <Input label="IRPF (%)" name="irpfRate" type="number" step="0.01" value={formData.irpfRate} onChange={handleChange} required />
         </div>
         <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-            {/* FIX: Removed invalid 'name' prop from Switch component. */}
             <Switch label="Factura Pagada" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
             {formData.isPaid && (
                 <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
@@ -159,7 +181,6 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
         </div>
         {data.settings.isInROI && (
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Operación Intracomunitaria" checked={formData.isIntraCommunity ?? false} onChange={(c) => setFormData(p => ({...p, isIntraCommunity: c}))} />
             </div>
         )}
@@ -180,12 +201,11 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   );
 };
 
-// FIX: Added missing ExpenseForm component
 export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; }> = ({ onClose, expenseToEdit, defaultIsPaid = true }) => {
     const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<Expense>>({
         id: expenseToEdit?.id || `exp-${Date.now()}`,
-        date: expenseToEdit?.date ? formatDateForDateTimeLocalInput(expenseToEdit.date) : formatDateForDateTimeLocalInput(),
+        date: expenseToEdit?.date || new Date().toISOString(),
         isPaid: expenseToEdit?.isPaid ?? defaultIsPaid,
         paymentDate: expenseToEdit?.paymentDate,
         invoiceNumber: expenseToEdit?.invoiceNumber || '',
@@ -272,7 +292,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Fecha Gasto" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+                <DatePickerInput label="Fecha Gasto" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
                 <Input label="Nº Factura (Opcional)" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
             </div>
             <Input label="Nombre o Razón Social Proveedor" name="providerName" value={formData.providerName} onChange={handleChange} required />
@@ -285,12 +305,11 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Es Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
                 {formData.isDeductible && (
                     <>
                         <Button type="button" variant="secondary" size="sm" onClick={handleDeductibilityCheck} disabled={isCheckingDeductibility || !data.settings.geminiApiKey}>
-                            <Icon name="sparkles" className="w-4 h-4" /> {isCheckingDeductibility ? 'Consultando...' : 'Sugerencia IA Deducibilidad'}
+                            <Icon name="Sparkles" className="w-4 h-4" /> {isCheckingDeductibility ? 'Consultando...' : 'Sugerencia IA Deducibilidad'}
                         </Button>
                         {deductibilitySuggestion && (
                             <div className="p-2 bg-blue-50 dark:bg-blue-900/50 rounded-md text-sm">
@@ -303,7 +322,6 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 )}
             </div>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Gasto Pagado" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                     <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
@@ -319,12 +337,11 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
     );
 };
 
-// FIX: Added missing InvestmentGoodForm component
 export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Partial<InvestmentGood> | null; }> = ({ onClose, goodToEdit }) => {
     const { data, saveData } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<InvestmentGood>>({
         id: goodToEdit?.id || `inv-${Date.now()}`,
-        purchaseDate: goodToEdit?.purchaseDate ? formatDateForDateTimeLocalInput(goodToEdit.purchaseDate) : formatDateForDateTimeLocalInput(),
+        purchaseDate: goodToEdit?.purchaseDate || new Date().toISOString(),
         description: goodToEdit?.description || '',
         providerName: goodToEdit?.providerName || '',
         invoiceNumber: goodToEdit?.invoiceNumber || '',
@@ -367,7 +384,7 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Descripción del Bien" name="description" value={formData.description} onChange={handleChange} required />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Fecha de Compra" name="purchaseDate" type="datetime-local" value={formData.purchaseDate} onChange={handleChange} required />
+                <DatePickerInput label="Fecha de Compra" selectedDate={formData.purchaseDate} onDateChange={(d) => setFormData(p => ({...p, purchaseDate: d.toISOString()}))} required />
                 <Input label="Proveedor" name="providerName" value={formData.providerName} onChange={handleChange} required />
             </div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -379,9 +396,7 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Amortizable (Deducible)" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Pagado" checked={formData.isPaid ?? true} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                     <Select label="Pagado Desde" name="location" value={formData.location} onChange={handleChange}>
@@ -398,12 +413,11 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
 };
 
 
-// FIX: Added missing MovementForm component
 export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Partial<PersonalMovement> | null; defaultIsPaid?: boolean; }> = ({ onClose, movementToEdit, defaultIsPaid = true }) => {
     const { data, saveData } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<PersonalMovement>>({
         id: movementToEdit?.id || `pm-${Date.now()}`,
-        date: movementToEdit?.date ? formatDateForDateTimeLocalInput(movementToEdit.date) : formatDateForDateTimeLocalInput(),
+        date: movementToEdit?.date || new Date().toISOString(),
         concept: movementToEdit?.concept || '',
         amount: movementToEdit?.amount || 0,
         type: movementToEdit?.type || 'expense',
@@ -443,7 +457,7 @@ export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Part
             <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input label="Importe (€)" name="amount" type="number" step="0.01" value={formData.amount} onChange={handleChange} required />
-                <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <Select label="Tipo" name="type" value={formData.type} onChange={handleChange}>
@@ -455,7 +469,6 @@ export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Part
                 </Select>
             </div>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                {/* FIX: Removed invalid 'name' prop from Switch component. */}
                 <Switch label="Pagado / Recibido" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                      <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
@@ -471,12 +484,11 @@ export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Part
     );
 };
 
-// FIX: Added missing TransferForm component
 export const TransferForm: React.FC<{ onClose: () => void; transferToEdit?: Partial<Transfer> | null }> = ({ onClose, transferToEdit }) => {
     const { data, saveData } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<Transfer>>({
         id: transferToEdit?.id || `trn-${Date.now()}`,
-        date: transferToEdit?.date ? formatDateForDateTimeLocalInput(transferToEdit.date) : formatDateForDateTimeLocalInput(),
+        date: transferToEdit?.date || new Date().toISOString(),
         amount: transferToEdit?.amount || 0,
         fromLocation: transferToEdit?.fromLocation || MoneyLocation.PRO_BANK,
         toLocation: transferToEdit?.toLocation || MoneyLocation.PERS_BANK,
@@ -509,21 +521,42 @@ export const TransferForm: React.FC<{ onClose: () => void; transferToEdit?: Part
         onClose();
     };
 
+    // FIX: Add missing return statement with JSX for the form.
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Importe (€)" name="amount" type="number" step="0.01" value={formData.amount} onChange={handleChange} required />
-            <Input label="Fecha" name="date" type="datetime-local" value={formData.date} onChange={handleChange} required />
+            <DatePickerInput 
+                label="Fecha de la Transferencia" 
+                selectedDate={formData.date} 
+                onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} 
+                required 
+            />
+            <Input 
+                label="Importe (€)" 
+                name="amount" 
+                type="number" 
+                step="0.01" 
+                value={formData.amount} 
+                onChange={handleChange} 
+                required 
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Select label="Desde" name="fromLocation" value={formData.fromLocation} onChange={handleChange}>
                     {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
                 </Select>
                 <Select label="Hasta" name="toLocation" value={formData.toLocation} onChange={handleChange}>
-                     {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
                 </Select>
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <Input label="Concepto (Opcional)" name="concept" value={formData.concept} onChange={handleChange} />
-            <Select label="Justificación" name="justification" value={formData.justification} onChange={handleChange}>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <Input 
+                label="Concepto" 
+                name="concept" 
+                value={formData.concept} 
+                onChange={handleChange} 
+                placeholder="Ej: Aportación a cuenta personal"
+                required 
+            />
+            <Select label="Justificación (para contabilidad)" name="justification" value={formData.justification} onChange={handleChange}>
                 {Object.values(TransferJustification).map(j => <option key={j} value={j}>{j}</option>)}
             </Select>
             <div className="flex justify-end gap-2 pt-4">
@@ -534,38 +567,44 @@ export const TransferForm: React.FC<{ onClose: () => void; transferToEdit?: Part
     );
 };
 
-// FIX: Added missing SavingsGoalForm component
-export const SavingsGoalForm: React.FC<{ onClose: () => void; goalToEdit?: SavingsGoal | null }> = ({ onClose, goalToEdit }) => {
-    const { data, saveData } = useContext(AppContext)!;
+// FIX: Add and export SavingsGoalForm component.
+export const SavingsGoalForm: React.FC<{ onClose: () => void; goalToEdit?: Partial<SavingsGoal> | null }> = ({ onClose, goalToEdit }) => {
+    const { saveData } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<SavingsGoal>>({
-        id: goalToEdit?.id || `goal-${Date.now()}`,
+        id: goalToEdit?.id || `sg-${Date.now()}`,
         name: goalToEdit?.name || '',
         targetAmount: goalToEdit?.targetAmount || 1000,
         currentAmount: goalToEdit?.currentAmount || 0,
-        // FIX: Correctly create a new Date object for next year. `setFullYear` returns a number.
-        deadline: goalToEdit?.deadline ? formatDateForDateTimeLocalInput(goalToEdit.deadline) : formatDateForDateTimeLocalInput((() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d; })()),
-        plannedContribution: goalToEdit?.plannedContribution
+        deadline: goalToEdit?.deadline || new Date().toISOString(),
+        plannedContribution: goalToEdit?.plannedContribution,
     });
-    
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({...prev, [name]: ['targetAmount', 'currentAmount', 'plannedContribution'].includes(name) ? parseFloat(value) : value}));
+        setFormData(prev => ({ ...prev, [name]: name.includes('Amount') || name.includes('Contribution') ? parseFloat(value) : value }));
     };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const isEditing = goalToEdit && data.savingsGoals.some(g => g.id === goalToEdit.id);
-        const newGoal = { ...formData, deadline: new Date(formData.deadline!).toISOString() } as SavingsGoal;
-        
+        const isEditing = goalToEdit?.id;
+        const newGoal: SavingsGoal = {
+            id: formData.id!,
+            name: formData.name!,
+            targetAmount: formData.targetAmount!,
+            currentAmount: formData.currentAmount!,
+            deadline: new Date(formData.deadline!).toISOString(),
+            plannedContribution: formData.plannedContribution
+        };
+
         saveData(prev => ({
             ...prev,
             savingsGoals: isEditing
-                ? prev.savingsGoals.map(g => g.id === goalToEdit.id ? newGoal : g)
+                ? prev.savingsGoals.map(g => g.id === goalToEdit!.id ? newGoal : g)
                 : [...prev.savingsGoals, newGoal]
-        }), isEditing ? "Objetivo actualizado." : "Objetivo creado.");
+        }), isEditing ? "Objetivo de ahorro actualizado." : "Objetivo de ahorro creado.");
         onClose();
     };
-    
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Nombre del Objetivo" name="name" value={formData.name} onChange={handleChange} required />
@@ -573,66 +612,84 @@ export const SavingsGoalForm: React.FC<{ onClose: () => void; goalToEdit?: Savin
                 <Input label="Cantidad Objetivo (€)" name="targetAmount" type="number" step="0.01" value={formData.targetAmount} onChange={handleChange} required />
                 <Input label="Cantidad Actual (€)" name="currentAmount" type="number" step="0.01" value={formData.currentAmount} onChange={handleChange} required />
             </div>
-            <Input label="Fecha Límite" name="deadline" type="datetime-local" value={formData.deadline} onChange={handleChange} required />
-            <Input label="Aportación Mensual Planeada (Opcional)" name="plannedContribution" type="number" step="0.01" value={formData.plannedContribution} onChange={handleChange} placeholder="Ej: 50" />
+            <DatePickerInput label="Fecha Límite" selectedDate={formData.deadline} onDateChange={(d) => setFormData(p => ({...p, deadline: d.toISOString()}))} required />
+            <Input label="Aportación mensual planificada (€) (Opcional)" name="plannedContribution" type="number" step="0.01" value={formData.plannedContribution || ''} onChange={handleChange} />
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{goalToEdit ? 'Guardar Cambios' : 'Crear Objetivo'}</Button>
+                <Button type="submit">{goalToEdit?.id ? 'Guardar Cambios' : 'Crear Objetivo'}</Button>
             </div>
         </form>
     );
 };
 
-// FIX: Added missing AddFundsForm component
-export const AddFundsForm: React.FC<{ goal: SavingsGoal; onClose: () => void; onSaveSuccess: (isGoalCompleted: boolean) => void; }> = ({ goal, onClose, onSaveSuccess }) => {
-    const { data, saveData } = useContext(AppContext)!;
-    const [amount, setAmount] = useState<number | string>('');
+// FIX: Add and export AddFundsForm component.
+export const AddFundsForm: React.FC<{
+    goal: SavingsGoal;
+    onClose: () => void;
+    onSaveSuccess: (isGoalCompleted: boolean) => void;
+}> = ({ goal, onClose, onSaveSuccess }) => {
+    const { saveData } = useContext(AppContext)!;
+    const [amount, setAmount] = useState<number | ''>('');
     const [location, setLocation] = useState<MoneyLocation>(MoneyLocation.PERS_BANK);
-    
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const contributionAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+        const contributionAmount = Number(amount);
         if (isNaN(contributionAmount) || contributionAmount <= 0) return;
 
-        const newMovement: PersonalMovement = {
-            id: `pm-contr-${Date.now()}`,
-            date: new Date().toISOString(),
-            concept: `Aportación a objetivo: ${goal.name}`,
-            amount: contributionAmount,
-            type: 'expense',
-            categoryId: data.personalCategories.find(c => c.name.toLowerCase().includes('ahorro'))?.id || data.personalCategories[0]?.id,
-            location,
-            isPaid: true,
-            paymentDate: new Date().toISOString(),
-        };
-
         const newCurrentAmount = goal.currentAmount + contributionAmount;
-        const isGoalCompleted = newCurrentAmount >= goal.targetAmount;
+        const isCompleted = newCurrentAmount >= goal.targetAmount;
 
         saveData(prev => {
-            const updatedGoals = prev.savingsGoals.map(g => g.id === goal.id ? { ...g, currentAmount: newCurrentAmount } : g);
+            const newMovement: PersonalMovement = {
+                id: `pm-sg-${Date.now()}`,
+                date: new Date().toISOString(),
+                concept: `Aportación a objetivo: ${goal.name}`,
+                amount: contributionAmount,
+                type: 'expense',
+                categoryId: prev.personalCategories.find(c => c.name.toLowerCase().includes('ahorro'))?.id || prev.personalCategories[0]?.id || '',
+                location: location,
+                isPaid: true,
+                paymentDate: new Date().toISOString()
+            };
+
             return {
                 ...prev,
-                personalMovements: [...prev.personalMovements, newMovement],
-                savingsGoals: updatedGoals,
+                savingsGoals: prev.savingsGoals.map(g =>
+                    g.id === goal.id ? { ...g, currentAmount: newCurrentAmount } : g
+                ),
+                personalMovements: [...prev.personalMovements, newMovement]
             };
-        }, "Aportación registrada.");
-        
-        onSaveSuccess(isGoalCompleted);
+        }, `Aportación de ${formatCurrencyForUI(contributionAmount)} a "${goal.name}".`);
+
+        onSaveSuccess(isCompleted);
         onClose();
     };
-    
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <p>Aportando a: <strong>{goal.name}</strong></p>
-            <p className="text-sm text-slate-500">Progreso actual: {formatCurrencyForUI(goal.currentAmount)} / {formatCurrencyForUI(goal.targetAmount)}</p>
-            <Input label="Cantidad a Aportar (€)" type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required autoFocus />
+            <p className="text-sm text-slate-500">
+                Progreso actual: {formatCurrencyForUI(goal.currentAmount)} / {formatCurrencyForUI(goal.targetAmount)}
+            </p>
+            <Input 
+                label="Cantidad a Aportar (€)" 
+                type="number" 
+                step="0.01" 
+                value={amount} 
+                onChange={e => setAmount(parseFloat(e.target.value) || '')} 
+                required 
+                autoFocus
+            />
             <Select label="Desde" value={location} onChange={e => setLocation(e.target.value as MoneyLocation)}>
-                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+                <option value={MoneyLocation.PERS_BANK}>Banco Personal</option>
+                <option value={MoneyLocation.CASH}>Efectivo</option>
+                <option value={MoneyLocation.OTHER}>Otros (Crypto, etc.)</option>
             </Select>
+            <p className="text-xs text-slate-500">Se creará un movimiento de gasto personal para registrar esta aportación.</p>
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">Aportar Fondos</Button>
+                <Button type="submit">Confirmar Aportación</Button>
             </div>
         </form>
     );

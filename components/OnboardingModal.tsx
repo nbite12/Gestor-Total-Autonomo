@@ -59,15 +59,15 @@ const CategoryEditor: React.FC<{
                     containerClassName="flex-grow"
                 />
                 <Button type="button" onClick={handleAdd} className="self-end">
-                    <Icon name="plus" />
+                    <Icon name="Plus" />
                 </Button>
             </div>
-            <ul className="space-y-1 max-h-32 overflow-y-auto pr-2 border rounded-md p-2 bg-slate-50 dark:bg-slate-800/50">
+            <ul className="space-y-1 max-h-32 overflow-y-auto pr-2 border-none rounded-md p-2 bg-black/5 dark:bg-white/5">
                 {categories.map(cat => (
-                    <li key={cat.id} className="flex justify-between items-center p-1 bg-slate-100 dark:bg-slate-700 rounded text-sm">
+                    <li key={cat.id} className="flex justify-between items-center p-1 bg-black/5 dark:bg-white/5 rounded text-sm">
                         <span>{cat.name}</span>
                         <Button type="button" size="sm" variant="ghost" onClick={() => handleDelete(cat.id)}>
-                            <Icon name="trash" className="w-4 h-4 text-red-500" />
+                            <Icon name="Trash2" className="w-4 h-4 text-red-500" />
                         </Button>
                     </li>
                 ))}
@@ -167,7 +167,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
             case 'welcome':
                 return (
                     <div className="text-center space-y-4">
-                        <Icon name="sparkles" className="w-16 h-16 mx-auto text-primary-500" />
+                        <Icon name="Sparkles" className="w-16 h-16 mx-auto text-primary-500" />
                         <h2 className="text-2xl font-bold">¡Bienvenido a Gestor Total Autónomo!</h2>
                         <p className="text-slate-600 dark:text-slate-400">
                             Vamos a configurar tu cuenta en unos pocos y sencillos pasos para personalizar la aplicación a tus necesidades.
@@ -267,7 +267,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
             case 'finish':
                 return (
                      <div className="text-center space-y-4">
-                         <Icon name="check-circle" className="w-16 h-16 mx-auto text-green-500" />
+                         <Icon name="CheckCircle" className="w-16 h-16 mx-auto text-green-500" />
                          <h2 className="text-2xl font-bold">¡Todo listo!</h2>
                          <p className="text-slate-600 dark:text-slate-400">
                              Has completado la configuración. Pulsa Finalizar para guardar y empezar a usar la aplicación.

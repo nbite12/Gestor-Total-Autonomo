@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-// @ts-ignore
-import { motion } from 'framer-motion';
+import { SegmentedControl } from './SegmentedControl';
+import { DatePickerInput } from './TransactionForms';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface PeriodSelectorProps {
   onPeriodChange: (startDate: Date, endDate: Date) => void;
 }
 
-type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T';
+type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T' | 'ANO_NATURAL' | 'ANO_MOVIL' | 'PERSONALIZADO';
 
 const getCurrentQuarterPeriod = (): Period => {
     const month = new Date().getMonth();
@@ -16,9 +17,14 @@ const getCurrentQuarterPeriod = (): Period => {
     return '4T';
 };
 
-
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }) => {
   const [activePeriod, setActivePeriod] = useState<Period>(getCurrentQuarterPeriod());
+  const [customStartDate, setCustomStartDate] = useState<Date>(() => {
+    const date = new Date();
+    date.setDate(1);
+    return date;
+  });
+  const [customEndDate, setCustomEndDate] = useState<Date>(new Date());
   
   const getPeriodDates = (period: Period, year = new Date().getFullYear()) => {
     const today = new Date();
@@ -38,16 +44,34 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
         return { start: new Date(year, 6, 1), end: new Date(year, 8, 30, 23, 59, 59, 999) };
       case '4T':
         return { start: new Date(year, 9, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
+      case 'ANO_NATURAL':
+        return { start: new Date(year, 0, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
+      case 'ANO_MOVIL':
+        const oneYearAgo = new Date(today);
+        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        return { start: oneYearAgo, end: endOfToday };
       default:
         return { start: new Date(), end: new Date() };
     }
   };
 
   useEffect(() => {
-    const { start, end } = getPeriodDates(activePeriod);
-    onPeriodChange(start, end);
+    if (activePeriod === 'PERSONALIZADO') {
+        if (customStartDate && customEndDate) {
+            const start = new Date(customStartDate);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(customEndDate);
+            end.setHours(23, 59, 59, 999);
+            if (start <= end) {
+                onPeriodChange(start, end);
+            }
+        }
+    } else {
+        const { start, end } = getPeriodDates(activePeriod);
+        onPeriodChange(start, end);
+    }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePeriod]);
+  }, [activePeriod, customStartDate, customEndDate]);
 
   const periods: { key: Period, label: string }[] = [
     { key: 'HOY', label: 'Hoy' },
@@ -56,28 +80,54 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
     { key: '2T', label: '2T' },
     { key: '3T', label: '3T' },
     { key: '4T', label: '4T' },
+    { key: 'ANO_NATURAL', label: 'Año Actual' },
+    { key: 'ANO_MOVIL', label: 'Año Móvil' },
+    { key: 'PERSONALIZADO', label: 'Personalizado' },
   ];
+  
+  const periodLabels = periods.map(p => p.label);
+  const selectedLabel = periods.find(p => p.key === activePeriod)?.label || '';
+
+  const handleSelect = (label: string) => {
+      const selectedPeriod = periods.find(p => p.label === label);
+      if (selectedPeriod) {
+          setActivePeriod(selectedPeriod.key);
+      }
+  };
+
 
   return (
-    <div className="w-full p-1 space-x-1 list-none rounded-xl bg-black/10 dark:bg-white/10 flex mb-6">
-      {periods.map(p => (
-        <button
-          key={p.key}
-          onClick={() => setActivePeriod(p.key)}
-          className={`relative flex-1 rounded-lg py-1.5 text-sm font-medium transition focus:outline-none ${
-            activePeriod === p.key ? 'text-gray-900 dark:text-gray-900' : 'text-gray-600 dark:text-gray-300 hover:bg-black/5 dark:hover:bg-white/5'
-          }`}
-        >
-          {activePeriod === p.key && (
-            <motion.div
-              layoutId="active-period-pill"
-              className="absolute inset-0 bg-white rounded-lg shadow-md"
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            />
-          )}
-          <span className="relative z-10">{p.label}</span>
-        </button>
-      ))}
+    <div className="mb-6">
+        <SegmentedControl
+            options={periodLabels}
+            selected={selectedLabel}
+            onSelect={handleSelect}
+            layoutId="period-selector-pill"
+        />
+        <AnimatePresence>
+            {activePeriod === 'PERSONALIZADO' && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 p-4 bg-black/5 dark:bg-white/5 rounded-2xl">
+                        <DatePickerInput 
+                            label="Desde"
+                            selectedDate={customStartDate.toISOString()}
+                            onDateChange={setCustomStartDate}
+                        />
+                        <DatePickerInput 
+                            label="Hasta"
+                            selectedDate={customEndDate.toISOString()}
+                            onDateChange={setCustomEndDate}
+                        />
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     </div>
   );
 };

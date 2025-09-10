@@ -99,7 +99,7 @@ export const AiModal: React.FC<AiModalProps> = ({ isOpen, onClose, onAnalysisCom
                         onDrop={handleDrop}
                         className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors ${isDragging ? 'border-primary-500 bg-blue-500/10' : 'border-slate-300 dark:border-slate-600'}`}>
                         <div className="space-y-1 text-center">
-                            <Icon name="upload" className="mx-auto h-12 w-12 text-slate-400" />
+                            <Icon name="Upload" className="mx-auto h-12 w-12 text-slate-400" />
                             <div className="flex text-sm text-slate-600 dark:text-slate-400">
                                 <label htmlFor="ai-file-upload" className="relative cursor-pointer bg-white dark:bg-slate-800 rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none">
                                     <span>Selecciona un archivo</span>
@@ -117,7 +117,7 @@ export const AiModal: React.FC<AiModalProps> = ({ isOpen, onClose, onAnalysisCom
 
                 <div className="pt-4">
                     <Button onClick={handleAnalyze} disabled={isLoading || !file} className="w-full">
-                        {isLoading ? 'Analizando...' : <><Icon name="sparkles" className="w-5 h-5" /> Analizar Documento</>}
+                        {isLoading ? 'Analizando...' : <><Icon name="Sparkles" className="w-5 h-5" /> Analizar Documento</>}
                     </Button>
                 </div>
             </div>

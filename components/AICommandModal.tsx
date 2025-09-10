@@ -260,11 +260,11 @@ export const AICommandModal: React.FC<{
                     {error && <p className="text-sm text-red-500 text-center">{error}</p>}
                     <div className="flex flex-col sm:flex-row gap-2">
                         <Button onClick={isListening ? stopListening : startListening} variant="secondary" className="w-full" disabled={isLoading}>
-                            <Icon name="microphone" className={`w-5 h-5 ${isListening ? 'text-red-500 animate-pulse' : ''}`} />
+                            <Icon name="Microphone" className={`w-5 h-5 ${isListening ? 'text-red-500 animate-pulse' : ''}`} />
                             {isListening ? 'Detener Grabación' : 'Grabar Voz'}
                         </Button>
                         <Button onClick={handleProcessCommand} className="w-full" disabled={isLoading || isListening || !commandText}>
-                            {isLoading ? 'Analizando...' : <> <Icon name="sparkles" className="w-5 h-5"/> Procesar Comando </>}
+                            {isLoading ? 'Analizando...' : <> <Icon name="Sparkles" className="w-5 h-5"/> Procesar Comando </>}
                         </Button>
                     </div>
                 </div>

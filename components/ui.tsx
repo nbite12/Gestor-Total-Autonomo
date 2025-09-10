@@ -22,13 +22,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ children, variant = 'primary', size = 'md', className = '', ...props }, ref) => {
-    const baseClasses = 'inline-flex items-center justify-center rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-950 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
+    const baseClasses = 'inline-flex items-center justify-center rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-950 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed border';
     
     const variantClasses = {
-      primary: 'bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-500',
-      secondary: 'bg-slate-500/20 text-primary-600 dark:text-primary-400 hover:bg-slate-500/30 dark:bg-white/10 dark:hover:bg-white/20 focus:ring-primary-500',
-      danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500',
-      ghost: 'bg-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-500/10 dark:hover:bg-white/10 focus:ring-primary-500',
+      primary: 'bg-white/20 dark:bg-black/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 font-semibold hover:bg-white/30 dark:hover:bg-black/20 focus:ring-blue-500',
+      secondary: 'bg-white/10 dark:bg-black/10 text-gray-800 dark:text-gray-200 border-transparent hover:bg-white/20 dark:hover:bg-black/20 focus:ring-primary-500',
+      danger: 'bg-red-500 border-transparent text-white hover:bg-red-600 focus:ring-red-500',
+      ghost: 'bg-transparent border-transparent text-slate-700 dark:text-slate-200 hover:bg-slate-500/10 dark:hover:bg-white/10 focus:ring-primary-500',
     };
 
     const sizeClasses = {
@@ -50,7 +50,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 export const Card: React.FC<{ children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>> = ({ children, className, ...props }) => {
   return (
     <div 
-      className={`bg-white/40 dark:bg-black/20 backdrop-blur-xl saturate-150 border border-white/20 rounded-3xl shadow-lg transition-all duration-300 ${className}`} 
+      className={`bg-white/50 dark:bg-black/20 backdrop-blur-xl saturate-150 border border-white/20 dark:border-white/10 rounded-3xl shadow-lg ${className}`} 
       {...props}
     >
       {children}
@@ -77,7 +77,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <input
           id={inputId}
           ref={ref}
-          className={`block w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg shadow-inner-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm dark:placeholder-slate-500 transition-colors ${error ? 'ring-2 ring-red-500' : ''}`}
+          className={`block w-full px-4 py-2 bg-white/10 dark:bg-black/10 border border-white/20 dark:border-black/20 rounded-xl shadow-inner text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'ring-2 ring-red-500' : ''}`}
           {...props}
         />
         {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
@@ -104,7 +104,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         <select
           id={selectId}
           ref={ref}
-          className={`block w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg shadow-inner-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm transition-colors ${error ? 'ring-2 ring-red-500' : ''}`}
+          className={`block w-full px-4 py-2.5 bg-white/10 dark:bg-black/10 backdrop-blur-sm border border-white/20 rounded-lg shadow-inner-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm transition-colors ${error ? 'ring-2 ring-red-500' : ''}`}
           {...props}
         >
           {children}
@@ -136,16 +136,16 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
     >
       <div className="flex items-center justify-center min-h-full p-4">
         <Card 
-          className="w-full max-w-lg flex flex-col" 
+          className="w-full max-w-lg flex flex-col p-6" 
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-white/20">
+          <div className="flex-shrink-0 flex justify-between items-center pb-4 border-b border-white/20">
             <h3 id="modal-title" className="text-xl font-semibold">{title}</h3>
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar modal">
               <Icon name="X" className="w-5 h-5" />
             </Button>
           </div>
-          <div className="p-6 overflow-y-auto">
+          <div className="pt-6 overflow-y-auto">
             {children}
           </div>
         </Card>
@@ -228,35 +228,29 @@ interface SwitchProps {
     checked: boolean;
     onChange: (checked: boolean) => void;
     label: string;
-    disabled?: boolean;
 }
-export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label, disabled = false }) => {
-    const switchId = `switch-${Math.random().toString(36).substring(2, 9)}`;
+export const Switch: React.FC<SwitchProps> = ({ checked, onChange, label }) => {
     return (
         <div className="flex items-center justify-between w-full">
-            <label htmlFor={switchId} className={`text-sm font-medium text-slate-700 dark:text-slate-300 ${disabled ? 'opacity-50' : ''}`}>
+            <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {label}
             </label>
             <button
-                id={switchId}
+                type="button"
                 role="switch"
                 aria-checked={checked}
                 onClick={() => onChange(!checked)}
-                disabled={disabled}
-                className={`${
-                checked ? 'bg-primary-500' : 'bg-slate-300 dark:bg-slate-600'
-                } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`${checked ? 'bg-green-500' : 'bg-black/10 dark:bg-white/10'} relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500`}
             >
                 <span
-                aria-hidden="true"
-                className={`${
-                    checked ? 'translate-x-5' : 'translate-x-0'
-                } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    aria-hidden="true"
+                    className={`${checked ? 'translate-x-6' : 'translate-x-0'} pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                 />
             </button>
         </div>
     );
 };
+
 
 // --- Celebration Component (Unchanged) ---
 export const Celebration: React.FC<{

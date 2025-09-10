@@ -9,9 +9,10 @@ import { PeriodSelector } from './PeriodSelector';
 import { IncomeForm, ExpenseForm, InvestmentGoodForm } from './TransactionForms';
 import { AiModal } from './AiModal';
 import { UnsupportedModelsModal } from './ui';
+import { SegmentedControl } from './SegmentedControl';
 
 // --- Type definitions ---
-type ProViewTab = 'libros' | 'analisis' | 'pdf';
+type ProViewTab = 'analisis' | 'libros' | 'pdf';
 type TaxModel = '303/130/111/115' | '390' | '100' | '347' | '190/180' | '349';
 
 // --- Helper Functions ---
@@ -221,11 +222,23 @@ const ProfessionalView: React.FC = () => {
         };
     };
     
-    const TabButton: React.FC<{ tabName: ProViewTab; label: string; }> = ({ tabName, label }) => (
-        <button onClick={() => setActiveTab(tabName)} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === tabName ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'}`}>
-            {label}
-        </button>
-    );
+    const tabOptions = [
+        { key: 'analisis', label: 'Dashboard Fiscal' },
+        { key: 'libros', label: 'Libros de Registro' },
+        { key: 'pdf', label: 'Generar PDFs' }
+    ];
+    
+    const tabLabels = tabOptions.map(t => t.label);
+    const selectedLabel = tabOptions.find(t => t.key === activeTab)?.label || '';
+
+    const handleTabSelect = (label: string) => {
+        // FIX: Changed function to correctly map the selected label back to its corresponding key to update the state, resolving a type mismatch.
+        const selectedTab = tabOptions.find(t => t.label === label);
+        if (selectedTab) {
+            setActiveTab(selectedTab.key);
+        }
+    };
+
 
     return (
         <div className="space-y-8">
@@ -235,13 +248,14 @@ const ProfessionalView: React.FC = () => {
                     <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="Sparkles" className="w-5 h-5"/> Importar con IA</Button>
                 </div>
             </div>
-            <div className="border-b border-slate-200 dark:border-slate-700">
-                <nav className="-mb-px flex space-x-6 sm:space-x-8 overflow-x-auto" aria-label="Tabs">
-                    <TabButton tabName="analisis" label="Dashboard Fiscal" />
-                    <TabButton tabName="libros" label="Libros de Registro" />
-                    <TabButton tabName="pdf" label="Generar PDFs" />
-                </nav>
-            </div>
+            
+            <SegmentedControl
+                options={tabLabels}
+                selected={selectedLabel}
+                onSelect={handleTabSelect}
+                layoutId="pro-view-tabs-pill"
+            />
+
             <div className="pt-4">
                 {activeTab === 'libros' && <LibrosRegistroView onEditIncome={handleOpenIncomeModal} onEditExpense={handleOpenExpenseModal} onEditInvestment={handleOpenInvestmentModal} onDelete={handleDelete} />}
                 {activeTab === 'analisis' && <AnalisisFiscalView />}
@@ -266,7 +280,7 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
     const { data, formatCurrency } = useContext(AppContext)!;
     const { incomes } = data;
     return (
-        <Card>
+        <Card className="p-6">
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Libro de Ingresos</h3>
                 <div className="flex gap-2">
@@ -334,7 +348,7 @@ const UnifiedExpenseBook: React.FC<{
     }, [expenses, investmentGoods]);
     
     return (
-        <Card>
+        <Card className="p-6">
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Libro de Gastos y Bienes de Inversión</h3>
                 <div className="flex gap-2">
@@ -574,10 +588,10 @@ const AnalisisFiscalView: React.FC = () => {
             <section>
                 <h3 className="text-xl font-bold mb-4">Resumen del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    <Card><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
-                    <Card><h4 className="text-sm font-medium text-slate-500">Margen de Beneficio</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fiscalCalculations.kpis.kpiProfitMargin.toFixed(2)}%</p></Card>
+                    <Card className="p-6"><h4 className="text-sm font-medium text-slate-500">Total Facturado (Base)</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalInvoiced)}</p></Card>
+                    <Card className="p-6"><h4 className="text-sm font-medium text-slate-500">Gastos Totales</h4><p className="text-2xl font-bold break-words">{formatCurrency(fiscalCalculations.kpis.kpiTotalExpenses)}</p></Card>
+                    <Card className="p-6"><h4 className="text-sm font-medium text-slate-500">Beneficio Bruto</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiGrossProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(fiscalCalculations.kpis.kpiGrossProfit)}</p></Card>
+                    <Card className="p-6"><h4 className="text-sm font-medium text-slate-500">Margen de Beneficio</h4><p className={`text-2xl font-bold break-words ${fiscalCalculations.kpis.kpiProfitMargin >= 0 ? 'text-green-500' : 'text-red-500'}`}>{fiscalCalculations.kpis.kpiProfitMargin.toFixed(2)}%</p></Card>
                 </div>
             </section>
             
@@ -586,16 +600,16 @@ const AnalisisFiscalView: React.FC = () => {
                 <h3 className="text-xl font-bold mb-4">Liquidaciones del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {/* Model 303 */}
-                    <Card><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA. Diferencia entre el IVA cobrado y el pagado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido" value={fiscalCalculations.model303.ivaRepercutido} color="green" /><ModelRow label="IVA Soportado Deducible" value={fiscalCalculations.model303.ivaSoportado} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
+                    <Card className="p-6"><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA. Diferencia entre el IVA cobrado y el pagado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido" value={fiscalCalculations.model303.ivaRepercutido} color="green" /><ModelRow label="IVA Soportado Deducible" value={fiscalCalculations.model303.ivaSoportado} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
                     {/* Model 130 */}
-                    <Card><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral del 20% sobre el rendimiento neto acumulado del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfit} /><ModelRow label="Cuota (20%)" value={fiscalCalculations.model130.quote} /><ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model130.retenciones} color="green" negative /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
+                    <Card className="p-6"><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral del 20% sobre el rendimiento neto acumulado del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfit} /><ModelRow label="Cuota (20%)" value={fiscalCalculations.model130.quote} /><ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model130.retenciones} color="green" negative /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
                     {/* Model 111 */}
-                    {settings.hiresProfessionals && <Card><ModelCardHeader model="111 (Retenciones Prof.)" tutorialLink="http://www.youtube.com/watch?v=UDoDQgFHNu4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH01.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en facturas de otros profesionales." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model111} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
+                    {settings.hiresProfessionals && <Card className="p-6"><ModelCardHeader model="111 (Retenciones Prof.)" tutorialLink="http://www.youtube.com/watch?v=UDoDQgFHNu4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH01.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en facturas de otros profesionales." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model111} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
                     {/* Model 115 */}
-                    {settings.rentsOffice && <Card><ModelCardHeader model="115 (Retenciones Alq.)" tutorialLink="http://www.youtube.com/watch?v=fMfRZo2DvH0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH02.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en la factura del alquiler de tu local u oficina." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model115} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
+                    {settings.rentsOffice && <Card className="p-6"><ModelCardHeader model="115 (Retenciones Alq.)" tutorialLink="http://www.youtube.com/watch?v=fMfRZo2DvH0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH02.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en la factura del alquiler de tu local u oficina." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model115} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
                 </div>
                  {/* Model 349 */}
-                {settings.isInROI && <Card className="mt-6">
+                {settings.isInROI && <Card className="p-6 mt-6">
                     <ModelCardHeader model="349 (Op. Intracomunitarias)" tutorialLink="http://www.youtube.com/watch?v=mAiFQB-5GYc" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI28.shtml" tooltip="Declaración informativa de compras (adquisiciones) y ventas (entregas) a empresas de otros países de la Unión Europea." />
                     <div className="mt-4">
                         {fiscalCalculations.model349.length > 0 ? (
@@ -643,7 +657,7 @@ const AnalisisFiscalView: React.FC = () => {
                 </div>
 
                 {/* Model 100 */}
-                <Card className="mb-8">
+                <Card className="p-6 mb-8">
                     <ModelCardHeader model={`100 (Declaración de la Renta ${rentaYear})`} tutorialLink="http://www.youtube.com/watch?v=_cVdVrUzjPI" link="https://sede.agenciatributaria.gob.es/Sede/irpf/tengo-que-presentar-declaracion/modelo-100-i-sobre-r-anual.html" tooltip="Declaración anual que resume todos tus rendimientos del año para calcular el IRPF final." />
                      <div className="mt-4 space-y-2 text-sm">
                         <ModelRow label="Rendimiento Neto Anual" value={fiscalCalculations.model100.annualNetProfit} />
@@ -661,17 +675,17 @@ const AnalisisFiscalView: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {/* Model 390 */}
-                    <Card><ModelCardHeader model="390 (Resumen IVA)" tutorialLink="http://www.youtube.com/watch?v=yVtU7kjaZeo" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G412.shtml" tooltip="Resumen anual informativo de todas tus declaraciones de IVA (Modelo 303) del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Total IVA Repercutido" value={fiscalCalculations.model390.ivaRepercutido} color="green" /><ModelRow label="Total IVA Soportado" value={fiscalCalculations.model390.ivaSoportado} color="red" negative /><ModelResult label="Resultado Anual" value={fiscalCalculations.model390.result} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>
+                    <Card className="p-6"><ModelCardHeader model="390 (Resumen IVA)" tutorialLink="http://www.youtube.com/watch?v=yVtU7kjaZeo" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G412.shtml" tooltip="Resumen anual informativo de todas tus declaraciones de IVA (Modelo 303) del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Total IVA Repercutido" value={fiscalCalculations.model390.ivaRepercutido} color="green" /><ModelRow label="Total IVA Soportado" value={fiscalCalculations.model390.ivaSoportado} color="red" negative /><ModelResult label="Resultado Anual" value={fiscalCalculations.model390.result} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>
                     {/* Model 190 */}
-                    {settings.hiresProfessionals && <Card><ModelCardHeader model="190 (Resumen Ret. Prof.)" tutorialLink="http://www.youtube.com/watch?v=PHbwM2KjdY4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI10.shtml" tooltip="Resumen anual de las retenciones a profesionales (Modelo 111), identificando a cada perceptor." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model190} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
+                    {settings.hiresProfessionals && <Card className="p-6"><ModelCardHeader model="190 (Resumen Ret. Prof.)" tutorialLink="http://www.youtube.com/watch?v=PHbwM2KjdY4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI10.shtml" tooltip="Resumen anual de las retenciones a profesionales (Modelo 111), identificando a cada perceptor." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model190} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
                     {/* Model 180 */}
-                    {settings.rentsOffice && <Card><ModelCardHeader model="180 (Resumen Ret. Alq.)" tutorialLink="http://www.youtube.com/watch?v=FA_IcE6UwW0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI00.shtml" tooltip="Resumen anual de las retenciones de alquileres (Modelo 115), identificando a cada arrendador." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model180} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
+                    {settings.rentsOffice && <Card className="p-6"><ModelCardHeader model="180 (Resumen Ret. Alq.)" tutorialLink="http://www.youtube.com/watch?v=FA_IcE6UwW0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI00.shtml" tooltip="Resumen anual de las retenciones de alquileres (Modelo 115), identificando a cada arrendador." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model180} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
                     {/* Dummy Card to fill space, as 349 is now below */}
                     <div className="hidden lg:block"></div>
                 </div>
 
                 {/* Model 347 */}
-                <Card className="mt-6">
+                <Card className="p-6 mt-6">
                     <ModelCardHeader model="347 (Operaciones con Terceros)" tutorialLink="http://www.youtube.com/watch?v=2rsiDQPOiQk" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI27.shtml" tooltip="Declaración informativa anual de clientes y proveedores con los que has superado 3.005,06€ de operaciones." />
                     <div className="mt-4">
                         {fiscalCalculations.model347.length > 0 ? (
@@ -803,7 +817,7 @@ const GenerarPDFsView: React.FC = () => {
     };
 
     return (
-        <Card>
+        <Card className="p-6">
             <h3 className="text-xl font-bold mb-4">Generador de Documentos PDF</h3>
             <div className="space-y-4">
                 <Select label="Tipo de Documento" value={documentType} onChange={e => setDocumentType(e.target.value as any)}>

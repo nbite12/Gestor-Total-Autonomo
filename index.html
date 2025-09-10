@@ -51,16 +51,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
       /* Subtle Gradient Animation */
-      @keyframes subtle-gradient {
+      @keyframes atmospheric-gradient {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
       }
 
       .animated-gradient-bg {
-        background: linear-gradient(-45deg, #A8B2FF, #A1E4FF, #85F4D3, #C0A8FF);
+        background: linear-gradient(-45deg, #f3e7e9 0%, #e3eeff 100%);
         background-size: 400% 400%;
-        animation: subtle-gradient 25s ease infinite;
+        animation: atmospheric-gradient 30s ease infinite;
       }
 
       html, body, #root {
@@ -195,31 +195,22 @@
         animation: listening-glow 2s infinite;
       }
       
-      /* === LIQUID GLASS BUTTON STYLES === */
+      /* === NEW HIGH-FIDELITY GLASS DOCK & BUTTON STYLES === */
+      .glass-dock {
+        background-color: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 -10px 30px rgba(0,0,0,0.1);
+      }
       .glass-button {
         position: relative;
-        background-color: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-radius: 9999px; /* fully rounded */
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: transparent;
+        border-radius: 9999px;
         overflow: hidden;
         transition: all 0.3s ease;
+        border: 1px solid transparent;
       }
-
-      /* Borde brillante superior */
-      .glass-button::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 1.5px;
-        background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
-        opacity: 0.7;
-      }
-
-      /* Reflejo/Luz que sigue al ratón */
       .glass-button::after {
         content: '';
         position: absolute;
@@ -228,27 +219,17 @@
         top: -50%;
         left: -50%;
         border-radius: 50%;
-        background: radial-gradient(circle at center, rgba(255, 255, 255, 0.4) 0%, transparent 40%);
+        background: radial-gradient(circle at center, rgba(255, 255, 255, 0.3) 0%, transparent 40%);
         transform: translate(var(--x, -100%), var(--y, -100%));
-        transition: transform 0.2s ease-out;
+        transition: transform 0.2s ease-out, opacity 0.5s ease;
         opacity: 0;
       }
-
       .glass-button:hover::after {
         opacity: 1;
       }
-
-      /* Estilo para el botón activo */
       .glass-button.active {
-        background-color: rgba(255, 255, 255, 0.2);
-      }
-
-      .glass-button.active::after {
-          opacity: 1;
-          /* Fija el reflejo en el centro para el botón activo */
-          --x: 50%;
-          --y: 50%;
-          background: radial-gradient(circle at center, rgba(0, 122, 255, 0.3) 0%, transparent 50%);
+        background-color: rgba(0, 122, 255, 0.2);
+        border: 1px solid rgba(0, 122, 255, 0.3);
       }
     </style>
 <script type="importmap">
@@ -262,10 +243,13 @@
     "vite": "https://aistudiocdn.com/vite@^7.1.4",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.2",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.417.0",
-    "framer-motion": "https://aistudiocdn.com/framer-motion@^11.3.11"
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^11.3.11",
+    "react-day-picker": "https://aistudiocdn.com/react-day-picker@^9.0.4",
+    "date-fns": "https://aistudiocdn.com/date-fns@^3.6.0"
   }
 }
 </script>
+<link rel="stylesheet" href="https://aistudiocdn.com/react-day-picker@^9.0.4/dist/style.css">
 </head>
   <body class="animated-gradient-bg dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300">
     <div id="root"></div>

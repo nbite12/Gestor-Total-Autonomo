@@ -25,7 +25,7 @@ const CategoryManager: React.FC<{
     };
 
     return (
-        <Card>
+        <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">{title}</h3>
             <div className="flex gap-2 mb-4">
                 <Input
@@ -239,7 +239,7 @@ const SettingsView: React.FC = () => {
     <div className="space-y-8">
       <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
       
-      <Card>
+      <Card className="p-6">
         <h3 className="text-lg font-bold mb-2">Asistente de Configuración</h3>
         <p className="text-sm text-slate-500 mb-4">
             Vuelve a ejecutar el asistente inicial para reconfigurar los ajustes principales de la aplicación de forma guiada.
@@ -251,7 +251,7 @@ const SettingsView: React.FC = () => {
       </Card>
 
       {isProfessionalModeEnabled && (
-        <Card>
+        <Card className="p-6">
             <h3 className="text-lg font-bold mb-4">Información de la Aplicación</h3>
             <p className="text-sm text-slate-500 mb-4">
                 Consulta información importante sobre las funcionalidades y limitaciones actuales de la aplicación.
@@ -264,7 +264,7 @@ const SettingsView: React.FC = () => {
       )}
 
       {/* Usage Mode Settings */}
-       <Card>
+       <Card className="p-6">
           <h3 className="text-lg font-bold">Modo de Uso</h3>
           <p className="text-sm text-slate-500 mt-1 mb-4">Simplifica la interfaz si solo necesitas la aplicación para tus finanzas personales.</p>
            <div className="flex items-center">
@@ -278,7 +278,7 @@ const SettingsView: React.FC = () => {
       </Card>
 
       {/* Fiscal & App Settings */}
-      <Card>
+      <Card className="p-6">
         <form onSubmit={handleSaveSettings} className="space-y-6">
             {isProfessionalModeEnabled && (
                 <div>
@@ -383,7 +383,7 @@ const SettingsView: React.FC = () => {
       </Card>
       
       {/* Privacy Settings */}
-      <Card>
+      <Card className="p-6">
           <h3 className="text-lg font-bold">Privacidad</h3>
           <p className="text-sm text-slate-500 mt-1 mb-4">Controla la visibilidad de tus datos financieros.</p>
            <div className="flex items-center">
@@ -397,7 +397,7 @@ const SettingsView: React.FC = () => {
       </Card>
 
       {/* AI Settings */}
-        <Card>
+        <Card className="p-6">
             <h3 className="text-lg font-bold">IA (Gemini)</h3>
             <p className="text-sm text-slate-500 mb-4">Introduce tu clave de API de Google Gemini para activar el asistente inteligente por voz y la importación de documentos.</p>
             <div className="flex gap-2 items-end">
@@ -450,7 +450,7 @@ const SettingsView: React.FC = () => {
       </div>
 
       {/* Data Management */}
-       <Card>
+       <Card className="p-6">
           <h3 className="text-lg font-bold mb-4">Gestión de Datos</h3>
           <div className="flex flex-col sm:flex-row gap-4">
               <Button onClick={handleExportData} variant="secondary">
@@ -473,7 +473,7 @@ const SettingsView: React.FC = () => {
           </Button>
        </div>
        
-       <Card className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" onClick={() => setIsCreditsModalOpen(true)}>
+       <Card className="p-6 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" onClick={() => setIsCreditsModalOpen(true)}>
           <div className="flex justify-between items-center">
               <div>
                   <h3 className="text-lg font-bold">Créditos y Términos y Condiciones</h3>

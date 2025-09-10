@@ -4,7 +4,7 @@ import { PersonalMovement, SavingsGoal, MoneySource, MoneyLocation, InvestmentGo
 import { Card, Button, Modal, Input, Select, Icon, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { MovementForm, SavingsGoalForm, AddFundsForm, formatDateForDateTimeLocalInput } from './TransactionForms';
+import { MovementForm, SavingsGoalForm, AddFundsForm } from './TransactionForms';
 
 // --- Main Personal View ---
 const PersonalView: React.FC = () => {
@@ -146,15 +146,15 @@ const PersonalView: React.FC = () => {
        <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
        {/* Dashboard Summary */}
        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-           <Card className="text-center">
+           <Card className="p-6 text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Fondos Personales Actuales</h3>
                 <p className={`text-4xl font-bold break-words ${summary.totalBalance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.totalBalance)}</p>
            </Card>
-           <Card className="text-center">
+           <Card className="p-6 text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Ingresos (Periodo)</h3>
                 <p className="text-3xl font-bold text-green-500 break-words">{formatCurrency(summary.totalIncome)}</p>
            </Card>
-           <Card className="text-center">
+           <Card className="p-6 text-center">
                 <h3 className="text-lg text-slate-500 dark:text-slate-400">Gastos (Periodo)</h3>
                 <p className="text-3xl font-bold text-red-500 break-words">{formatCurrency(summary.totalExpense)}</p>
            </Card>
@@ -162,7 +162,7 @@ const PersonalView: React.FC = () => {
        
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
            {/* Savings Goals */}
-           <Card>
+           <Card className="p-6">
                <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-bold">Objetivos de Ahorro</h2>
                   <Button onClick={() => handleOpenGoalForm(null)} size="sm">
@@ -193,7 +193,7 @@ const PersonalView: React.FC = () => {
            </Card>
 
            {/* Expense Chart */}
-           <Card>
+           <Card className="p-6">
                 <h3 className="text-xl font-bold mb-4">Gastos por Categoría (Periodo)</h3>
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
@@ -208,7 +208,7 @@ const PersonalView: React.FC = () => {
        </div>
 
        {/* Personal Movements List */}
-        <Card>
+        <Card className="p-6">
             <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
                 <h2 className="text-xl font-bold">Movimientos Personales</h2>
                 <Button onClick={() => handleOpenMovementModal()}>
