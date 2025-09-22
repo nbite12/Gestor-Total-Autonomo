@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification, PotentialIncome, MoneySource } from '../types';
+import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification, PotentialIncome, MoneySource, PersonalMovement, Transfer, SavingsGoal, PotentialExpense } from '../types';
 
 // Extend the window interface for SpeechRecognition
 declare global {
@@ -313,53 +313,78 @@ const calculateBalances = (appData: AppData): { [key in MoneyLocation]: number }
 
 const summarizeDataForAI = (appData: AppData): string => {
     const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, potentialIncomes, potentialExpenses, personalCategories } = appData;
-    
-    // --- PROFESSIONAL SUMMARY ---
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const yearIncomes = incomes.filter(i => new Date(i.date).getFullYear() === currentYear);
-    const yearDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date).getFullYear() === currentYear);
-    const totalIncome = yearIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
-    const totalExpenseCosts = yearDeductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
-    const annualAmortization = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= currentYear).reduce((sum, good) => {
-        return sum + (good.acquisitionValue / good.usefulLife);
-    }, 0);
-    const cuotaAutonomo = (settings.monthlyAutonomoFee || 0) * 12;
-    const totalDeductibleExpenses = totalExpenseCosts + cuotaAutonomo + annualAmortization;
-    const netProfit = totalIncome - totalDeductibleExpenses;
-    
-    const pendingIncomes = incomes.filter(i => !i.isPaid);
-    const pendingExpenses = expenses.filter(e => !e.isPaid);
 
-    const professional_summary = {
-        user_settings: {
-            fullName: settings.fullName,
-            nif: settings.nif,
-            monthlyAutonomoFee: settings.monthlyAutonomoFee,
-            isInROI: settings.isInROI,
-            rentsOffice: settings.rentsOffice,
-            hiresProfessionals: settings.hiresProfessionals
-        },
-        financial_summary_current_year: {
-            total_income_base: Math.round(totalIncome),
-            total_deductible_expenses: Math.round(totalDeductibleExpenses),
-            estimated_net_profit: Math.round(netProfit),
-        },
-        pending_transactions: {
-            pending_income_count: pendingIncomes.length,
-            pending_income_total: Math.round(pendingIncomes.reduce((sum, i) => sum + i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100), 0)),
-            pending_expense_count: pendingExpenses.length,
-            pending_expense_total: Math.round(pendingExpenses.reduce((sum, e) => sum + e.baseAmount + (e.baseAmount * e.vatRate / 100), 0)),
-        }
-    };
-
-    // --- PERSONAL FINANCE SUMMARY ---
+    // --- NET CAPITAL SUMMARY ---
     const allBalances = calculateBalances(appData);
-    const personalBalances = {
-        bank: Math.round(allBalances[MoneyLocation.PERS_BANK] || 0),
-        cash: Math.round(allBalances[MoneyLocation.CASH] || 0),
-        other: Math.round(allBalances[MoneyLocation.OTHER] || 0),
+    const professionalBalance = (allBalances[MoneyLocation.PRO_BANK] || 0) + (allBalances[MoneyLocation.CASH_PRO] || 0);
+    const personalBalance = (allBalances[MoneyLocation.PERS_BANK] || 0) + (allBalances[MoneyLocation.CASH] || 0) + (allBalances[MoneyLocation.OTHER] || 0);
+    const currentTotalBalance = professionalBalance + personalBalance;
+
+    const pendingProfessionalIncome = incomes.filter(i => !i.isPaid).reduce((sum, i) => sum + (i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100)), 0);
+    const pendingPersonalIncome = personalMovements.filter(m => m.type === 'income' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
+    const totalPendingIncome = pendingProfessionalIncome + pendingPersonalIncome;
+
+    const pendingProfessionalExpense = expenses.filter(e => !e.isPaid).reduce((sum, e) => sum + (e.baseAmount + (e.baseAmount * e.vatRate / 100)), 0);
+    const pendingPersonalExpense = personalMovements.filter(m => m.type === 'expense' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
+    const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
+    
+    // Tax Calculation (for current quarter)
+    const now = new Date();
+    const year = now.getFullYear();
+    const quarter = Math.floor(now.getMonth() / 3);
+    const qPeriod = { startDate: new Date(year, quarter * 3, 1), endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999) };
+
+    const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
+    const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
+    
+    const qIncomes = incomes.filter(i => new Date(i.date) >= qPeriod.startDate && new Date(i.date) <= qPeriod.endDate);
+    const qDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= qPeriod.startDate && new Date(e.date) <= qPeriod.endDate);
+    
+    const ivaRepercutido = qIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+    const ivaSoportadoFromExpenses = qDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+    const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= qPeriod.startDate && new Date(g.purchaseDate) <= qPeriod.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+    const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
+    const model303Result = Math.max(0, ivaRepercutido - ivaSoportado);
+
+    const yearOfPeriod = qPeriod.startDate.getFullYear();
+    const quarterOfPeriod = quarter + 1;
+    const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate; });
+    const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate && e.isDeductible; });
+    const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+    const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+    
+    const amortizationYTD = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= yearOfPeriod).reduce((sum, good) => {
+         const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+         const goodStartDate = new Date(good.purchaseDate);
+         const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
+         if (effectiveStartDate > qPeriod.endDate) return sum;
+         const effectiveEndDate = qPeriod.endDate;
+         const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+         return sum + (days * dailyAmortization);
+    }, 0);
+    const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (quarterOfPeriod * 3);
+    const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+    const netProfitYTD = grossYTD - deductibleExpensesYTD;
+    const quoteYTD = netProfitYTD * 0.20;
+    const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+    const model130Result = Math.max(0, quoteYTD - retencionesSoportadasYTD);
+    
+    const qAllExpenses = expenses.filter(e => new Date(e.date) >= qPeriod.startDate && new Date(e.date) <= qPeriod.endDate);
+    const model111Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+    const model115Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+    
+    const totalProjectedTaxes = model303Result + model130Result + model111Result + model115Result;
+    const netAvailableCapital = currentTotalBalance + totalPendingIncome - totalPendingExpenses - totalProjectedTaxes;
+
+    const net_capital_summary = {
+        current_total_balance: Math.round(currentTotalBalance),
+        total_pending_income: Math.round(totalPendingIncome),
+        total_pending_expenses: Math.round(totalPendingExpenses),
+        estimated_current_quarter_taxes: Math.round(totalProjectedTaxes),
+        net_available_capital: Math.round(netAvailableCapital)
     };
+    
+    // --- PERSONAL FINANCE DETAILS ---
     const allPersonalTransactions = [...personalMovements, ...transfers.filter(t => t.justification === TransferJustification.SUELDO_AUTONOMO)];
     const firstDate = allPersonalTransactions.length > 0 ? new Date(Math.min(...allPersonalTransactions.map(m => new Date(m.date).getTime()))) : new Date();
     const monthsOfData = Math.max(1, ((new Date().getTime() - firstDate.getTime()) / (1000 * 3600 * 24 * 30.44)));
@@ -375,11 +400,12 @@ const summarizeDataForAI = (appData: AppData): string => {
         }, {} as Record<string, number>);
     const totalPersonalExpenses = Object.values(personalExpensesByCategory).reduce((sum: number, amount) => sum + amount, 0);
 
-    const pendingPersonalIncomes = personalMovements.filter(m => m.type === 'income' && !m.isPaid);
-    const pendingPersonalExpenses = personalMovements.filter(m => m.type === 'expense' && !m.isPaid);
-
-    const personal_summary = {
-        current_personal_balances: personalBalances,
+    const personal_finance_details = {
+        current_personal_balances: {
+            bank: Math.round(allBalances[MoneyLocation.PERS_BANK] || 0),
+            cash: Math.round(allBalances[MoneyLocation.CASH] || 0),
+            other: Math.round(allBalances[MoneyLocation.OTHER] || 0),
+        },
         monthly_average_income: Math.round(totalPersonalIncome / monthsOfData),
         monthly_average_expenses: {
             total: Math.round(totalPersonalExpenses / monthsOfData),
@@ -394,14 +420,8 @@ const summarizeDataForAI = (appData: AppData): string => {
             deadline: g.deadline.split('T')[0],
             planned_monthly_contribution: g.plannedContribution || 0
         })),
-        pending_transactions: {
-            pending_income_count: pendingPersonalIncomes.length,
-            pending_income_total: Math.round(pendingPersonalIncomes.reduce((sum, m) => sum + m.amount, 0)),
-            pending_expense_count: pendingPersonalExpenses.length,
-            pending_expense_total: Math.round(pendingPersonalExpenses.reduce((sum, m) => sum + m.amount, 0)),
-        }
     };
-    
+
     const getNetPotentialIncome = (pi: PotentialIncome): number => {
         if (pi.source === MoneySource.AUTONOMO) {
             const base = pi.baseAmount || 0;
@@ -413,30 +433,34 @@ const summarizeDataForAI = (appData: AppData): string => {
     };
 
     const future_projections_summary = {
-        potential_monthly_incomes: potentialIncomes.filter(pi => pi.type === 'monthly').map(pi => ({
+        potential_monthly_incomes: potentialIncomes.filter(pi => pi.frequency === 'monthly').map(pi => ({
             concept: pi.concept,
             net_amount: Math.round(getNetPotentialIncome(pi))
         })),
-        potential_one_off_incomes: potentialIncomes.filter(pi => pi.type === 'one-off').map(pi => ({
+        potential_one_off_incomes: potentialIncomes.filter(pi => pi.frequency === 'one-off').map(pi => ({
             concept: pi.concept,
             net_amount: Math.round(getNetPotentialIncome(pi)),
-            date: pi.date?.split('T')[0]
+            date: pi.startDate?.split('T')[0]
         })),
-        potential_monthly_expenses: potentialExpenses.filter(pe => pe.type === 'monthly').map(pe => ({
+        potential_monthly_expenses: potentialExpenses.filter(pe => pe.frequency === 'monthly').map(pe => ({
             concept: pe.concept,
             amount: pe.amount
         })),
-        potential_one_off_expenses: potentialExpenses.filter(pe => pe.type === 'one-off').map(pe => ({
+        potential_one_off_expenses: potentialExpenses.filter(pe => pe.frequency === 'one-off').map(pe => ({
             concept: pe.concept,
             amount: pe.amount,
-            date: pe.date?.split('T')[0]
+            date: pe.startDate?.split('T')[0]
         }))
     };
-
+    
     const combinedSummary = {
-        professional_summary: professional_summary,
-        personal_finance_summary: personal_summary,
-        future_projections_summary: future_projections_summary
+        net_capital_summary: net_capital_summary,
+        personal_finance_details: personal_finance_details,
+        future_projections_summary: future_projections_summary,
+        user_settings: {
+            fullName: settings.fullName,
+            nif: settings.nif,
+        }
     };
     
     return JSON.stringify(combinedSummary, null, 2);
@@ -468,7 +492,7 @@ Pregunta: "${question}"
             model: 'gemini-2.5-flash',
             contents: fullPrompt,
             config: {
-                systemInstruction: "Eres un asesor financiero y de finanzas personales experto para autónomos en España. Tu nombre es LifeOS Assistant. Tu tono es profesional, cercano y didáctico. Tienes acceso a un resumen de los datos fiscales y personales del usuario.\n- Para preguntas fiscales, basa tus cálculos en los datos del usuario y utiliza la búsqueda para verificar normativas y plazos.\n- Para preguntas de finanzas personales (ahorro, gastos, presupuestos, asequibilidad), analiza sus ingresos, gastos, ahorros y saldos. Ofrece consejos prácticos y personalizados. Puedes usar reglas generales como la 50/30/20, pero adáptalas a la situación del usuario.\n- Siempre que des consejos financieros, añade una nota aclarando que eres una IA y no un asesor financiero certificado, y que tus sugerencias se basan en los datos proporcionados.\n- Cita siempre tus fuentes si usas la búsqueda de Google.",
+                systemInstruction: "Eres un asesor financiero y de finanzas personales experto para autónomos en España. Tu nombre es LifeOS Assistant. Tu tono es profesional, cercano y didáctico. Tienes acceso a un resumen de los datos fiscales y personales del usuario.\n- Para preguntas sobre si el usuario se puede permitir algo ('affordability'), tu respuesta DEBE basarse principalmente en el valor 'net_available_capital' del resumen 'net_capital_summary'. Este valor representa el dinero real que le queda al usuario después de todas sus obligaciones. Usa el resto de datos para dar contexto, pero el capital neto es el factor decisivo.\n- Para preguntas fiscales, basa tus cálculos en los datos del usuario y utiliza la búsqueda para verificar normativas y plazos.\n- Para preguntas generales de finanzas personales (ahorro, gastos, presupuestos), analiza los datos de 'personal_finance_details'. Ofrece consejos prácticos y personalizados.\n- Siempre que des consejos financieros, añade una nota aclarando que eres una IA y no un asesor financiero certificado, y que tus sugerencias se basan en los datos proporcionados.\n- Cita siempre tus fuentes si usas la búsqueda de Google.",
                 tools: [{googleSearch: {}}],
             }
         });

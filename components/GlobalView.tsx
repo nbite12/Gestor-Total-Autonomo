@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AppContext } from '../App';
-import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select, Celebration } from './ui';
+import { Card, Icon, HelpTooltip, Button, Modal, Input, Select, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
 import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal, PotentialFrequency } from '../types';
 // FIX: Import DatePickerInput from TransactionForms to use the shared component
@@ -153,7 +153,10 @@ const PotentialIncomeForm: React.FC<{
             
              {formData.frequency !== 'one-off' && (
                 <div className="space-y-4">
-                    <Switch label="Tiene fecha de fin" checked={hasEndDate} onChange={setHasEndDate} />
+                    <div className="flex items-center">
+                        <input type="checkbox" id="has-end-date" name="has-end-date" checked={hasEndDate} onChange={(e) => setHasEndDate(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"/>
+                        <label htmlFor="has-end-date" className="ml-2 block text-sm text-gray-900 dark:text-gray-200">Tiene fecha de fin</label>
+                    </div>
                      <AnimatePresence>
                         {hasEndDate && (
                              <motion.div
@@ -258,7 +261,10 @@ const PotentialExpenseForm: React.FC<{
             
             {formData.frequency !== 'one-off' && (
                 <div className="space-y-4">
-                    <Switch label="Tiene fecha de fin" checked={hasEndDate} onChange={setHasEndDate} />
+                     <div className="flex items-center">
+                        <input type="checkbox" id="has-end-date-exp" name="has-end-date-exp" checked={hasEndDate} onChange={(e) => setHasEndDate(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"/>
+                        <label htmlFor="has-end-date-exp" className="ml-2 block text-sm text-gray-900 dark:text-gray-200">Tiene fecha de fin</label>
+                    </div>
                      <AnimatePresence>
                         {hasEndDate && (
                              <motion.div
@@ -498,6 +504,22 @@ const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; brea
     );
 };
 
+// --- Local Toggle Switch Component ---
+const Toggle: React.FC<{ checked: boolean; onChange: () => void; }> = ({ checked, onChange }) => (
+    <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={onChange}
+        className={`${checked ? 'bg-green-500' : 'bg-black/10 dark:bg-white/10'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500`}
+    >
+        <span
+            aria-hidden="true"
+            className={`${checked ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+        />
+    </button>
+);
+
 
 // --- Global View ---
 const GlobalView: React.FC = () => {
@@ -519,6 +541,12 @@ const GlobalView: React.FC = () => {
     const [includePendingTransactions, setIncludePendingTransactions] = useState(false);
     const [showProjection, setShowProjection] = useState(false);
     const [isTaxesBreakdownOpen, setIsTaxesBreakdownOpen] = useState(false);
+
+    const [includeNetCapitalItems, setIncludeNetCapitalItems] = useState({
+        pendingIncome: true,
+        pendingExpenses: true,
+        taxes: true,
+    });
 
 
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
@@ -553,6 +581,10 @@ const GlobalView: React.FC = () => {
     
     const handleFilterChange = (filterKey: keyof typeof typeFilters) => {
         setTypeFilters(prev => ({ ...prev, [filterKey]: !prev[filterKey] }));
+    };
+
+    const handleToggleNetCapitalItem = (item: keyof typeof includeNetCapitalItems) => {
+        setIncludeNetCapitalItems(prev => ({ ...prev, [item]: !prev[item] }));
     };
 
 
@@ -677,7 +709,11 @@ const GlobalView: React.FC = () => {
         const model115Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         
         const totalProjectedTaxes = model303Result + model130Result + model111Result + model115Result;
-        const netAvailableCapital = currentTotalBalance + totalPendingIncome - totalPendingExpenses - totalProjectedTaxes;
+
+        const netAvailableCapital = currentTotalBalance 
+            + (includeNetCapitalItems.pendingIncome ? totalPendingIncome : 0)
+            - (includeNetCapitalItems.pendingExpenses ? totalPendingExpenses : 0)
+            - (includeNetCapitalItems.taxes ? totalProjectedTaxes : 0);
 
         return {
             professionalBalance,
@@ -689,7 +725,7 @@ const GlobalView: React.FC = () => {
             taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes }
         };
 
-    }, [data, moneyDistribution]);
+    }, [data, moneyDistribution, includeNetCapitalItems]);
 
     const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
     const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
@@ -1232,29 +1268,36 @@ const GlobalView: React.FC = () => {
                         <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
                     </div>
                     <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-center">
                             <span className="text-gray-600 dark:text-gray-400">Fondos Profesionales (Bruto)</span>
                             <span className="font-medium">{formatCurrency(netCapitalSummary.professionalBalance)}</span>
                         </div>
-                         <div className="flex justify-between">
+                         <div className="flex justify-between items-center">
                             <span className="text-gray-600 dark:text-gray-400">Fondos Personales</span>
                             <span className="font-medium">{formatCurrency(netCapitalSummary.personalBalance)}</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Cobros Pendientes</span>
+                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingIncome ? 'opacity-40' : ''}`}>
+                            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                <Toggle checked={includeNetCapitalItems.pendingIncome} onChange={() => handleToggleNetCapitalItem('pendingIncome')} />
+                                Cobros Pendientes
+                            </span>
                             <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Pagos Pendientes</span>
+                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingExpenses ? 'opacity-40' : ''}`}>
+                             <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                <Toggle checked={includeNetCapitalItems.pendingExpenses} onChange={() => handleToggleNetCapitalItem('pendingExpenses')} />
+                                Pagos Pendientes
+                            </span>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-1">
-                                <span className="text-gray-600 dark:text-gray-400">Impuestos Trimestrales (Est.)</span>
+                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
+                           <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                <Toggle checked={includeNetCapitalItems.taxes} onChange={() => handleToggleNetCapitalItem('taxes')} />
+                                Impuestos Trimestrales (Est.)
                                 <button onClick={() => setIsTaxesBreakdownOpen(true)} className="text-slate-400 hover:text-primary-500">
                                     <Icon name="Info" className="w-4 h-4" />
                                 </button>
-                            </div>
+                            </span>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
                         </div>
                     </div>
@@ -1268,7 +1311,10 @@ const GlobalView: React.FC = () => {
                         <p className="text-sm text-gray-600 dark:text-gray-400">{showProjection ? `Saldos proyectados ${includePendingTransactions ? 'incluyendo' : 'excluyendo'} transacciones pendientes.` : 'Saldos actuales en tus cuentas.'}</p>
                     </div>
                     <div className="flex items-center gap-4">
-                        <Switch label="Proyectar saldos" checked={showProjection} onChange={setShowProjection} />
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Proyectar</span>
+                            <Toggle checked={showProjection} onChange={() => setShowProjection(p => !p)} />
+                        </div>
                         <Button size="sm" onClick={() => handleOpenTransferModal()}>
                             <Icon name="ArrowRightLeft" className="w-4 h-4" /> Transferir
                         </Button>
@@ -1452,10 +1498,22 @@ const GlobalView: React.FC = () => {
                 <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Controles de Proyección</h3>
                     <div className="space-y-4">
-                        <Switch label="Incluir Movimientos Pendientes" checked={includePendingTransactions} onChange={setIncludePendingTransactions} />
-                        <Switch label="Incluir Ahorro Planificado" checked={includeSavings} onChange={setIncludeSavings} />
-                        <Switch label="Incluir Ingresos Potenciales" checked={includePotentialIncome} onChange={setIncludePotentialIncome} />
-                        <Switch label="Incluir Gastos Potenciales" checked={includePotentialExpenses} onChange={setIncludePotentialExpenses} />
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Incluir Movimientos Pendientes</span>
+                            <Toggle checked={includePendingTransactions} onChange={() => setIncludePendingTransactions(p => !p)} />
+                        </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Incluir Ahorro Planificado</span>
+                            <Toggle checked={includeSavings} onChange={() => setIncludeSavings(p => !p)} />
+                        </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Incluir Ingresos Potenciales</span>
+                            <Toggle checked={includePotentialIncome} onChange={() => setIncludePotentialIncome(p => !p)} />
+                        </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">Incluir Gastos Potenciales</span>
+                            <Toggle checked={includePotentialExpenses} onChange={() => setIncludePotentialExpenses(p => !p)} />
+                        </div>
                     </div>
                 </Card>
                  <Card className="p-6">
