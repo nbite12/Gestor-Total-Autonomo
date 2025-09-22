@@ -7,7 +7,7 @@ interface PeriodSelectorProps {
   onPeriodChange: (startDate: Date, endDate: Date) => void;
 }
 
-type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T' | 'ANO_NATURAL' | 'ANO_MOVIL' | 'PERSONALIZADO';
+type Period = 'HOY' | 'ESTE_MES' | '1T' | '2T' | '3T' | '4T' | 'ANO_NATURAL' | 'PERSONALIZADO';
 
 const getCurrentQuarterPeriod = (): Period => {
     const month = new Date().getMonth();
@@ -46,10 +46,6 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
         return { start: new Date(year, 9, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
       case 'ANO_NATURAL':
         return { start: new Date(year, 0, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
-      case 'ANO_MOVIL':
-        const oneYearAgo = new Date(today);
-        oneYearAgo.setFullYear(today.getFullYear() - 1);
-        return { start: oneYearAgo, end: endOfToday };
       default:
         return { start: new Date(), end: new Date() };
     }
@@ -81,7 +77,6 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({ onPeriodChange }
     { key: '3T', label: '3T' },
     { key: '4T', label: '4T' },
     { key: 'ANO_NATURAL', label: 'Año Actual' },
-    { key: 'ANO_MOVIL', label: 'Año Móvil' },
     { key: 'PERSONALIZADO', label: 'Personalizado' },
   ];
   

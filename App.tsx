@@ -12,6 +12,7 @@ import { api } from './services/api';
 import { AICommandModal } from './components/AICommandModal';
 import { UndoToast } from './components/UndoToast';
 import { OnboardingModal } from './components/OnboardingModal';
+import { runRecurringTransactionsAutomation } from './services/automationService';
 
 
 // --- AppContext for global state management ---
@@ -87,7 +88,17 @@ const AppContainer: React.FC = () => {
                         ...(remoteData.settings || {}),
                     },
                 };
-                setDataState(hydratedData);
+
+                const automationResult = runRecurringTransactionsAutomation(hydratedData);
+                if (automationResult.hasChanged) {
+                    setDataState(automationResult.updatedData);
+                    // Save the automated changes back to the server in the background
+                    api('/data', { method: 'POST', body: automationResult.updatedData })
+                        .catch(err => console.error("Failed to save automated data changes:", err));
+                } else {
+                    setDataState(hydratedData);
+                }
+
                 setIsPrivacyMode(hydratedData.settings.defaultPrivacyMode);
                 
                 if (!hydratedData.settings.hasCompletedOnboarding) {

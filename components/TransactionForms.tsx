@@ -4,7 +4,6 @@ import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMov
 import { Button, Input, Select, Icon, Switch, HelpTooltip, Card } from './ui';
 import { AiModal } from './AiModal';
 import { suggestDeductibility } from '../services/geminiService';
-import { DatePicker } from './DatePicker';
 
 // --- Helper Functions ---
 const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -55,47 +54,30 @@ const InfoBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // Helper component for Date Picker
 // FIX: Export DatePickerInput to be used in other components.
 export const DatePickerInput: React.FC<{ label: string; selectedDate: string | undefined; onDateChange: (date: Date) => void; required?: boolean }> = ({ label, selectedDate, onDateChange, required }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const popoverRef = useRef<HTMLDivElement>(null);
+    const value = selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : '';
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [popoverRef]);
-    
-    const dateValue = selectedDate ? new Date(selectedDate) : undefined;
-    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const dateString = e.target.value;
+        if (dateString) {
+            // Create date in local timezone to avoid off-by-one errors from UTC conversion.
+            // new Date('2023-01-01') is UTC, new Date('2023-01-01T00:00:00') is local.
+            const localDate = new Date(dateString + 'T00:00:00');
+            onDateChange(localDate);
+        }
+    };
+
     return (
-        <div className="relative">
+        <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 {label} {required && <span className="text-red-500">*</span>}
             </label>
-            <Button type="button" variant="secondary" onClick={() => setIsOpen(!isOpen)} className="w-full justify-start font-normal text-left h-auto py-2">
-                <Icon name="Calendar" className="w-4 h-4 mr-2 flex-shrink-0" />
-                <span className="flex-grow">
-                    {dateValue ? dateValue.toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Seleccionar fecha'}
-                </span>
-            </Button>
-            {isOpen && (
-                <div ref={popoverRef} className="absolute z-10 mt-2 bg-transparent">
-                    <Card className="p-0">
-                        <DatePicker
-                            selected={dateValue}
-                            onSelect={(date) => {
-                                if (date) onDateChange(date);
-                                setIsOpen(false);
-                            }}
-                        />
-                    </Card>
-                </div>
-            )}
+            <input
+                type="date"
+                value={value}
+                onChange={handleChange}
+                required={required}
+                className="block w-full px-4 py-2 bg-white/10 dark:bg-black/10 border border-white/20 dark:border-black/20 rounded-xl shadow-inner text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:[color-scheme:dark]"
+            />
         </div>
     );
 };

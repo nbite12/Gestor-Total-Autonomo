@@ -2,10 +2,10 @@ import React, { useState, useContext, useMemo, useCallback, useRef, useEffect } 
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Switch, Button, Modal, Input, Select, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal } from '../types';
+import { PotentialIncome, MoneySource, MoneyLocation, Transfer, TransferJustification, PotentialExpense, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal, PotentialFrequency } from '../types';
 // FIX: Import DatePickerInput from TransactionForms to use the shared component
 import { IncomeForm, ExpenseForm, MovementForm, TransferForm, SavingsGoalForm, AddFundsForm, DatePickerInput } from './TransactionForms';
-import { DatePicker } from './DatePicker';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
@@ -33,6 +33,15 @@ const getMonthsRemaining = (deadline: string): number => {
     return months <= 0 ? 1 : months;
 };
 
+const frequencyLabels: { [key in PotentialFrequency]: string } = {
+    'one-off': 'Puntual',
+    'weekly': 'Semanal',
+    'monthly': 'Mensual',
+    'quarterly': 'Trimestral',
+    'yearly': 'Anual',
+};
+
+
 // --- Potential Income Form Modal ---
 const PotentialIncomeForm: React.FC<{
     onClose: () => void;
@@ -43,8 +52,9 @@ const PotentialIncomeForm: React.FC<{
     const [formData, setFormData] = useState<Partial<PotentialIncome>>({
         id: incomeToEdit?.id || `pi-${Date.now()}`,
         concept: incomeToEdit?.concept || '',
-        type: incomeToEdit?.type || 'monthly',
-        date: incomeToEdit?.date || new Date().toISOString(),
+        frequency: incomeToEdit?.frequency || (incomeToEdit?.type === 'monthly' ? 'monthly' : 'one-off'),
+        startDate: incomeToEdit?.startDate || incomeToEdit?.date || new Date().toISOString(),
+        endDate: incomeToEdit?.endDate,
         source: incomeToEdit?.source || MoneySource.AUTONOMO,
         location: incomeToEdit?.location || MoneyLocation.PRO_BANK,
         amount: incomeToEdit?.amount || 0,
@@ -52,6 +62,7 @@ const PotentialIncomeForm: React.FC<{
         vatRate: incomeToEdit?.vatRate ?? settings.defaultVatRate,
         irpfRate: incomeToEdit?.irpfRate ?? settings.defaultIrpfRate,
     });
+    const [hasEndDate, setHasEndDate] = useState(!!incomeToEdit?.endDate);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -62,29 +73,29 @@ const PotentialIncomeForm: React.FC<{
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
+        let baseIncomeData = {
+            id: formData.id!,
+            concept: formData.concept!,
+            frequency: formData.frequency!,
+            startDate: new Date(formData.startDate!).toISOString(),
+            endDate: hasEndDate && formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
+            source: formData.source!,
+            location: formData.location!,
+        };
+
         let finalIncome: PotentialIncome;
 
         if (formData.source === MoneySource.AUTONOMO) {
             finalIncome = {
-                id: formData.id!,
-                concept: formData.concept!,
-                type: formData.type!,
-                source: formData.source!,
-                location: formData.location!,
+                ...baseIncomeData,
                 baseAmount: formData.baseAmount,
                 vatRate: formData.vatRate,
                 irpfRate: formData.irpfRate,
-                date: formData.type === 'one-off' ? new Date(formData.date!).toISOString() : undefined
             };
         } else {
              finalIncome = {
-                id: formData.id!,
-                concept: formData.concept!,
-                type: formData.type!,
-                source: formData.source!,
-                location: formData.location!,
+                ...baseIncomeData,
                 amount: formData.amount,
-                date: formData.type === 'one-off' ? new Date(formData.date!).toISOString() : undefined
             };
         }
         
@@ -96,6 +107,12 @@ const PotentialIncomeForm: React.FC<{
         }), incomeToEdit ? "Ingreso potencial actualizado." : "Ingreso potencial añadido.");
         onClose();
     };
+    
+    useEffect(() => {
+        if (!hasEndDate) {
+            setFormData(p => ({...p, endDate: undefined}));
+        }
+    }, [hasEndDate]);
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -118,13 +135,46 @@ const PotentialIncomeForm: React.FC<{
                 <Input label="Importe Neto (€)" name="amount" type="number" min="0" step="0.01" value={formData.amount} onChange={handleChange} required />
             )}
             
-            <Select label="Tipo de Ingreso" name="type" value={formData.type} onChange={handleChange}>
-                <option value="monthly">Mensual</option>
-                <option value="one-off">Puntual</option>
-            </Select>
-            {formData.type === 'one-off' && (
-                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select label="Frecuencia" name="frequency" value={formData.frequency} onChange={handleChange}>
+                    <option value="one-off">Puntual</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="monthly">Mensual</option>
+                    <option value="quarterly">Trimestral</option>
+                    <option value="yearly">Anual</option>
+                </Select>
+                <DatePickerInput 
+                    label={formData.frequency === 'one-off' ? "Fecha" : "Fecha de Inicio"} 
+                    selectedDate={formData.startDate} 
+                    onDateChange={(d) => setFormData(p => ({...p, startDate: d.toISOString()}))} 
+                    required 
+                />
+            </div>
+            
+             {formData.frequency !== 'one-off' && (
+                <div className="space-y-4">
+                    <Switch label="Tiene fecha de fin" checked={hasEndDate} onChange={setHasEndDate} />
+                     <AnimatePresence>
+                        {hasEndDate && (
+                             <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <DatePickerInput 
+                                    label="Fecha de Fin"
+                                    selectedDate={formData.endDate}
+                                    onDateChange={(d) => setFormData(p => ({...p, endDate: d.toISOString()}))}
+                                    required={hasEndDate}
+                                />
+                             </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             )}
+
+
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
                 <Button type="submit">{incomeToEdit ? 'Guardar Cambios' : 'Añadir Ingreso'}</Button>
@@ -143,11 +193,13 @@ const PotentialExpenseForm: React.FC<{
     const [formData, setFormData] = useState<Partial<PotentialExpense>>({
         id: expenseToEdit?.id || `pe-${Date.now()}`,
         concept: expenseToEdit?.concept || '',
-        type: expenseToEdit?.type || 'monthly',
-        date: expenseToEdit?.date || new Date().toISOString(),
+        frequency: expenseToEdit?.frequency || (expenseToEdit?.type === 'monthly' ? 'monthly' : 'one-off'),
+        startDate: expenseToEdit?.startDate || expenseToEdit?.date || new Date().toISOString(),
+        endDate: expenseToEdit?.endDate,
         amount: expenseToEdit?.amount || 0,
         categoryId: expenseToEdit?.categoryId || (personalCategories[0]?.id || ''),
     });
+    const [hasEndDate, setHasEndDate] = useState(!!expenseToEdit?.endDate);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -159,10 +211,11 @@ const PotentialExpenseForm: React.FC<{
         const finalExpense: PotentialExpense = {
             id: formData.id!,
             concept: formData.concept!,
-            type: formData.type!,
+            frequency: formData.frequency!,
+            startDate: new Date(formData.startDate!).toISOString(),
+            endDate: hasEndDate && formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
             amount: formData.amount!,
             categoryId: formData.categoryId!,
-            date: formData.type === 'one-off' ? new Date(formData.date!).toISOString() : undefined,
         };
         
         saveData(prev => ({
@@ -173,6 +226,12 @@ const PotentialExpenseForm: React.FC<{
         }), expenseToEdit ? "Gasto potencial actualizado." : "Gasto potencial añadido.");
         onClose();
     };
+    
+    useEffect(() => {
+        if (!hasEndDate) {
+            setFormData(p => ({...p, endDate: undefined}));
+        }
+    }, [hasEndDate]);
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -181,13 +240,45 @@ const PotentialExpenseForm: React.FC<{
             <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
                 {personalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
-            <Select label="Tipo de Gasto" name="type" value={formData.type} onChange={handleChange}>
-                <option value="monthly">Mensual</option>
-                <option value="one-off">Puntual</option>
-            </Select>
-            {formData.type === 'one-off' && (
-                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select label="Frecuencia" name="frequency" value={formData.frequency} onChange={handleChange}>
+                    <option value="one-off">Puntual</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="monthly">Mensual</option>
+                    <option value="quarterly">Trimestral</option>
+                    <option value="yearly">Anual</option>
+                </Select>
+                <DatePickerInput 
+                    label={formData.frequency === 'one-off' ? "Fecha" : "Fecha de Inicio"} 
+                    selectedDate={formData.startDate} 
+                    onDateChange={(d) => setFormData(p => ({...p, startDate: d.toISOString()}))} 
+                    required 
+                />
+            </div>
+            
+            {formData.frequency !== 'one-off' && (
+                <div className="space-y-4">
+                    <Switch label="Tiene fecha de fin" checked={hasEndDate} onChange={setHasEndDate} />
+                     <AnimatePresence>
+                        {hasEndDate && (
+                             <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <DatePickerInput 
+                                    label="Fecha de Fin"
+                                    selectedDate={formData.endDate}
+                                    onDateChange={(d) => setFormData(p => ({...p, endDate: d.toISOString()}))}
+                                    required={hasEndDate}
+                                />
+                             </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             )}
+            
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
                 <Button type="submit">{expenseToEdit ? 'Guardar Cambios' : 'Añadir Gasto'}</Button>
@@ -691,33 +782,87 @@ const GlobalView: React.FC = () => {
         return pi.amount || 0;
     };
 
+    const countOccurrences = (
+        frequency: PotentialFrequency,
+        startDate: Date,
+        endDate: Date | undefined,
+        periodStart: Date,
+        periodEnd: Date
+    ): number => {
+        if (startDate > periodEnd) return 0;
+        const effectiveEndDate = endDate ? new Date(Math.min(new Date(endDate).getTime(), periodEnd.getTime())) : periodEnd;
+        if (startDate > effectiveEndDate) return 0;
+
+        let count = 0;
+        let currentDate = new Date(startDate);
+        
+        while (currentDate <= effectiveEndDate) {
+            if (currentDate >= periodStart) {
+                count++;
+            }
+            switch (frequency) {
+                case 'weekly': currentDate.setDate(currentDate.getDate() + 7); break;
+                case 'monthly': currentDate.setMonth(currentDate.getMonth() + 1); break;
+                case 'quarterly': currentDate.setMonth(currentDate.getMonth() + 3); break;
+                case 'yearly': currentDate.setFullYear(currentDate.getFullYear() + 1); break;
+                default: return count;
+            }
+        }
+        return count;
+    };
+
+
     const projectedIncome = useMemo(() => {
         if (!includePotentialIncome) return 0;
         
-        const monthly = potentialIncomes
-            .filter(pi => pi.type === 'monthly')
-            .reduce((sum, pi) => sum + (getNetPotentialIncome(pi) * monthsInPeriod), 0);
-            
-        const oneOff = potentialIncomes
-            .filter(pi => pi.type === 'one-off' && pi.date && new Date(pi.date) >= period.startDate && new Date(pi.date) <= period.endDate)
-            .reduce((sum, pi) => sum + getNetPotentialIncome(pi), 0);
-
-        return monthly + oneOff;
-    }, [includePotentialIncome, potentialIncomes, monthsInPeriod, period]);
+        let totalProjected = 0;
+    
+        potentialIncomes.forEach(pi => {
+            const frequency = pi.frequency || (pi.type === 'monthly' ? 'monthly' : 'one-off');
+            const startDate = pi.startDate || pi.date;
+            if (!startDate) return;
+    
+            const itemStartDate = new Date(startDate);
+            const itemEndDate = pi.endDate ? new Date(pi.endDate) : undefined;
+    
+            if (frequency === 'one-off') {
+                if (itemStartDate >= period.startDate && itemStartDate <= period.endDate) {
+                    totalProjected += getNetPotentialIncome(pi);
+                }
+            } else {
+                const occurrences = countOccurrences(frequency, itemStartDate, itemEndDate, period.startDate, period.endDate);
+                totalProjected += occurrences * getNetPotentialIncome(pi);
+            }
+        });
+    
+        return totalProjected;
+    }, [includePotentialIncome, potentialIncomes, period]);
     
     const projectedExpenses = useMemo(() => {
         if (!includePotentialExpenses) return 0;
         
-        const monthly = potentialExpenses
-            .filter(pe => pe.type === 'monthly')
-            .reduce((sum, pe) => sum + pe.amount, 0) * monthsInPeriod;
-            
-        const oneOff = potentialExpenses
-            .filter(pe => pe.type === 'one-off' && pe.date && new Date(pe.date) >= period.startDate && new Date(pe.date) <= period.endDate)
-            .reduce((sum, pe) => sum + pe.amount, 0);
-
-        return monthly + oneOff;
-    }, [includePotentialExpenses, potentialExpenses, monthsInPeriod, period]);
+        let totalProjected = 0;
+    
+        potentialExpenses.forEach(pe => {
+            const frequency = pe.frequency || (pe.type === 'monthly' ? 'monthly' : 'one-off');
+            const startDate = pe.startDate || pe.date;
+            if (!startDate) return;
+    
+            const itemStartDate = new Date(startDate);
+            const itemEndDate = pe.endDate ? new Date(pe.endDate) : undefined;
+    
+            if (frequency === 'one-off') {
+                if (itemStartDate >= period.startDate && itemStartDate <= period.endDate) {
+                    totalProjected += pe.amount;
+                }
+            } else {
+                 const occurrences = countOccurrences(frequency, itemStartDate, itemEndDate, period.startDate, period.endDate);
+                 totalProjected += occurrences * pe.amount;
+            }
+        });
+    
+        return totalProjected;
+    }, [includePotentialExpenses, potentialExpenses, period]);
 
     const projectedTaxes = useMemo(() => {
         const incomesForTaxCalc = incomes.filter(i => {
@@ -728,26 +873,29 @@ const GlobalView: React.FC = () => {
         if (includePotentialIncome) {
             const potentialAutonomoIncomes = potentialIncomes.filter(pi => pi.source === MoneySource.AUTONOMO);
 
-            potentialAutonomoIncomes
-                .filter(pi => pi.type === 'one-off' && pi.date && new Date(pi.date) >= period.startDate && new Date(pi.date) <= period.endDate)
-                .forEach(pi => {
-                    incomesForTaxCalc.push({
-                        id: pi.id,
-                        baseAmount: pi.baseAmount || 0,
-                        vatRate: pi.vatRate ?? settings.defaultVatRate,
-                        irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
-                    } as Income);
-                });
-            
-            const monthlyPotentialIncomes = potentialAutonomoIncomes.filter(pi => pi.type === 'monthly');
-            monthlyPotentialIncomes.forEach(pi => {
-                for (let i = 0; i < monthsInPeriod; i++) {
-                    incomesForTaxCalc.push({
-                        id: `${pi.id}-month-${i}`,
-                        baseAmount: pi.baseAmount || 0,
-                        vatRate: pi.vatRate ?? settings.defaultVatRate,
-                        irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
-                    } as Income);
+            potentialAutonomoIncomes.forEach(pi => {
+                const frequency = pi.frequency || (pi.type === 'monthly' ? 'monthly' : 'one-off');
+                const startDate = pi.startDate || pi.date;
+                if (!startDate) return;
+        
+                const itemStartDate = new Date(startDate);
+                const itemEndDate = pi.endDate ? new Date(pi.endDate) : undefined;
+
+                if (frequency === 'one-off') {
+                    if (itemStartDate >= period.startDate && itemStartDate <= period.endDate) {
+                         incomesForTaxCalc.push({
+                            id: pi.id, baseAmount: pi.baseAmount || 0,
+                            vatRate: pi.vatRate ?? settings.defaultVatRate, irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
+                        } as Income);
+                    }
+                } else {
+                    const occurrences = countOccurrences(frequency, itemStartDate, itemEndDate, period.startDate, period.endDate);
+                    for (let i = 0; i < occurrences; i++) {
+                         incomesForTaxCalc.push({
+                            id: `${pi.id}-proj-${i}`, baseAmount: pi.baseAmount || 0,
+                            vatRate: pi.vatRate ?? settings.defaultVatRate, irpfRate: pi.irpfRate ?? settings.defaultIrpfRate,
+                        } as Income);
+                    }
                 }
             });
         }
@@ -835,6 +983,7 @@ const GlobalView: React.FC = () => {
                 details: `Cliente: ${i.clientName}`,
                 amount: i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100),
                 isPaid: i.isPaid,
+                autoGenerated: i.autoGenerated,
             })) : []),
             ...(isProfessionalModeEnabled ? expenses.map(e => ({
                 id: `exp-${e.id}`,
@@ -845,6 +994,7 @@ const GlobalView: React.FC = () => {
                 details: `Proveedor: ${e.providerName}`,
                 amount: -(e.baseAmount + (e.baseAmount * e.vatRate / 100)),
                 isPaid: e.isPaid,
+                autoGenerated: e.autoGenerated,
             })) : []),
             ...personalMovements.map(p => ({
                 id: `pm-${p.id}`,
@@ -855,6 +1005,7 @@ const GlobalView: React.FC = () => {
                 details: `Categoría: ${personalCategories.find(c => c.id === p.categoryId)?.name || '-'}`,
                 amount: p.type === 'income' ? p.amount : -p.amount,
                 isPaid: p.isPaid ?? false,
+                autoGenerated: p.autoGenerated,
             })),
             ...transfers.map(t => ({
                 id: `tr-${t.id}`,
@@ -865,6 +1016,7 @@ const GlobalView: React.FC = () => {
                 details: `${t.fromLocation} -> ${t.toLocation}`,
                 amount: t.amount,
                 isPaid: true,
+                autoGenerated: false,
             })),
         ];
         
@@ -1150,9 +1302,13 @@ const GlobalView: React.FC = () => {
                                     <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingIncomes.map(income => (
                                         <li key={income.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                             <div className="flex justify-between items-start">
-                                                <div>
-                                                    <p>{income.concept}</p>
-                                                    <p className="text-xs text-gray-600 dark:text-gray-400">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                                <div className="flex items-center gap-2">
+                                                    {/* FIX: Wrap Icon in a span with a title attribute to provide a tooltip, as Icon component doesn't accept a title prop. */}
+                                                    {income.autoGenerated && <span title="Generado automáticamente"><Icon name="Bot" className="w-4 h-4 text-slate-500"/></span>}
+                                                    <div>
+                                                        <p>{income.concept}</p>
+                                                        <p className="text-xs text-gray-600 dark:text-gray-400">{income.clientName} | {new Date(income.date).toLocaleDateString('es-ES')}</p>
+                                                    </div>
                                                 </div>
                                                 <div className="text-right flex-shrink-0 ml-2">
                                                     <p className="font-semibold">{formatCurrency(income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100))}</p>
@@ -1176,9 +1332,13 @@ const GlobalView: React.FC = () => {
                                     <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingExpenses.map(expense => (
                                         <li key={expense.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                             <div className="flex justify-between items-start">
-                                                <div>
-                                                    <p>{expense.concept}</p>
-                                                    <p className="text-xs text-gray-600 dark:text-gray-400">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                                <div className="flex items-center gap-2">
+                                                    {/* FIX: Wrap Icon in a span with a title attribute to provide a tooltip, as Icon component doesn't accept a title prop. */}
+                                                    {expense.autoGenerated && <span title="Generado automáticamente"><Icon name="Bot" className="w-4 h-4 text-slate-500"/></span>}
+                                                    <div>
+                                                        <p>{expense.concept}</p>
+                                                        <p className="text-xs text-gray-600 dark:text-gray-400">{expense.providerName} | {new Date(expense.date).toLocaleDateString('es-ES')}</p>
+                                                    </div>
                                                 </div>
                                                 <div className="text-right flex-shrink-0 ml-2">
                                                     <p className="font-semibold">{formatCurrency(expense.baseAmount + (expense.baseAmount * expense.vatRate / 100))}</p>
@@ -1205,9 +1365,13 @@ const GlobalView: React.FC = () => {
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalIncomes.map(mov => (
                                 <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
-                                        <div>
-                                            <p>{mov.concept}</p>
-                                            <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                        <div className="flex items-center gap-2">
+                                            {/* FIX: Wrap Icon in a span with a title attribute to provide a tooltip, as Icon component doesn't accept a title prop. */}
+                                            {mov.autoGenerated && <span title="Generado automáticamente"><Icon name="Bot" className="w-4 h-4 text-slate-500"/></span>}
+                                            <div>
+                                                <p>{mov.concept}</p>
+                                                <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                            </div>
                                         </div>
                                         <div className="text-right flex-shrink-0 ml-2">
                                             <p className="font-semibold">{formatCurrency(mov.amount)}</p>
@@ -1231,9 +1395,13 @@ const GlobalView: React.FC = () => {
                             <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">{pendingPersonalExpenses.map(mov => (
                                 <li key={mov.id} className="p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md text-sm">
                                     <div className="flex justify-between items-start">
-                                        <div>
-                                            <p>{mov.concept}</p>
-                                            <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                        <div className="flex items-center gap-2">
+                                            {/* FIX: Wrap Icon in a span with a title attribute to provide a tooltip, as Icon component doesn't accept a title prop. */}
+                                            {mov.autoGenerated && <span title="Generado automáticamente"><Icon name="Bot" className="w-4 h-4 text-slate-500"/></span>}
+                                            <div>
+                                                <p>{mov.concept}</p>
+                                                <p className="text-xs text-gray-600 dark:text-gray-400">{new Date(mov.date).toLocaleDateString('es-ES')}</p>
+                                            </div>
                                         </div>
                                         <div className="text-right flex-shrink-0 ml-2">
                                             <p className="font-semibold">{formatCurrency(mov.amount)}</p>
@@ -1255,6 +1423,7 @@ const GlobalView: React.FC = () => {
                 )}
             </Card>
 
+            <PeriodSelector onPeriodChange={handlePeriodChange} />
             
             {/* Main KPIs */}
             <Card className="p-6">
@@ -1295,7 +1464,9 @@ const GlobalView: React.FC = () => {
                         <Button size="sm" onClick={() => handleOpenIncomeModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                     </div>
                     <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
-                        {potentialIncomes.length > 0 ? potentialIncomes.map(pi => (
+                        {potentialIncomes.length > 0 ? potentialIncomes.map(pi => {
+                            const frequency = pi.frequency || (pi.type === 'monthly' ? 'monthly' : 'one-off');
+                            return (
                            <div key={pi.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
                                <div className="flex justify-between items-start">
                                    <div>
@@ -1310,10 +1481,10 @@ const GlobalView: React.FC = () => {
                                <div className="flex flex-wrap gap-2 mt-1">
                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${sourceColors[pi.source]}`}>{pi.source.split(' ')[0]}</span>
                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${locationColors[pi.location]}`}>{pi.location}</span>
-                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{pi.type === 'monthly' ? 'Mensual' : `Puntual`}</span>
+                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{frequencyLabels[frequency]}</span>
                                </div>
                            </div>
-                        )) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade ingresos futuros para proyectar tu crecimiento.</p>}
+                        )}) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade ingresos futuros para proyectar tu crecimiento.</p>}
                     </div>
                 </Card>
             </div>
@@ -1326,6 +1497,7 @@ const GlobalView: React.FC = () => {
                 <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
                     {potentialExpenses.length > 0 ? potentialExpenses.map(pe => {
                         const category = personalCategories.find(c => c.id === pe.categoryId);
+                        const frequency = pe.frequency || (pe.type === 'monthly' ? 'monthly' : 'one-off');
                         return (
                        <div key={pe.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
                            <div className="flex justify-between items-start">
@@ -1340,7 +1512,7 @@ const GlobalView: React.FC = () => {
                            </div>
                            <div className="flex flex-wrap gap-2 mt-1">
                                {category && <span className={`px-2 py-1 rounded-full text-xs font-medium ${categoryColors[category.id] || 'bg-gray-100 text-gray-800'}`}>{category.name}</span>}
-                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{pe.type === 'monthly' ? 'Mensual' : `Puntual`}</span>
+                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{frequencyLabels[frequency]}</span>
                            </div>
                        </div>
                     )}) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade gastos futuros (suscripciones, etc.) para una proyección más precisa.</p>}
@@ -1476,10 +1648,6 @@ const GlobalView: React.FC = () => {
                     </Button>
                 </div>
 
-                <div className="border-t border-b dark:border-slate-700">
-                   <PeriodSelector onPeriodChange={handlePeriodChange} />
-                </div>
-
                 <div className="overflow-y-auto max-h-[40rem] mt-4">
                     <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                         {unifiedTransactions.map(t => {
@@ -1490,9 +1658,13 @@ const GlobalView: React.FC = () => {
                                         <div className={`p-2 rounded-lg ${t.typeLabel.color} flex-shrink-0`}>
                                             <Icon name={iconName} className="w-5 h-5" />
                                         </div>
-                                        <div>
-                                            <p className="font-semibold">{t.concept}</p>
-                                            <p className="text-sm text-gray-600 dark:text-gray-400">{t.details}</p>
+                                        <div className="flex items-center gap-2">
+                                            {/* FIX: Wrap Icon in a span with a title attribute to provide a tooltip, as Icon component doesn't accept a title prop. */}
+                                            {t.autoGenerated && <span title="Generado automáticamente"><Icon name="Bot" className="w-4 h-4 text-slate-500"/></span>}
+                                            <div>
+                                                <p className="font-semibold">{t.concept}</p>
+                                                <p className="text-sm text-gray-600 dark:text-gray-400">{t.details}</p>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 w-full basis-auto justify-end">

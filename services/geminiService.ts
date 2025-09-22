@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification } from '../types';
+import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification, PotentialIncome, MoneySource } from '../types';
 
 // Extend the window interface for SpeechRecognition
 declare global {
@@ -312,7 +312,7 @@ const calculateBalances = (appData: AppData): { [key in MoneyLocation]: number }
 }
 
 const summarizeDataForAI = (appData: AppData): string => {
-    const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, personalCategories } = appData;
+    const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, potentialIncomes, potentialExpenses, personalCategories } = appData;
     
     // --- PROFESSIONAL SUMMARY ---
     const now = new Date();
@@ -327,6 +327,10 @@ const summarizeDataForAI = (appData: AppData): string => {
     const cuotaAutonomo = (settings.monthlyAutonomoFee || 0) * 12;
     const totalDeductibleExpenses = totalExpenseCosts + cuotaAutonomo + annualAmortization;
     const netProfit = totalIncome - totalDeductibleExpenses;
+    
+    const pendingIncomes = incomes.filter(i => !i.isPaid);
+    const pendingExpenses = expenses.filter(e => !e.isPaid);
+
     const professional_summary = {
         user_settings: {
             fullName: settings.fullName,
@@ -341,19 +345,24 @@ const summarizeDataForAI = (appData: AppData): string => {
             total_deductible_expenses: Math.round(totalDeductibleExpenses),
             estimated_net_profit: Math.round(netProfit),
         },
+        pending_transactions: {
+            pending_income_count: pendingIncomes.length,
+            pending_income_total: Math.round(pendingIncomes.reduce((sum, i) => sum + i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100), 0)),
+            pending_expense_count: pendingExpenses.length,
+            pending_expense_total: Math.round(pendingExpenses.reduce((sum, e) => sum + e.baseAmount + (e.baseAmount * e.vatRate / 100), 0)),
+        }
     };
 
     // --- PERSONAL FINANCE SUMMARY ---
     const allBalances = calculateBalances(appData);
     const personalBalances = {
-        bank: allBalances[MoneyLocation.PERS_BANK] || 0,
-        cash: allBalances[MoneyLocation.CASH] || 0,
-        other: allBalances[MoneyLocation.OTHER] || 0,
+        bank: Math.round(allBalances[MoneyLocation.PERS_BANK] || 0),
+        cash: Math.round(allBalances[MoneyLocation.CASH] || 0),
+        other: Math.round(allBalances[MoneyLocation.OTHER] || 0),
     };
     const allPersonalTransactions = [...personalMovements, ...transfers.filter(t => t.justification === TransferJustification.SUELDO_AUTONOMO)];
     const firstDate = allPersonalTransactions.length > 0 ? new Date(Math.min(...allPersonalTransactions.map(m => new Date(m.date).getTime()))) : new Date();
     const monthsOfData = Math.max(1, ((new Date().getTime() - firstDate.getTime()) / (1000 * 3600 * 24 * 30.44)));
-    // FIX: Explicitly typing the accumulator in reduce calls to help TypeScript's type inference and prevent arithmetic errors on potentially unknown types.
     const personalIncomes = personalMovements.filter(m => m.type === 'income').reduce((sum: number, m) => sum + m.amount, 0);
     const sueldoTransfers = transfers.filter(t => t.justification === TransferJustification.SUELDO_AUTONOMO).reduce((sum: number, t) => sum + t.amount, 0);
     const totalPersonalIncome = personalIncomes + sueldoTransfers;
@@ -365,6 +374,10 @@ const summarizeDataForAI = (appData: AppData): string => {
             return acc;
         }, {} as Record<string, number>);
     const totalPersonalExpenses = Object.values(personalExpensesByCategory).reduce((sum: number, amount) => sum + amount, 0);
+
+    const pendingPersonalIncomes = personalMovements.filter(m => m.type === 'income' && !m.isPaid);
+    const pendingPersonalExpenses = personalMovements.filter(m => m.type === 'expense' && !m.isPaid);
+
     const personal_summary = {
         current_personal_balances: personalBalances,
         monthly_average_income: Math.round(totalPersonalIncome / monthsOfData),
@@ -378,13 +391,52 @@ const summarizeDataForAI = (appData: AppData): string => {
             name: g.name,
             target_amount: g.targetAmount,
             current_amount: g.currentAmount,
-            deadline: g.deadline.split('T')[0]
-        }))
+            deadline: g.deadline.split('T')[0],
+            planned_monthly_contribution: g.plannedContribution || 0
+        })),
+        pending_transactions: {
+            pending_income_count: pendingPersonalIncomes.length,
+            pending_income_total: Math.round(pendingPersonalIncomes.reduce((sum, m) => sum + m.amount, 0)),
+            pending_expense_count: pendingPersonalExpenses.length,
+            pending_expense_total: Math.round(pendingPersonalExpenses.reduce((sum, m) => sum + m.amount, 0)),
+        }
     };
     
+    const getNetPotentialIncome = (pi: PotentialIncome): number => {
+        if (pi.source === MoneySource.AUTONOMO) {
+            const base = pi.baseAmount || 0;
+            const vat = base * (pi.vatRate || 0) / 100;
+            const irpf = base * (pi.irpfRate || 0) / 100;
+            return base + vat - irpf;
+        }
+        return pi.amount || 0;
+    };
+
+    const future_projections_summary = {
+        potential_monthly_incomes: potentialIncomes.filter(pi => pi.type === 'monthly').map(pi => ({
+            concept: pi.concept,
+            net_amount: Math.round(getNetPotentialIncome(pi))
+        })),
+        potential_one_off_incomes: potentialIncomes.filter(pi => pi.type === 'one-off').map(pi => ({
+            concept: pi.concept,
+            net_amount: Math.round(getNetPotentialIncome(pi)),
+            date: pi.date?.split('T')[0]
+        })),
+        potential_monthly_expenses: potentialExpenses.filter(pe => pe.type === 'monthly').map(pe => ({
+            concept: pe.concept,
+            amount: pe.amount
+        })),
+        potential_one_off_expenses: potentialExpenses.filter(pe => pe.type === 'one-off').map(pe => ({
+            concept: pe.concept,
+            amount: pe.amount,
+            date: pe.date?.split('T')[0]
+        }))
+    };
+
     const combinedSummary = {
         professional_summary: professional_summary,
         personal_finance_summary: personal_summary,
+        future_projections_summary: future_projections_summary
     };
     
     return JSON.stringify(combinedSummary, null, 2);
