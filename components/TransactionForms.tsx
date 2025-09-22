@@ -201,8 +201,11 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   );
 };
 
-export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; }> = ({ onClose, expenseToEdit, defaultIsPaid = true }) => {
+export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; isRefundInitialState?: boolean; }> = ({ onClose, expenseToEdit, defaultIsPaid = true, isRefundInitialState = false }) => {
     const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
+    
+    const [isRefund, setIsRefund] = useState(isRefundInitialState || (expenseToEdit?.baseAmount ? expenseToEdit.baseAmount < 0 : false));
+    
     const [formData, setFormData] = useState<Partial<Expense>>({
         id: expenseToEdit?.id || `exp-${Date.now()}`,
         date: expenseToEdit?.date || new Date().toISOString(),
@@ -212,8 +215,8 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
         providerName: expenseToEdit?.providerName || '',
         providerNif: expenseToEdit?.providerNif || '',
         concept: expenseToEdit?.concept || '',
-        baseAmount: expenseToEdit?.baseAmount || 0,
-        deductibleBaseAmount: expenseToEdit?.deductibleBaseAmount,
+        baseAmount: expenseToEdit?.baseAmount ? Math.abs(expenseToEdit.baseAmount) : 0,
+        deductibleBaseAmount: expenseToEdit?.deductibleBaseAmount ? Math.abs(expenseToEdit.deductibleBaseAmount) : undefined,
         vatRate: expenseToEdit?.vatRate ?? data.settings.defaultVatRate,
         categoryId: expenseToEdit?.categoryId || (data.professionalCategories[0]?.id || ''),
         location: expenseToEdit?.location || MoneyLocation.PRO_BANK,
@@ -222,6 +225,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
         isIntraCommunity: expenseToEdit?.isIntraCommunity ?? false,
         isRentalExpense: expenseToEdit?.isRentalExpense ?? false,
     });
+    
     const [deductibilitySuggestion, setDeductibilitySuggestion] = useState<{ isDeductible: boolean; deductibleBaseAmount?: number; reason: string; } | null>(null);
     const [isCheckingDeductibility, setIsCheckingDeductibility] = useState(false);
 
@@ -271,7 +275,16 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const isEditing = expenseToEdit?.id && data.expenses.some(ex => ex.id === expenseToEdit.id);
-        const newExpense = { ...formData, date: new Date(formData.date!).toISOString() } as Expense;
+
+        const sign = isRefund ? -1 : 1;
+        
+        const newExpense = { 
+            ...formData, 
+            date: new Date(formData.date!).toISOString(),
+            baseAmount: Math.abs(formData.baseAmount!) * sign,
+            deductibleBaseAmount: formData.deductibleBaseAmount ? Math.abs(formData.deductibleBaseAmount) * sign : undefined,
+        } as Expense;
+        
         if (newExpense.isPaid && !newExpense.paymentDate) {
             newExpense.paymentDate = newExpense.date;
         }
@@ -281,7 +294,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             expenses: isEditing
                 ? prevData.expenses.map(ex => ex.id === expenseToEdit!.id ? newExpense : ex)
                 : [...prevData.expenses, newExpense],
-        }), isEditing ? "Gasto actualizado." : "Gasto añadido.");
+        }), isEditing ? "Gasto actualizado." : (isRefund ? "Abono añadido." : "Gasto añadido."));
         onClose();
     };
 
@@ -291,22 +304,35 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/50 rounded-md">
+                <Switch label="Es un abono / factura rectificativa" checked={isRefund} onChange={setIsRefund} />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <DatePickerInput label="Fecha Gasto" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
+                <DatePickerInput label="Fecha" selectedDate={formData.date} onDateChange={(d) => setFormData(p => ({...p, date: d.toISOString()}))} required />
                 <Input label="Nº Factura (Opcional)" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
             </div>
             <Input label="Nombre o Razón Social Proveedor" name="providerName" value={formData.providerName} onChange={handleChange} required />
             <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Base Imponible (€)" name="baseAmount" type="number" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
-                <Input label="IVA Soportado (%)" name="vatRate" type="number" step="0.01" value={formData.vatRate} onChange={handleChange} required />
+                <Input label="Base Imponible (€)" name="baseAmount" type="number" min="0" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
+                <Input label="IVA Soportado (%)" name="vatRate" type="number" min="0" step="0.01" value={formData.vatRate} onChange={handleChange} required />
             </div>
             <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange} required>
                 {data.professionalCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
             </Select>
+
+            {data.settings.isInROI && (
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                    <div className="flex items-center">
+                        <Switch label="Operación Intracomunitaria (Inversión Sujeto Pasivo)" checked={formData.isIntraCommunity ?? false} onChange={(c) => setFormData(p => ({...p, isIntraCommunity: c}))} />
+                        <HelpTooltip content="Marca esta opción si has comprado un bien o servicio a una empresa de otro país de la UE y estás dado de alta en el ROI. El IVA se autoliquidará (repercutido y soportado a la vez)." />
+                    </div>
+                </div>
+            )}
+            
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
                 <Switch label="Es Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
-                {formData.isDeductible && (
+                {formData.isDeductible && !isRefund && (
                     <>
                         <Button type="button" variant="secondary" size="sm" onClick={handleDeductibilityCheck} disabled={isCheckingDeductibility || !data.settings.geminiApiKey}>
                             <Icon name="Sparkles" className="w-4 h-4" /> {isCheckingDeductibility ? 'Consultando...' : 'Sugerencia IA Deducibilidad'}
@@ -322,7 +348,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 )}
             </div>
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
-                <Switch label="Gasto Pagado" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
+                <Switch label={isRefund ? "Abono Recibido" : "Gasto Pagado"} checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
                 {formData.isPaid && (
                     <Select label="Ubicación del Dinero" name="location" value={formData.location} onChange={handleChange}>
                         {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -331,7 +357,7 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             </div>
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">{expenseToEdit?.id ? 'Guardar Cambios' : 'Añadir Gasto'}</Button>
+                <Button type="submit">{expenseToEdit?.id ? 'Guardar Cambios' : (isRefund ? 'Añadir Abono' : 'Añadir Gasto')}</Button>
             </div>
         </form>
     );

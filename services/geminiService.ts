@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Income, Expense, InvestmentGood, Category } from './types';
+import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification } from '../types';
 
 // Extend the window interface for SpeechRecognition
 declare global {
@@ -266,5 +266,167 @@ export const suggestDeductibility = async (concept: string, baseAmount: number, 
     } catch(error) {
         console.error("Error en suggestDeductibility:", error);
         throw new Error("No se pudo obtener la sugerencia de la IA. Inténtalo de nuevo.");
+    }
+};
+
+// --- Financial Consultant Chat ---
+const calculateBalances = (appData: AppData): { [key in MoneyLocation]: number } => {
+    const balances: { [key in MoneyLocation]: number } = {
+        [MoneyLocation.CASH_PRO]: appData.settings.initialBalances?.[MoneyLocation.CASH_PRO] || 0,
+        [MoneyLocation.CASH]: appData.settings.initialBalances?.[MoneyLocation.CASH] || 0,
+        [MoneyLocation.PRO_BANK]: appData.settings.initialBalances?.[MoneyLocation.PRO_BANK] || 0,
+        [MoneyLocation.PERS_BANK]: appData.settings.initialBalances?.[MoneyLocation.PERS_BANK] || 0,
+        [MoneyLocation.OTHER]: appData.settings.initialBalances?.[MoneyLocation.OTHER] || 0,
+    };
+
+    appData.incomes.forEach(income => {
+        if (income.isPaid && income.location) {
+            const netAmount = income.baseAmount + (income.baseAmount * income.vatRate / 100) - (income.baseAmount * income.irpfRate / 100);
+            balances[income.location] = (balances[income.location] || 0) + netAmount;
+        }
+    });
+    appData.expenses.forEach(expense => {
+        if (expense.isPaid && expense.location) {
+            const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
+            balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
+        }
+    });
+    appData.investmentGoods.forEach(good => {
+        if (good.isPaid && good.location) {
+            const totalAmount = good.acquisitionValue + (good.acquisitionValue * good.vatRate / 100);
+            balances[good.location] = (balances[good.location] || 0) - totalAmount;
+        }
+    });
+    appData.personalMovements.filter(m => m.isPaid).forEach(movement => {
+        if (movement.location) {
+            if (movement.type === 'income') balances[movement.location] = (balances[movement.location] || 0) + movement.amount;
+            else balances[movement.location] = (balances[movement.location] || 0) - movement.amount;
+        }
+    });
+    appData.transfers.forEach(transfer => {
+        balances[transfer.fromLocation] = (balances[transfer.fromLocation] || 0) - transfer.amount;
+        balances[transfer.toLocation] = (balances[transfer.toLocation] || 0) + transfer.amount;
+    });
+
+    return balances;
+}
+
+const summarizeDataForAI = (appData: AppData): string => {
+    const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, personalCategories } = appData;
+    
+    // --- PROFESSIONAL SUMMARY ---
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const yearIncomes = incomes.filter(i => new Date(i.date).getFullYear() === currentYear);
+    const yearDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date).getFullYear() === currentYear);
+    const totalIncome = yearIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
+    const totalExpenseCosts = yearDeductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+    const annualAmortization = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= currentYear).reduce((sum, good) => {
+        return sum + (good.acquisitionValue / good.usefulLife);
+    }, 0);
+    const cuotaAutonomo = (settings.monthlyAutonomoFee || 0) * 12;
+    const totalDeductibleExpenses = totalExpenseCosts + cuotaAutonomo + annualAmortization;
+    const netProfit = totalIncome - totalDeductibleExpenses;
+    const professional_summary = {
+        user_settings: {
+            fullName: settings.fullName,
+            nif: settings.nif,
+            monthlyAutonomoFee: settings.monthlyAutonomoFee,
+            isInROI: settings.isInROI,
+            rentsOffice: settings.rentsOffice,
+            hiresProfessionals: settings.hiresProfessionals
+        },
+        financial_summary_current_year: {
+            total_income_base: Math.round(totalIncome),
+            total_deductible_expenses: Math.round(totalDeductibleExpenses),
+            estimated_net_profit: Math.round(netProfit),
+        },
+    };
+
+    // --- PERSONAL FINANCE SUMMARY ---
+    const allBalances = calculateBalances(appData);
+    const personalBalances = {
+        bank: allBalances[MoneyLocation.PERS_BANK] || 0,
+        cash: allBalances[MoneyLocation.CASH] || 0,
+        other: allBalances[MoneyLocation.OTHER] || 0,
+    };
+    const allPersonalTransactions = [...personalMovements, ...transfers.filter(t => t.justification === TransferJustification.SUELDO_AUTONOMO)];
+    const firstDate = allPersonalTransactions.length > 0 ? new Date(Math.min(...allPersonalTransactions.map(m => new Date(m.date).getTime()))) : new Date();
+    const monthsOfData = Math.max(1, ((new Date().getTime() - firstDate.getTime()) / (1000 * 3600 * 24 * 30.44)));
+    // FIX: Explicitly typing the accumulator in reduce calls to help TypeScript's type inference and prevent arithmetic errors on potentially unknown types.
+    const personalIncomes = personalMovements.filter(m => m.type === 'income').reduce((sum: number, m) => sum + m.amount, 0);
+    const sueldoTransfers = transfers.filter(t => t.justification === TransferJustification.SUELDO_AUTONOMO).reduce((sum: number, t) => sum + t.amount, 0);
+    const totalPersonalIncome = personalIncomes + sueldoTransfers;
+    const personalExpensesByCategory = personalMovements
+        .filter(m => m.type === 'expense')
+        .reduce((acc: Record<string, number>, m) => {
+            const catName = personalCategories.find(c => c.id === m.categoryId)?.name || 'Sin Categoría';
+            acc[catName] = (acc[catName] || 0) + m.amount;
+            return acc;
+        }, {} as Record<string, number>);
+    const totalPersonalExpenses = Object.values(personalExpensesByCategory).reduce((sum: number, amount) => sum + amount, 0);
+    const personal_summary = {
+        current_personal_balances: personalBalances,
+        monthly_average_income: Math.round(totalPersonalIncome / monthsOfData),
+        monthly_average_expenses: {
+            total: Math.round(totalPersonalExpenses / monthsOfData),
+            by_category: Object.fromEntries(
+                Object.entries(personalExpensesByCategory).map(([key, value]) => [key, Math.round(value / monthsOfData)])
+            )
+        },
+        savings_goals: savingsGoals.map(g => ({
+            name: g.name,
+            target_amount: g.targetAmount,
+            current_amount: g.currentAmount,
+            deadline: g.deadline.split('T')[0]
+        }))
+    };
+    
+    const combinedSummary = {
+        professional_summary: professional_summary,
+        personal_finance_summary: personal_summary,
+    };
+    
+    return JSON.stringify(combinedSummary, null, 2);
+};
+
+export const askFinancialConsultant = async (
+    question: string, 
+    apiKey: string,
+    appData: AppData
+): Promise<{ text: string, sources: any[] | null }> => {
+
+    if (!apiKey) throw new Error("API Key de Gemini no configurada.");
+    const ai = new GoogleGenAI({ apiKey });
+
+    const dataSummary = summarizeDataForAI(appData);
+
+    const fullPrompt = `Este es un resumen de los datos financieros del usuario:
+\`\`\`json
+${dataSummary}
+\`\`\`
+
+Basándote en estos datos y en tu conocimiento como asesor, responde a la siguiente pregunta del usuario.
+
+Pregunta: "${question}"
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+            config: {
+                systemInstruction: "Eres un asesor financiero y de finanzas personales experto para autónomos en España. Tu nombre es LifeOS Assistant. Tu tono es profesional, cercano y didáctico. Tienes acceso a un resumen de los datos fiscales y personales del usuario.\n- Para preguntas fiscales, basa tus cálculos en los datos del usuario y utiliza la búsqueda para verificar normativas y plazos.\n- Para preguntas de finanzas personales (ahorro, gastos, presupuestos, asequibilidad), analiza sus ingresos, gastos, ahorros y saldos. Ofrece consejos prácticos y personalizados. Puedes usar reglas generales como la 50/30/20, pero adáptalas a la situación del usuario.\n- Siempre que des consejos financieros, añade una nota aclarando que eres una IA y no un asesor financiero certificado, y que tus sugerencias se basan en los datos proporcionados.\n- Cita siempre tus fuentes si usas la búsqueda de Google.",
+                tools: [{googleSearch: {}}],
+            }
+        });
+
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || null;
+        
+        return { text: response.text, sources };
+
+    } catch(error) {
+        console.error("Error en askFinancialConsultant:", error);
+        throw new Error("No se pudo obtener la respuesta del asesor. Inténtalo de nuevo.");
     }
 };

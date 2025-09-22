@@ -386,6 +386,27 @@ const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => voi
     );
   };
 
+// --- Taxes Breakdown Modal ---
+const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; breakdown: any; formatCurrency: (val: number) => string; }> = ({ isOpen, onClose, breakdown, formatCurrency }) => {
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Desglose de Impuestos Trimestrales">
+            <div className="space-y-4 text-sm">
+                <p className="text-slate-600 dark:text-slate-400">Esta es una estimación de los impuestos a pagar para el trimestre actual, basada en los datos introducidos hasta ahora.</p>
+                <div className="space-y-2 rounded-lg bg-black/5 dark:bg-white/5 p-4">
+                    <div className="flex justify-between"><span>Modelo 303 (IVA):</span> <span className="font-semibold">{formatCurrency(breakdown.model303Result)}</span></div>
+                    <div className="flex justify-between"><span>Modelo 130 (IRPF):</span> <span className="font-semibold">{formatCurrency(breakdown.model130Result)}</span></div>
+                    <div className="flex justify-between"><span>Modelo 111 (Ret. Prof.):</span> <span className="font-semibold">{formatCurrency(breakdown.model111Result)}</span></div>
+                    <div className="flex justify-between"><span>Modelo 115 (Ret. Alquiler):</span> <span className="font-semibold">{formatCurrency(breakdown.model115Result)}</span></div>
+                    <div className="border-t-2 dark:border-slate-500 my-2 pt-2 flex justify-between text-base">
+                        <span className="font-bold">Total Estimado:</span>
+                        <span className="font-bold">{formatCurrency(breakdown.totalProjectedTaxes)}</span>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 // --- Global View ---
 const GlobalView: React.FC = () => {
@@ -406,6 +427,8 @@ const GlobalView: React.FC = () => {
     const [includePotentialExpenses, setIncludePotentialExpenses] = useState(true);
     const [includePendingTransactions, setIncludePendingTransactions] = useState(false);
     const [showProjection, setShowProjection] = useState(false);
+    const [isTaxesBreakdownOpen, setIsTaxesBreakdownOpen] = useState(false);
+
 
     const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
     const [incomeToEdit, setIncomeToEdit] = useState<PotentialIncome | null>(null);
@@ -466,7 +489,7 @@ const GlobalView: React.FC = () => {
         data.expenses.forEach(expense => {
             if (expense.isPaid && expense.location) {
                 const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
-                balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
+                balances[expense.location] = (balances[expense.location] || 0) + totalAmount;
             }
         });
 
@@ -496,55 +519,36 @@ const GlobalView: React.FC = () => {
     }, [data.incomes, data.expenses, data.investmentGoods, data.personalMovements, data.transfers, data.settings.initialBalances]);
     
     const netCapitalSummary = useMemo(() => {
-        // 1. Total Current Balance
         const currentTotalBalance = Object.values(moneyDistribution).reduce((sum, val) => sum + val, 0);
-
-        // 2. Pending Incomes
-        const pendingProfessionalIncome = data.incomes
-            .filter(i => !i.isPaid)
-            .reduce((sum, i) => sum + (i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100)), 0);
-        const pendingPersonalIncome = data.personalMovements
-            .filter(m => m.type === 'income' && !m.isPaid)
-            .reduce((sum, m) => sum + m.amount, 0);
+        const pendingProfessionalIncome = data.incomes.filter(i => !i.isPaid).reduce((sum, i) => sum + (i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100)), 0);
+        const pendingPersonalIncome = data.personalMovements.filter(m => m.type === 'income' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingIncome = pendingProfessionalIncome + pendingPersonalIncome;
-
-        // 3. Pending Expenses
-        const pendingProfessionalExpense = data.expenses
-            .filter(e => !e.isPaid)
-            .reduce((sum, e) => sum + (e.baseAmount + (e.baseAmount * e.vatRate / 100)), 0);
-        const pendingPersonalExpense = data.personalMovements
-            .filter(m => m.type === 'expense' && !m.isPaid)
-            .reduce((sum, m) => sum + m.amount, 0);
+        const pendingProfessionalExpense = data.expenses.filter(e => !e.isPaid).reduce((sum, e) => sum + (e.baseAmount + (e.baseAmount * e.vatRate / 100)), 0);
+        const pendingPersonalExpense = data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
 
-        // 4. Projected Taxes for Current Quarter
         const now = new Date();
         const year = now.getFullYear();
         const quarter = Math.floor(now.getMonth() / 3);
-        const quarterPeriod = {
-            startDate: new Date(year, quarter * 3, 1),
-            endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999),
-        };
+        const qPeriod = { startDate: new Date(year, quarter * 3, 1), endDate: new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999) };
 
         const { incomes, expenses, investmentGoods, settings } = data;
         const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
         const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
         
-        const periodIncomes = incomes.filter(i => new Date(i.date) >= quarterPeriod.startDate && new Date(i.date) <= quarterPeriod.endDate);
-        const periodDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= quarterPeriod.startDate && new Date(e.date) <= quarterPeriod.endDate);
+        const qIncomes = incomes.filter(i => new Date(i.date) >= qPeriod.startDate && new Date(i.date) <= qPeriod.endDate);
+        const qDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= qPeriod.startDate && new Date(e.date) <= qPeriod.endDate);
 
-        // Model 303
-        const ivaRepercutido = periodIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const ivaSoportadoFromExpenses = periodDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-        const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= quarterPeriod.startDate && new Date(g.purchaseDate) <= quarterPeriod.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        const ivaRepercutido = qIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const ivaSoportadoFromExpenses = qDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= qPeriod.startDate && new Date(g.purchaseDate) <= qPeriod.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
         const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
-        const model303Result = ivaRepercutido - ivaSoportado;
+        const model303Result = Math.max(0, ivaRepercutido - ivaSoportado);
 
-        // Model 130
-        const yearOfPeriod = quarterPeriod.startDate.getFullYear();
-        const quarterOfPeriod = Math.floor(quarterPeriod.startDate.getMonth() / 3) + 1;
-        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= quarterPeriod.endDate; });
-        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= quarterPeriod.endDate && e.isDeductible; });
+        const yearOfPeriod = qPeriod.startDate.getFullYear();
+        const quarterOfPeriod = quarter + 1;
+        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate; });
+        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate && e.isDeductible; });
         const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
         const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
         const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
@@ -552,7 +556,7 @@ const GlobalView: React.FC = () => {
              const goodStartDate = new Date(good.purchaseDate);
              if (goodStartDate.getFullYear() > yearOfPeriod) return sum;
              const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
-             const effectiveEndDate = quarterPeriod.endDate;
+             const effectiveEndDate = qPeriod.endDate;
              const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
              return sum + (days * dailyAmortization);
         }, 0);
@@ -563,14 +567,11 @@ const GlobalView: React.FC = () => {
         const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
         const model130Result = Math.max(0, quoteYTD - retencionesSoportadasYTD);
 
-        // Model 111 & 115
-        const periodAllExpenses = expenses.filter(e => new Date(e.date) >= quarterPeriod.startDate && new Date(e.date) <= quarterPeriod.endDate);
-        const model111Result = periodAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
-        const model115Result = periodAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        const qAllExpenses = expenses.filter(e => new Date(e.date) >= qPeriod.startDate && new Date(e.date) <= qPeriod.endDate);
+        const model111Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
+        const model115Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         
-        const totalProjectedTaxes = Math.max(0, model303Result) + Math.max(0, model130Result) + model111Result + model115Result;
-
-        // 5. Final Calculation
+        const totalProjectedTaxes = model303Result + model130Result + model111Result + model115Result;
         const netAvailableCapital = currentTotalBalance + totalPendingIncome - totalPendingExpenses - totalProjectedTaxes;
 
         return {
@@ -578,7 +579,8 @@ const GlobalView: React.FC = () => {
             totalPendingIncome,
             totalPendingExpenses,
             totalProjectedTaxes,
-            netAvailableCapital
+            netAvailableCapital,
+            taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes }
         };
 
     }, [data, moneyDistribution]);
@@ -606,7 +608,7 @@ const GlobalView: React.FC = () => {
             pendingExpenses.forEach(expense => {
                 if (expense.location) {
                     const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
-                    projectedBalances[expense.location] = (projectedBalances[expense.location] || 0) - totalAmount;
+                    projectedBalances[expense.location] = (projectedBalances[expense.location] || 0) + totalAmount;
                 }
             });
 
@@ -1043,8 +1045,12 @@ const GlobalView: React.FC = () => {
 
     return (
         <div className="space-y-8">
+            <div className="flex items-center gap-3">
+                <Icon name="Globe" className="w-8 h-8 text-primary-500" />
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
+            </div>
+            
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
-            <h2 className="text-2xl font-semibold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
             
             {isProfessionalModeEnabled && (
                 <Card className="p-6">
@@ -1071,8 +1077,13 @@ const GlobalView: React.FC = () => {
                             <span className="text-gray-600 dark:text-gray-400">Pagos Pendientes</span>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Impuestos Trimestrales (Est.)</span>
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-1">
+                                <span className="text-gray-600 dark:text-gray-400">Impuestos Trimestrales (Est.)</span>
+                                <button onClick={() => setIsTaxesBreakdownOpen(true)} className="text-slate-400 hover:text-primary-500">
+                                    <Icon name="Info" className="w-4 h-4" />
+                                </button>
+                            </div>
                             <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
                         </div>
                     </div>
@@ -1491,6 +1502,7 @@ const GlobalView: React.FC = () => {
             </Card>
 
             {/* Modals for this view */}
+            <TaxesBreakdownModal isOpen={isTaxesBreakdownOpen} onClose={() => setIsTaxesBreakdownOpen(false)} breakdown={netCapitalSummary.taxesBreakdown} formatCurrency={formatCurrency} />
             <Modal isOpen={isIncomeModalOpen} onClose={() => setIsIncomeModalOpen(false)} title={incomeToEdit ? "Editar Ingreso Potencial" : "Añadir Ingreso Potencial"}>
                 <PotentialIncomeForm onClose={() => setIsIncomeModalOpen(false)} incomeToEdit={incomeToEdit} />
             </Modal>

@@ -268,7 +268,7 @@ const AppContainer: React.FC = () => {
                     </div>
                 </header>
                 
-                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-24 sm:pb-6">
+                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-24">
                     {renderView()}
                 </main>
 
@@ -289,8 +289,8 @@ const AppContainer: React.FC = () => {
                     </div>
                 </nav>
 
-                <nav className="hidden sm:block container mx-auto p-4 sm:p-0 sm:pb-6">
-                   <div className="flex items-center justify-around gap-2 h-16">
+                <nav className="hidden sm:block fixed inset-x-0 bottom-0 z-40 p-2 glass-dock">
+                   <div className="container mx-auto flex items-center justify-around gap-2 h-16">
                         <NavButton view={AppView.GLOBAL} icon="Globe" label="Visión Global" className="max-w-xs" />
                         {isProfessionalModeEnabled ? (
                             <>
@@ -304,7 +304,7 @@ const AppContainer: React.FC = () => {
                 </nav>
 
                 {/* FLOATING AI BUTTON */}
-                <div className="fixed bottom-20 sm:bottom-6 right-6 z-50">
+                <div className="fixed bottom-20 sm:bottom-24 right-6 z-50">
                     <Button
                         variant="primary"
                         onClick={() => setAiModalOpen(true)}

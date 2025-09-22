@@ -237,7 +237,10 @@ const SettingsView: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
+        <div className="flex items-center gap-3">
+            <Icon name="Settings" className="w-8 h-8 text-primary-500" />
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configuración</h2>
+        </div>
       
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-2">Asistente de Configuración</h3>

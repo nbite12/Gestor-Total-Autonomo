@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AppContext } from '../App';
 import { Modal, Button, Icon } from './ui';
-import { parseNaturalLanguageTransaction, ParsedCommand } from '../services/geminiService';
+import { parseNaturalLanguageTransaction, ParsedCommand, askFinancialConsultant } from '../services/geminiService';
 import { MoneyLocation, Category, Income, Expense, PersonalMovement, Transfer, TransferJustification } from '../types';
 import { IncomeForm, ExpenseForm, MovementForm, TransferForm } from './TransactionForms';
+import { SegmentedControl } from './SegmentedControl';
+
+type AImode = 'entry' | 'consultant';
 
 const findLocation = (hint: string | undefined): MoneyLocation => {
     if (!hint) return MoneyLocation.PERS_BANK;
@@ -30,11 +33,17 @@ export const AICommandModal: React.FC<{
     if (!context) return null;
     const { data, isProfessionalModeEnabled } = context;
 
+    const [mode, setMode] = useState<AImode>('entry');
     const [commandText, setCommandText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [parsedData, setParsedData] = useState<ParsedCommand | null>(null);
     const [isListening, setIsListening] = useState(false);
+
+    // Consultant mode state
+    const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; sources?: any[] }[]>([]);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+
 
     const recognitionRef = useRef<any>(null);
     const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,14 +128,21 @@ export const AICommandModal: React.FC<{
             }
         };
     }, [stopListening]);
+    
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    }, [messages]);
+
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && mode === 'entry') {
             startListening();
         } else {
             stopListening();
         }
-    }, [isOpen, startListening, stopListening]);
+    }, [isOpen, mode, startListening, stopListening]);
     
     const handleProcessCommand = async () => {
         if (!commandText.trim()) return;
@@ -136,20 +152,39 @@ export const AICommandModal: React.FC<{
         setIsLoading(true);
         setError('');
         setParsedData(null);
-        try {
-            const result = await parseNaturalLanguageTransaction(
-                commandText,
-                data.settings.geminiApiKey,
-                data.professionalCategories,
-                data.personalCategories
-            );
-            setParsedData(result);
-        } catch (err: any) {
-            setError(err.message || 'Ha ocurrido un error inesperado.');
-        } finally {
-            setIsLoading(false);
+
+        if (mode === 'entry') {
+            try {
+                const result = await parseNaturalLanguageTransaction(
+                    commandText,
+                    data.settings.geminiApiKey,
+                    data.professionalCategories,
+                    data.personalCategories
+                );
+                setParsedData(result);
+            } catch (err: any) {
+                setError(err.message || 'Ha ocurrido un error inesperado.');
+            } finally {
+                setIsLoading(false);
+            }
+        } else if (mode === 'consultant') {
+            const userMessage = { role: 'user' as const, text: commandText };
+            setMessages(prev => [...prev, userMessage]);
+            setCommandText('');
+            
+            try {
+                const result = await askFinancialConsultant(commandText, data.settings.geminiApiKey, data);
+                const modelMessage = { role: 'model' as const, text: result.text, sources: result.sources || undefined };
+                setMessages(prev => [...prev, modelMessage]);
+            } catch (err: any) {
+                const errorMessage = { role: 'model' as const, text: `Error: ${err.message}` };
+                setMessages(prev => [...prev, errorMessage]);
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
+
 
     const handleCloseAndReset = () => {
         stopListening();
@@ -157,6 +192,7 @@ export const AICommandModal: React.FC<{
         setError('');
         setIsLoading(false);
         setParsedData(null);
+        setMessages([]);
         onClose();
     };
 
@@ -228,6 +264,7 @@ export const AICommandModal: React.FC<{
     }
     
     const getModalTitle = () => {
+        if (mode === 'consultant') return "Asesor Fiscal IA";
         if (!parsedData) return "Asistente IA";
         switch (parsedData.action) {
             case 'income': return "Confirmar Ingreso Profesional";
@@ -237,12 +274,21 @@ export const AICommandModal: React.FC<{
             default: return "Asistente IA";
         }
     }
+    
+    const modeOptions = [
+        { key: 'entry', label: 'Añadir Datos' },
+        { key: 'consultant', label: 'Asesor Fiscal' }
+    ];
 
     return (
         <Modal isOpen={isOpen} onClose={handleCloseAndReset} title={getModalTitle()}>
-            {parsedData ? (
+            <div className="mb-4">
+                <SegmentedControl options={modeOptions} selected={mode} onSelect={(key) => { setMode(key as AImode); setError(''); setParsedData(null); setCommandText(''); }} />
+            </div>
+
+            {parsedData && mode === 'entry' ? (
                 renderConfirmationForm()
-            ) : (
+            ) : mode === 'entry' ? (
                 <div className="space-y-4">
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                         {isListening 
@@ -268,6 +314,59 @@ export const AICommandModal: React.FC<{
                         </Button>
                     </div>
                 </div>
+            ) : ( // Consultant Mode
+                 <div className="flex flex-col h-[60vh] max-h-[450px]">
+                    <div ref={chatContainerRef} className="flex-grow space-y-4 overflow-y-auto p-2">
+                        {messages.map((msg, index) => (
+                            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-xs md:max-w-md p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-500 text-white rounded-br-lg' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-lg'}`}>
+                                    <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                                    {msg.role === 'model' && msg.sources && msg.sources.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600">
+                                            <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Fuentes:</h4>
+                                            <ul className="text-xs list-disc list-inside space-y-1">
+                                                {msg.sources.map((source, i) => (
+                                                    <li key={i}>
+                                                        <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">
+                                                            {source.web.title || source.web.uri}
+                                                        </a>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                         {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="max-w-xs md:max-w-md p-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-lg">
+                                    <div className="flex items-center space-x-2">
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex-shrink-0 pt-4">
+                         <div className="flex gap-2">
+                             <textarea
+                                rows={1}
+                                className="block w-full px-4 py-2.5 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg shadow-inner-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm dark:placeholder-slate-500 transition-colors resize-none"
+                                placeholder="Escribe tu pregunta aquí..."
+                                value={commandText}
+                                onChange={(e) => setCommandText(e.target.value)}
+                                onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleProcessCommand(); }}}
+                                disabled={isLoading}
+                            />
+                            <Button onClick={handleProcessCommand} disabled={isLoading || !commandText}>
+                                <Icon name="Send" className="w-5 h-5"/>
+                            </Button>
+                         </div>
+                    </div>
+                 </div>
             )}
         </Modal>
     );

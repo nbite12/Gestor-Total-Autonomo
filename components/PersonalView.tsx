@@ -143,6 +143,10 @@ const PersonalView: React.FC = () => {
 
   return (
     <div className="space-y-8">
+        <div className="flex items-center gap-3">
+            <Icon name="Home" className="w-8 h-8 text-primary-500" />
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Área Personal</h2>
+        </div>
        <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
        {/* Dashboard Summary */}
        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

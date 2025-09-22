@@ -192,12 +192,24 @@ const ProfessionalView: React.FC = () => {
     const [incomeToEdit, setIncomeToEdit] = useState<Partial<Income> | null>(null);
     const [isExpenseModalOpen, setExpenseModalOpen] = useState(false);
     const [expenseToEdit, setExpenseToEdit] = useState<Partial<Expense> | null>(null);
+    const [isExpenseRefundMode, setIsExpenseRefundMode] = useState(false);
     const [isInvestmentModalOpen, setInvestmentModalOpen] = useState(false);
     const [investmentToEdit, setInvestmentToEdit] = useState<Partial<InvestmentGood> | null>(null);
     const [isAiImportModalOpen, setAiImportModalOpen] = useState(false);
 
     const handleOpenIncomeModal = (income?: Partial<Income>) => { setIncomeToEdit(income || null); setIncomeModalOpen(true); };
-    const handleOpenExpenseModal = (expense?: Partial<Expense>) => { setExpenseToEdit(expense || null); setExpenseModalOpen(true); };
+    
+    const handleOpenExpenseModal = (expense?: Partial<Expense>) => { 
+        setIsExpenseRefundMode(false);
+        setExpenseToEdit(expense || null); 
+        setExpenseModalOpen(true); 
+    };
+    const handleOpenRefundModal = (expense?: Partial<Expense>) => {
+        setIsExpenseRefundMode(true);
+        setExpenseToEdit(expense || null);
+        setExpenseModalOpen(true);
+    };
+
     const handleOpenInvestmentModal = (good?: Partial<InvestmentGood>) => { setInvestmentToEdit(good || null); setInvestmentModalOpen(true); };
 
     const handleDelete = (type: 'income' | 'expense' | 'investment', id: string) => {
@@ -231,11 +243,10 @@ const ProfessionalView: React.FC = () => {
     const tabLabels = tabOptions.map(t => t.label);
     const selectedLabel = tabOptions.find(t => t.key === activeTab)?.label || '';
 
-    const handleTabSelect = (label: string) => {
-        // FIX: Changed function to correctly map the selected label back to its corresponding key to update the state, resolving a type mismatch.
-        const selectedTab = tabOptions.find(t => t.label === label);
+    const handleTabSelect = (key: string) => {
+        const selectedTab = tabOptions.find(t => t.key === key);
         if (selectedTab) {
-            setActiveTab(selectedTab.key);
+            setActiveTab(selectedTab.key as ProViewTab);
         }
     };
 
@@ -243,21 +254,24 @@ const ProfessionalView: React.FC = () => {
     return (
         <div className="space-y-8">
             <div className="flex flex-wrap justify-between items-center gap-4">
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Área Profesional</h2>
+                <div className="flex items-center gap-3">
+                    <Icon name="Briefcase" className="w-8 h-8 text-primary-500" />
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Área Profesional</h2>
+                </div>
                 <div title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Importar factura con IA"}>
                     <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="Sparkles" className="w-5 h-5"/> Importar con IA</Button>
                 </div>
             </div>
             
             <SegmentedControl
-                options={tabLabels}
-                selected={selectedLabel}
+                options={tabOptions}
+                selected={activeTab}
                 onSelect={handleTabSelect}
                 layoutId="pro-view-tabs-pill"
             />
 
             <div className="pt-4">
-                {activeTab === 'libros' && <LibrosRegistroView onEditIncome={handleOpenIncomeModal} onEditExpense={handleOpenExpenseModal} onEditInvestment={handleOpenInvestmentModal} onDelete={handleDelete} />}
+                {activeTab === 'libros' && <LibrosRegistroView onEditIncome={handleOpenIncomeModal} onEditExpense={handleOpenExpenseModal} onEditRefund={handleOpenRefundModal} onEditInvestment={handleOpenInvestmentModal} onDelete={handleDelete} />}
                 {activeTab === 'analisis' && <AnalisisFiscalView />}
                 {activeTab === 'pdf' && <GenerarPDFsView />}
             </div>
@@ -269,7 +283,7 @@ const ProfessionalView: React.FC = () => {
                 professionalCategories={data.professionalCategories}
             />
             <Modal isOpen={isIncomeModalOpen} onClose={() => setIncomeModalOpen(false)} title={incomeToEdit?.id ? "Editar Factura Emitida" : "Nueva Factura Emitida"}><IncomeForm onClose={() => setIncomeModalOpen(false)} incomeToEdit={incomeToEdit} /></Modal>
-            <Modal isOpen={isExpenseModalOpen} onClose={() => setExpenseModalOpen(false)} title={expenseToEdit?.id ? "Editar Factura Recibida" : "Nueva Factura Recibida"}><ExpenseForm onClose={() => setExpenseModalOpen(false)} expenseToEdit={expenseToEdit} /></Modal>
+            <Modal isOpen={isExpenseModalOpen} onClose={() => setExpenseModalOpen(false)} title={isExpenseRefundMode ? "Registrar Abono / Devolución" : (expenseToEdit?.id ? "Editar Gasto" : "Nuevo Gasto")}><ExpenseForm onClose={() => setExpenseModalOpen(false)} expenseToEdit={expenseToEdit} isRefundInitialState={isExpenseRefundMode} /></Modal>
             <Modal isOpen={isInvestmentModalOpen} onClose={() => setInvestmentModalOpen(false)} title={investmentToEdit?.id ? "Editar Bien de Inversión" : "Nuevo Bien de Inversión"}><InvestmentGoodForm onClose={() => setInvestmentModalOpen(false)} goodToEdit={investmentToEdit} /></Modal>
         </div>
     );
@@ -324,9 +338,10 @@ const IncomeBook: React.FC<{ onEdit: (income?: Partial<Income>) => void; onDelet
 
 const UnifiedExpenseBook: React.FC<{
     onEditExpense: (expense?: Partial<Expense>) => void;
+    onEditRefund: (expense?: Partial<Expense>) => void;
     onEditInvestment: (good?: Partial<InvestmentGood>) => void;
     onDelete: (type: 'expense' | 'investment', id: string) => void;
-}> = ({ onEditExpense, onEditInvestment, onDelete }) => {
+}> = ({ onEditExpense, onEditRefund, onEditInvestment, onDelete }) => {
     const { data, formatCurrency } = useContext(AppContext)!;
     const { expenses, investmentGoods } = data;
 
@@ -351,9 +366,10 @@ const UnifiedExpenseBook: React.FC<{
         <Card className="p-6">
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">Libro de Gastos y Bienes de Inversión</h3>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => generateExpensesPDF(expenses, investmentGoods)} disabled={unifiedExpenses.length === 0}><Icon name="Download" className="w-4 h-4" /> PDF</Button>
                     <Button onClick={() => onEditExpense()}><Icon name="Plus" /> Añadir Gasto</Button>
+                    <Button onClick={() => onEditRefund()} variant="secondary"><Icon name="Receipt" className="w-4 h-4" /> Añadir Abono</Button>
                     <Button onClick={() => onEditInvestment()} variant="secondary"><Icon name="Plus" /> Añadir Bien Inversión</Button>
                 </div>
             </div>
@@ -361,6 +377,7 @@ const UnifiedExpenseBook: React.FC<{
                 <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                     {unifiedExpenses.map(item => {
                         const isExpense = item.itemType === 'expense';
+                        const isRefund = isExpense && item.baseAmount < 0;
                         const date = isExpense ? item.date : item.purchaseDate;
                         const concept = isExpense ? item.concept : item.description;
                         const provider = item.providerName;
@@ -369,27 +386,31 @@ const UnifiedExpenseBook: React.FC<{
                         const vatAmount = base * (vatRate / 100);
                         const total = base + vatAmount;
 
+                        const icon = isRefund ? 'Receipt' : (isExpense ? 'TrendingDown' : 'Package');
+                        const iconBg = isRefund ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : (isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200');
+                        const amountColor = isRefund ? 'text-green-500' : 'text-red-500';
+
                         return (
                              <div key={`${item.itemType}-${item.id}`} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
                                 <div className="flex items-center gap-4 flex-grow min-w-[200px]">
-                                    <div className={`p-2 rounded-lg ${isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200'} flex-shrink-0`}>
-                                        <Icon name={isExpense ? 'TrendingDown' : 'Package'} className="w-5 h-5" />
+                                    <div className={`p-2 rounded-lg ${iconBg} flex-shrink-0`}>
+                                        <Icon name={icon} className="w-5 h-5" />
                                     </div>
                                     <div>
-                                        <p className="font-semibold">{concept}</p>
+                                        <p className="font-semibold">{isRefund && "Abono: "}{concept}</p>
                                         <p className="text-sm text-gray-500 dark:text-gray-400">{provider} - {formatDate(date)}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                     <div className="text-right">
-                                        <p className="font-semibold break-words text-red-500">
-                                            {formatCurrency(total)}
+                                        <p className={`font-semibold break-words ${amountColor}`}>
+                                            {formatCurrency(Math.abs(total))}
                                         </p>
                                         {!item.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
                                     </div>
                                     <div className="flex items-center">
                                        {item.attachment && <Button size="sm" variant="ghost" onClick={() => handleDownloadAttachment(item.attachment!)} title={item.attachment.name}><Icon name="Paperclip" className="w-4 h-4" /></Button>}
-                                       <Button size="sm" variant="ghost" onClick={() => isExpense ? onEditExpense(item) : onEditInvestment(item)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                       <Button size="sm" variant="ghost" onClick={() => isExpense ? (isRefund ? onEditRefund(item) : onEditExpense(item)) : onEditInvestment(item)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
                                        <Button size="sm" variant="ghost" onClick={() => onDelete(item.itemType, item.id)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                     </div>
                                 </div>
@@ -405,14 +426,16 @@ const UnifiedExpenseBook: React.FC<{
 const LibrosRegistroView: React.FC<{
     onEditIncome: (income?: Partial<Income>) => void; 
     onEditExpense: (expense?: Partial<Expense>) => void; 
+    onEditRefund: (expense?: Partial<Expense>) => void; 
     onEditInvestment: (good?: Partial<InvestmentGood>) => void; 
     onDelete: (type: 'income' | 'expense' | 'investment', id: string) => void;
-}> = ({ onEditIncome, onEditExpense, onEditInvestment, onDelete }) => {
+}> = ({ onEditIncome, onEditExpense, onEditRefund, onEditInvestment, onDelete }) => {
     return (
         <div className="space-y-8">
             <IncomeBook onEdit={onEditIncome} onDelete={(id) => onDelete('income', id)} />
             <UnifiedExpenseBook 
                 onEditExpense={onEditExpense}
+                onEditRefund={onEditRefund}
                 onEditInvestment={onEditInvestment}
                 onDelete={onDelete}
             />
@@ -427,6 +450,7 @@ const AnalisisFiscalView: React.FC = () => {
     const { data, formatCurrency } = context;
     const { incomes, expenses, investmentGoods, settings } = data;
 
+    const [isModel130BreakdownOpen, setIsModel130BreakdownOpen] = useState(false);
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const now = new Date();
         const year = now.getFullYear();
@@ -452,6 +476,43 @@ const AnalisisFiscalView: React.FC = () => {
     const [rentaYear, setRentaYear] = useState<number>(availableYears[0] || new Date().getFullYear());
 
     const fiscalCalculations = useMemo(() => {
+        const calculate130ForQuarter = (targetQuarter: number, targetYear: number) => {
+            const endDate = new Date(targetYear, targetQuarter * 3, 0, 23, 59, 59, 999);
+            const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === targetYear && d <= endDate; });
+            const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === targetYear && d <= endDate && e.isDeductible; });
+            
+            const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+            const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+            const amortizationYTD = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= targetYear).reduce((sum, good) => {
+                 const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+                 const goodStartDate = new Date(good.purchaseDate);
+                 const effectiveStartDate = goodStartDate < new Date(targetYear, 0, 1) ? new Date(targetYear, 0, 1) : goodStartDate;
+                 if (effectiveStartDate > endDate) return sum;
+                 const effectiveEndDate = endDate;
+                 const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+                 return sum + (days * dailyAmortization);
+            }, 0);
+            const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (targetQuarter * 3);
+            const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+            const netProfitYTD = grossYTD - deductibleExpensesYTD;
+            const quoteYTD = netProfitYTD * 0.20;
+            const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+            
+            let pagosAnteriores130 = 0;
+            if (targetQuarter > 1) {
+                for (let q = 1; q < targetQuarter; q++) {
+                    pagosAnteriores130 += calculate130ForQuarter(q, targetYear).result;
+                }
+            }
+            
+            const result = Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130);
+            
+            return {
+                grossYTD, deductibleExpensesYTD, netProfitYTD, quoteYTD,
+                retencionesSoportadasYTD, pagosAnteriores130, result
+            };
+        };
+
         // --- Period Calculations (303, 130, 111, 115) ---
         const periodIncomes = incomes.filter(i => new Date(i.date) >= period.startDate && new Date(i.date) <= period.endDate);
         const periodExpenses = expenses.filter(e => new Date(e.date) >= period.startDate && new Date(e.date) <= period.endDate);
@@ -465,71 +526,49 @@ const AnalisisFiscalView: React.FC = () => {
         const kpis = { kpiTotalInvoiced, kpiTotalExpenses, kpiGrossProfit, kpiProfitMargin };
 
         // 303
-        const ivaRepercutido = periodIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const ivaSoportadoFromExpenses = periodDeductibleExpenses
-            .filter(e => !e.recargoEquivalenciaAmount) // Exclude VAT from RE purchases
-            .reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-        const ivaSoportadoFromGoods = investmentGoods
-            .filter(g => g.isDeductible && new Date(g.purchaseDate) >= period.startDate && new Date(g.purchaseDate) <= period.endDate)
-            .reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
-        const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
-        const model303 = { ivaRepercutido, ivaSoportado, result: ivaRepercutido - ivaSoportado };
+        const ivaRepercutidoNacional = periodIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= period.startDate && new Date(g.purchaseDate) <= period.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        
+        const intraCommunityExpenses = periodDeductibleExpenses.filter(e => e.isIntraCommunity);
+        const nationalExpenses = periodDeductibleExpenses.filter(e => !e.isIntraCommunity);
+        
+        const ivaIntracomunitario = intraCommunityExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        const ivaSoportadoNacional = nationalExpenses.filter(e => !e.recargoEquivalenciaAmount).reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+        
+        const ivaRepercutido = ivaRepercutidoNacional + ivaIntracomunitario;
+        const ivaSoportado = ivaSoportadoNacional + ivaSoportadoFromGoods + ivaIntracomunitario;
+
+        const model303 = { 
+            ivaRepercutidoNacional,
+            ivaRepercutidoIntracomunitario: ivaIntracomunitario,
+            ivaSoportadoDeducible: ivaSoportadoNacional + ivaSoportadoFromGoods,
+            ivaSoportadoIntracomunitario: ivaIntracomunitario,
+            ivaRepercutidoTotal: ivaRepercutido,
+            ivaSoportadoTotal: ivaSoportado,
+            result: ivaRepercutido - ivaSoportado,
+        };
 
         // 111 & 115
         const model111 = periodExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         const model115 = periodExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
 
-        // 130 - complex calculation
-        const yearOfPeriod = period.startDate.getFullYear();
+        // 130
         const quarterOfPeriod = Math.floor(period.startDate.getMonth() / 3) + 1;
-        
-        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= period.endDate; });
-        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= period.endDate && e.isDeductible; });
-        
-        const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
-        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount) + (e.recargoEquivalenciaAmount || 0), 0);
-        const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
-             const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
-             const goodStartDate = new Date(good.purchaseDate);
-             if (goodStartDate.getFullYear() > yearOfPeriod) return sum;
-             const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
-             const effectiveEndDate = period.endDate;
-             const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
-             return sum + (days * dailyAmortization);
-        }, 0);
-        const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (quarterOfPeriod * 3);
-        const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
-        const netProfitYTD = grossYTD - deductibleExpensesYTD;
-        const quoteYTD = netProfitYTD * 0.20;
-        const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
-        
-        // Previous 130 payments
-        let pagosAnteriores130 = 0;
-        // This is a simplified calculation. A real one would store the results.
-        const model130 = {
-            netProfit: netProfitYTD,
-            quote: quoteYTD,
-            retenciones: retencionesSoportadasYTD,
-            previousPayments: pagosAnteriores130,
-            result: Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130)
-        };
+        const yearOfPeriod = period.startDate.getFullYear();
+        const model130 = calculate130ForQuarter(quarterOfPeriod, yearOfPeriod);
         
         // Model 349
         const opsByNif349: { [nif: string]: { name: string; total: number; key: 'E' | 'A' } } = {};
-        periodIncomes
-            .filter(i => i.isIntraCommunity)
-            .forEach(i => {
+        periodIncomes.filter(i => i.isIntraCommunity).forEach(i => {
                 if (!i.clientNif) return;
                 opsByNif349[i.clientNif] = opsByNif349[i.clientNif] || { name: i.clientName, total: 0, key: 'E' };
                 opsByNif349[i.clientNif].total += i.baseAmount;
-            });
-        periodExpenses
-            .filter(e => e.isIntraCommunity)
-            .forEach(e => {
+        });
+        periodExpenses.filter(e => e.isIntraCommunity).forEach(e => {
                 if (!e.providerNif) return;
                 opsByNif349[e.providerNif] = opsByNif349[e.providerNif] || { name: e.providerName, total: 0, key: 'A' };
                 opsByNif349[e.providerNif].total += e.baseAmount;
-            });
+        });
         const model349 = Object.entries(opsByNif349).map(([nif, data]) => ({ nif, ...data }));
 
 
@@ -539,12 +578,7 @@ const AnalisisFiscalView: React.FC = () => {
         
         // 390
         const annualIVARepercutido = yearIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-        const annualIVASoportado = yearExpenses
-            .filter(e => e.isDeductible && !e.recargoEquivalenciaAmount)
-            .reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0) + 
-            investmentGoods
-            .filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() === rentaYear)
-            .reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
+        const annualIVASoportado = yearExpenses.filter(e => e.isDeductible && !e.recargoEquivalenciaAmount).reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0) + investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() === rentaYear).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
         const model390 = { ivaRepercutido: annualIVARepercutido, ivaSoportado: annualIVASoportado, result: annualIVARepercutido - annualIVASoportado };
         
         // 190 & 180
@@ -569,7 +603,7 @@ const AnalisisFiscalView: React.FC = () => {
         const model100 = calculateAnnualRent(rentaYear, data);
 
         return { kpis, model303, model130, model111, model115, model349, model390, model190, model180, model347, model100 };
-    }, [period, rentaYear, data]);
+    }, [period, rentaYear, data, incomes, expenses, investmentGoods, settings]);
     
     const periodQuarter = Math.floor(period.startDate.getMonth() / 3) + 1;
     const periodYear = period.startDate.getFullYear();
@@ -581,10 +615,8 @@ const AnalisisFiscalView: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            {/* --- Period Selection --- */}
             <PeriodSelector onPeriodChange={handlePeriodChange} />
 
-            {/* --- Business Health KPIs --- */}
             <section>
                 <h3 className="text-xl font-bold mb-4">Resumen del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -595,113 +627,34 @@ const AnalisisFiscalView: React.FC = () => {
                 </div>
             </section>
             
-            {/* --- Quarterly Liquidation Models --- */}
             <section>
                 <h3 className="text-xl font-bold mb-4">Liquidaciones del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {/* Model 303 */}
-                    <Card className="p-6"><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA. Diferencia entre el IVA cobrado y el pagado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido" value={fiscalCalculations.model303.ivaRepercutido} color="green" /><ModelRow label="IVA Soportado Deducible" value={fiscalCalculations.model303.ivaSoportado} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
-                    {/* Model 130 */}
-                    <Card className="p-6"><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral del 20% sobre el rendimiento neto acumulado del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfit} /><ModelRow label="Cuota (20%)" value={fiscalCalculations.model130.quote} /><ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model130.retenciones} color="green" negative /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
-                    {/* Model 111 */}
+                    <Card className="p-6"><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido (Nacional)" value={fiscalCalculations.model303.ivaRepercutidoNacional} color="green" /><ModelRow label="IVA Repercutido (Intracom.)" value={fiscalCalculations.model303.ivaRepercutidoIntracomunitario} color="green" /><ModelRow label="IVA Soportado (Deducible)" value={fiscalCalculations.model303.ivaSoportadoDeducible} color="red" negative /><ModelRow label="IVA Soportado (Intracom.)" value={fiscalCalculations.model303.ivaSoportadoIntracomunitario} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
+                    <Card className="p-6"><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral sobre el rendimiento neto acumulado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfitYTD} /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /><Button variant="ghost" size="sm" className="w-full mt-2" onClick={() => setIsModel130BreakdownOpen(true)}>Ver desglose</Button></div><StatusFooter status={quarterlyStatus} /></Card>
                     {settings.hiresProfessionals && <Card className="p-6"><ModelCardHeader model="111 (Retenciones Prof.)" tutorialLink="http://www.youtube.com/watch?v=UDoDQgFHNu4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH01.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en facturas de otros profesionales." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model111} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
-                    {/* Model 115 */}
                     {settings.rentsOffice && <Card className="p-6"><ModelCardHeader model="115 (Retenciones Alq.)" tutorialLink="http://www.youtube.com/watch?v=fMfRZo2DvH0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH02.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en la factura del alquiler de tu local u oficina." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model115} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
                 </div>
-                 {/* Model 349 */}
-                {settings.isInROI && <Card className="p-6 mt-6">
-                    <ModelCardHeader model="349 (Op. Intracomunitarias)" tutorialLink="http://www.youtube.com/watch?v=mAiFQB-5GYc" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI28.shtml" tooltip="Declaración informativa de compras (adquisiciones) y ventas (entregas) a empresas de otros países de la Unión Europea." />
-                    <div className="mt-4">
-                        {fiscalCalculations.model349.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400">
-                                        <tr>
-                                            <th className="px-4 py-2">NIF Intracomunitario</th>
-                                            <th className="px-4 py-2">Nombre / Razón Social</th>
-                                            <th className="px-4 py-2 text-center">Clave</th>
-                                            <th className="px-4 py-2 text-right">Importe</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {fiscalCalculations.model349.map(op => (
-                                            <tr key={op.nif} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600">
-                                                <td className="px-4 py-2 font-mono text-xs">{op.nif}</td>
-                                                <td className="px-4 py-2">{op.name}</td>
-                                                <td className="px-4 py-2 text-center font-semibold">
-                                                    <span title={op.key === 'E' ? 'Entrega de Bienes/Servicios' : 'Adquisición de Bienes/Servicios'}>
-                                                        {op.key}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-2 text-right font-bold">{formatCurrency(op.total)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <p className="text-center text-slate-500 py-4">No se han registrado operaciones intracomunitarias en este periodo.</p>
-                        )}
-                    </div>
-                    <StatusFooter status={quarterlyStatus} />
-                </Card>}
+                {settings.isInROI && <Card className="p-6 mt-6"><ModelCardHeader model="349 (Op. Intracomunitarias)" tutorialLink="http://www.youtube.com/watch?v=mAiFQB-5GYc" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI28.shtml" tooltip="Declaración informativa de compras (adquisiciones) y ventas (entregas) a empresas de otros países de la Unión Europea." /><div className="mt-4">{fiscalCalculations.model349.length > 0 ? (<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="text-xs text-slate-700 uppercase bg-slate-50 dark:bg-slate-700 dark:text-slate-400"><tr><th className="px-4 py-2">NIF Intracomunitario</th><th className="px-4 py-2">Nombre / Razón Social</th><th className="px-4 py-2 text-center">Clave</th><th className="px-4 py-2 text-right">Importe</th></tr></thead><tbody>{fiscalCalculations.model349.map(op => (<tr key={op.nif} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600"><td className="px-4 py-2 font-mono text-xs">{op.nif}</td><td className="px-4 py-2">{op.name}</td><td className="px-4 py-2 text-center font-semibold"><span title={op.key === 'E' ? 'Entrega de Bienes/Servicios' : 'Adquisición de Bienes/Servicios'}>{op.key}</span></td><td className="px-4 py-2 text-right font-bold">{formatCurrency(op.total)}</td></tr>))}</tbody></table></div>) : (<p className="text-center text-slate-500 py-4">No se han registrado operaciones intracomunitarias en este periodo.</p>)}</div><StatusFooter status={quarterlyStatus} /></Card>}
             </section>
             
             <div className="border-t dark:border-slate-700 pt-8" />
             
-            {/* --- Annual Models --- */}
             <section>
-                 <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
-                    <h3 className="text-xl font-bold">Declaraciones y Resúmenes Anuales</h3>
-                    <div className="w-full sm:w-auto"><Select label="Seleccionar Año Fiscal" value={rentaYear} onChange={e => setRentaYear(parseInt(e.target.value))}>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</Select></div>
-                </div>
-
-                {/* Model 100 */}
-                <Card className="p-6 mb-8">
-                    <ModelCardHeader model={`100 (Declaración de la Renta ${rentaYear})`} tutorialLink="http://www.youtube.com/watch?v=_cVdVrUzjPI" link="https://sede.agenciatributaria.gob.es/Sede/irpf/tengo-que-presentar-declaracion/modelo-100-i-sobre-r-anual.html" tooltip="Declaración anual que resume todos tus rendimientos del año para calcular el IRPF final." />
-                     <div className="mt-4 space-y-2 text-sm">
-                        <ModelRow label="Rendimiento Neto Anual" value={fiscalCalculations.model100.annualNetProfit} />
-                        {settings.applySevenPercentDeduction && fiscalCalculations.model100.gastosDificilJustificacion > 0 && (
-                            <ModelRow label="Gastos Difícil Justificación (7%)" value={fiscalCalculations.model100.gastosDificilJustificacion} color="red" negative />
-                        )}
-                        <ModelRow label="Cuota Íntegra (Total IRPF)" value={fiscalCalculations.model100.cuotaIntegra} />
-                        <hr className="dark:border-slate-700 my-1"/>
-                        <ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model100.retencionesSoportadas} color="green" negative />
-                        <ModelRow label="Pagos a Cuenta (Mod. 130)" value={fiscalCalculations.model100.pagosACuenta130} color="green" negative />
-                        <ModelResult label="Resultado Final" value={fiscalCalculations.model100.resultadoFinal} resultText={v => v >= 0 ? 'A PAGAR' : 'A DEVOLVER'} isAbsolute />
-                    </div>
-                    <StatusFooter status={annualStatus100} customText={`para la declaración del año ${rentaYear}`}/>
-                </Card>
-
+                 <div className="flex flex-wrap justify-between items-center gap-4 mb-4"><h3 className="text-xl font-bold">Declaraciones y Resúmenes Anuales</h3><div className="w-full sm:w-auto"><Select label="Seleccionar Año Fiscal" value={rentaYear} onChange={e => setRentaYear(parseInt(e.target.value))}>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</Select></div></div>
+                <Card className="p-6 mb-8"><ModelCardHeader model={`100 (Declaración de la Renta ${rentaYear})`} tutorialLink="http://www.youtube.com/watch?v=_cVdVrUzjPI" link="https://sede.agenciatributaria.gob.es/Sede/irpf/tengo-que-presentar-declaracion/modelo-100-i-sobre-r-anual.html" tooltip="Declaración anual que resume todos tus rendimientos del año para calcular el IRPF final." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto Anual" value={fiscalCalculations.model100.annualNetProfit} />{settings.applySevenPercentDeduction && fiscalCalculations.model100.gastosDificilJustificacion > 0 && (<ModelRow label="Gastos Difícil Justificación (7%)" value={fiscalCalculations.model100.gastosDificilJustificacion} color="red" negative />)}<ModelRow label="Cuota Íntegra (Total IRPF)" value={fiscalCalculations.model100.cuotaIntegra} /><hr className="dark:border-slate-700 my-1"/><ModelRow label="Retenciones Soportadas" value={fiscalCalculations.model100.retencionesSoportadas} color="green" negative /><ModelRow label="Pagos a Cuenta (Mod. 130)" value={fiscalCalculations.model100.pagosACuenta130} color="green" negative /><ModelResult label="Resultado Final" value={fiscalCalculations.model100.resultadoFinal} resultText={v => v >= 0 ? 'A PAGAR' : 'A DEVOLVER'} isAbsolute /></div><StatusFooter status={annualStatus100} customText={`para la declaración del año ${rentaYear}`}/></Card>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {/* Model 390 */}
                     <Card className="p-6"><ModelCardHeader model="390 (Resumen IVA)" tutorialLink="http://www.youtube.com/watch?v=yVtU7kjaZeo" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/G412.shtml" tooltip="Resumen anual informativo de todas tus declaraciones de IVA (Modelo 303) del año." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Total IVA Repercutido" value={fiscalCalculations.model390.ivaRepercutido} color="green" /><ModelRow label="Total IVA Soportado" value={fiscalCalculations.model390.ivaSoportado} color="red" negative /><ModelResult label="Resultado Anual" value={fiscalCalculations.model390.result} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>
-                    {/* Model 190 */}
                     {settings.hiresProfessionals && <Card className="p-6"><ModelCardHeader model="190 (Resumen Ret. Prof.)" tutorialLink="http://www.youtube.com/watch?v=PHbwM2KjdY4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI10.shtml" tooltip="Resumen anual de las retenciones a profesionales (Modelo 111), identificando a cada perceptor." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model190} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
-                    {/* Model 180 */}
                     {settings.rentsOffice && <Card className="p-6"><ModelCardHeader model="180 (Resumen Ret. Alq.)" tutorialLink="http://www.youtube.com/watch?v=FA_IcE6UwW0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI00.shtml" tooltip="Resumen anual de las retenciones de alquileres (Modelo 115), identificando a cada arrendador." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total Retenido" value={fiscalCalculations.model180} /></div><StatusFooter status={annualStatus390} customText={`para la declaración del año ${rentaYear}`}/></Card>}
-                    {/* Dummy Card to fill space, as 349 is now below */}
                     <div className="hidden lg:block"></div>
                 </div>
-
-                {/* Model 347 */}
-                <Card className="p-6 mt-6">
-                    <ModelCardHeader model="347 (Operaciones con Terceros)" tutorialLink="http://www.youtube.com/watch?v=2rsiDQPOiQk" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI27.shtml" tooltip="Declaración informativa anual de clientes y proveedores con los que has superado 3.005,06€ de operaciones." />
-                    <div className="mt-4">
-                        {fiscalCalculations.model347.length > 0 ? (
-                            <ul className="space-y-2 text-sm max-h-60 overflow-y-auto pr-2">{fiscalCalculations.model347.map(op => (
-                                <li key={op.nif} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md">
-                                    <div><p className="font-semibold">{op.name}</p><p className="text-xs text-slate-500">{op.nif}</p></div>
-                                    <p className="font-bold">{formatCurrency(op.total)}</p>
-                                </li>
-                            ))}</ul>
-                        ) : (
-                            <p className="text-center text-slate-500 py-4">No se han detectado operaciones superiores a 3.005,06€ con ningún tercero este año.</p>
-                        )}
-                    </div>
-                    <StatusFooter status={annualStatus347} customText={`para la declaración del año ${rentaYear}`}/>
-                </Card>
+                <Card className="p-6 mt-6"><ModelCardHeader model="347 (Operaciones con Terceros)" tutorialLink="http://www.youtube.com/watch?v=2rsiDQPOiQk" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI27.shtml" tooltip="Declaración informativa anual de clientes y proveedores con los que has superado 3.005,06€ de operaciones." /><div className="mt-4">{fiscalCalculations.model347.length > 0 ? (<ul className="space-y-2 text-sm max-h-60 overflow-y-auto pr-2">{fiscalCalculations.model347.map(op => (<li key={op.nif} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md"><div><p className="font-semibold">{op.name}</p><p className="text-xs text-slate-500">{op.nif}</p></div><p className="font-bold">{formatCurrency(op.total)}</p></li>))}</ul>) : (<p className="text-center text-slate-500 py-4">No se han detectado operaciones superiores a 3.005,06€ con ningún tercero este año.</p>)}</div><StatusFooter status={annualStatus347} customText={`para la declaración del año ${rentaYear}`}/></Card>
             </section>
+
+             <Modal isOpen={isModel130BreakdownOpen} onClose={() => setIsModel130BreakdownOpen(false)} title={`Desglose Modelo 130 - ${periodQuarter}T ${periodYear}`}>
+                <Model130BreakdownModal breakdown={fiscalCalculations.model130} />
+            </Modal>
         </div>
     );
 };
@@ -739,6 +692,26 @@ const StatusFooter: React.FC<{status: {isOpen: boolean, text: string}, customTex
         {status.text} {customText}
     </div>
 );
+const Model130BreakdownModal: React.FC<{ breakdown: any }> = ({ breakdown }) => {
+    const { formatCurrency } = useContext(AppContext)!;
+    return (
+        <div className="space-y-4 text-sm">
+            <p>El Modelo 130 es un pago a cuenta del IRPF que se calcula sobre el rendimiento neto acumulado durante el año.</p>
+            <div className="space-y-2 rounded-lg bg-black/5 dark:bg-white/5 p-4">
+                <ModelRow label="Ingresos computables (Acumulado)" value={breakdown.grossYTD} color="green" />
+                <ModelRow label="Gastos deducibles (Acumulado)" value={breakdown.deductibleExpensesYTD} color="red" negative />
+                <div className="border-t dark:border-slate-600 my-2" />
+                <ModelRow label="Rendimiento Neto Previo (Acumulado)" value={breakdown.netProfitYTD} />
+                <div className="border-t dark:border-slate-600 my-2" />
+                <ModelRow label="20% sobre Rendimiento Neto" value={breakdown.quoteYTD} />
+                <ModelRow label="Retenciones soportadas (Acumulado)" value={breakdown.retencionesSoportadasYTD} color="green" negative />
+                <ModelRow label="Pagos de trimestres anteriores" value={breakdown.pagosAnteriores130} color="green" negative />
+                <div className="border-t-2 dark:border-slate-500 my-2" />
+                <ModelResult label="Total a Ingresar" value={breakdown.result} resultText={() => ''} />
+            </div>
+        </div>
+    );
+};
 
 const GenerarPDFsView: React.FC = () => {
     const { data } = useContext(AppContext)!;
