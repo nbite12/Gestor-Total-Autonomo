@@ -34,6 +34,24 @@ const findBestCategoryId = (suggestion: string | undefined, categories: Category
     return undefined;
 };
 
+const EU_VAT_PREFIXES = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'EL', 'FI', 'FR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK'];
+
+const isIntraCommunityNif = (nif: string | undefined): boolean => {
+    if (!nif || nif.length < 3) return false;
+    const prefix = nif.substring(0, 2).toUpperCase();
+    return EU_VAT_PREFIXES.includes(prefix);
+};
+
+const InfoBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="p-3 my-2 bg-blue-50 dark:bg-blue-900/50 border-l-4 border-blue-400 text-blue-800 dark:text-blue-200 rounded-r-lg">
+        <div className="flex items-start gap-2">
+            <Icon name="Info" className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">{children}</div>
+        </div>
+    </div>
+);
+
+
 // Helper component for Date Picker
 // FIX: Export DatePickerInput to be used in other components.
 export const DatePickerInput: React.FC<{ label: string; selectedDate: string | undefined; onDateChange: (date: Date) => void; required?: boolean }> = ({ label, selectedDate, onDateChange, required }) => {
@@ -105,6 +123,32 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   });
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
+  const isIntraCommunity = isIntraCommunityNif(formData.clientNif);
+
+  useEffect(() => {
+    // If clientNif indicates an intra-community operation
+    if (isIntraCommunity) {
+        setFormData(prev => ({
+            ...prev,
+            vatRate: 0,
+            irpfRate: 0,
+            isIntraCommunity: true,
+        }));
+    } else {
+        // If the NIF is changed back from an intra-community one, revert to defaults
+        if (formData.isIntraCommunity) {
+            setFormData(prev => ({
+                ...prev,
+                vatRate: data.settings.defaultVatRate,
+                irpfRate: data.settings.defaultIrpfRate,
+                isIntraCommunity: false,
+            }));
+        }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isIntraCommunity, data.settings.defaultVatRate, data.settings.defaultIrpfRate]);
+
+
   const handleFileChange = async (file: File | null) => {
     if (!file) {
         setFormData(prev => ({ ...prev, attachment: undefined }));
@@ -165,11 +209,16 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
             <Input label="NIF Cliente (Opcional)" name="clientNif" value={formData.clientNif} onChange={handleChange} />
             <Input label="Dirección Cliente (Opcional)" name="clientAddress" value={formData.clientAddress} onChange={handleChange} />
         </div>
+        {isIntraCommunity && (
+             <InfoBox>
+                <strong>Operación Intracomunitaria Detectada:</strong> Se ha aplicado 0% de IVA y 0% de IRPF. Asegúrate de estar dado de alta en el ROI y de que el NIF de tu cliente es válido en el VIES.
+            </InfoBox>
+        )}
         <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="Base Imponible (€)" name="baseAmount" type="number" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
-            <Input label="IVA (%)" name="vatRate" type="number" step="0.01" value={formData.vatRate} onChange={handleChange} required />
-            <Input label="IRPF (%)" name="irpfRate" type="number" step="0.01" value={formData.irpfRate} onChange={handleChange} required />
+            <Input label="IVA (%)" name="vatRate" type="number" step="0.01" value={formData.vatRate} onChange={handleChange} required disabled={isIntraCommunity}/>
+            <Input label="IRPF (%)" name="irpfRate" type="number" step="0.01" value={formData.irpfRate} onChange={handleChange} required disabled={isIntraCommunity}/>
         </div>
         <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
             <Switch label="Factura Pagada" checked={formData.isPaid ?? false} onChange={(c) => setFormData(p => ({...p, isPaid: c}))} />
@@ -228,6 +277,13 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
     
     const [deductibilitySuggestion, setDeductibilitySuggestion] = useState<{ isDeductible: boolean; deductibleBaseAmount?: number; reason: string; } | null>(null);
     const [isCheckingDeductibility, setIsCheckingDeductibility] = useState(false);
+
+    const isIntraCommunity = isIntraCommunityNif(formData.providerNif);
+
+    useEffect(() => {
+        setFormData(prev => ({ ...prev, isIntraCommunity: isIntraCommunity }));
+    }, [isIntraCommunity]);
+
 
     useEffect(() => {
         if(expenseToEdit?.suggestedCategoryName) {
@@ -312,6 +368,12 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
                 <Input label="Nº Factura (Opcional)" name="invoiceNumber" value={formData.invoiceNumber} onChange={handleChange} />
             </div>
             <Input label="Nombre o Razón Social Proveedor" name="providerName" value={formData.providerName} onChange={handleChange} required />
+            <Input label="NIF Proveedor (Opcional)" name="providerNif" value={formData.providerNif} onChange={handleChange} />
+            {isIntraCommunity && (
+                <InfoBox>
+                    <strong>Operación Intracomunitaria Detectada:</strong> Para gastos de la UE, se aplica la "inversión del sujeto pasivo". Mantén el tipo de IVA que correspondería en España (ej. 21%). Este IVA se declarará como soportado y repercutido a la vez en el modelo 303, con efecto neutro.
+                </InfoBox>
+            )}
             <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input label="Base Imponible (€)" name="baseAmount" type="number" min="0" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
@@ -332,6 +394,11 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             
             <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-4">
                 <Switch label="Es Gasto Deducible" checked={formData.isDeductible ?? true} onChange={(c) => setFormData(p => ({...p, isDeductible: c}))} />
+                 {formData.isDeductible === false && (
+                    <InfoBox>
+                        <strong>Gasto No Deducible:</strong> Al marcar esta opción, ni la base ni el IVA de este gasto se utilizarán para reducir tus impuestos (ni en el modelo 303 de IVA, ni en el 130 de IRPF).
+                    </InfoBox>
+                )}
                 {formData.isDeductible && !isRefund && (
                     <>
                         <Button type="button" variant="secondary" size="sm" onClick={handleDeductibilityCheck} disabled={isCheckingDeductibility || !data.settings.geminiApiKey}>
