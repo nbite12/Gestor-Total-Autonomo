@@ -1,9 +1,11 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import { AppContext } from '../App';
-import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource, Transfer, TransferJustification, Category, SavingsGoal } from '../types';
+import { Income, Expense, InvestmentGood, Attachment, MoneyLocation, PersonalMovement, MoneySource, Transfer, TransferJustification, Category, SavingsGoal, ScheduledTransaction, PotentialFrequency } from '../types';
 import { Button, Input, Select, Icon, Switch, HelpTooltip, Card } from './ui';
 import { AiModal } from './AiModal';
 import { suggestDeductibility } from '../services/geminiService';
+import { motion, AnimatePresence } from 'framer-motion';
+
 
 // --- Helper Functions ---
 const fileToBase64 = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -765,6 +767,149 @@ export const AddFundsForm: React.FC<{
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
                 <Button type="submit">Confirmar Aportación</Button>
+            </div>
+        </form>
+    );
+};
+
+export const ScheduledTransactionForm: React.FC<{
+    onClose: () => void;
+    transactionToEdit: ScheduledTransaction | null;
+}> = ({ onClose, transactionToEdit }) => {
+    const { data, saveData } = useContext(AppContext)!;
+    const { settings, professionalCategories, personalCategories } = data;
+    
+    const [formData, setFormData] = useState<Partial<ScheduledTransaction>>({
+        id: transactionToEdit?.id || `st-${Date.now()}`,
+        concept: transactionToEdit?.concept || '',
+        scope: transactionToEdit?.scope || 'professional',
+        type: transactionToEdit?.type || 'income',
+        frequency: transactionToEdit?.frequency || 'monthly',
+        startDate: transactionToEdit?.startDate || new Date().toISOString(),
+        endDate: transactionToEdit?.endDate,
+        location: transactionToEdit?.location || MoneyLocation.PRO_BANK,
+        // Professional
+        baseAmount: transactionToEdit?.baseAmount || 0,
+        vatRate: transactionToEdit?.vatRate ?? settings.defaultVatRate,
+        irpfRate: transactionToEdit?.irpfRate ?? settings.defaultIrpfRate,
+        // Personal
+        amount: transactionToEdit?.amount || 0,
+        categoryId: transactionToEdit?.categoryId || personalCategories[0]?.id,
+    });
+    const [hasEndDate, setHasEndDate] = useState(!!transactionToEdit?.endDate);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        const isNumeric = ['amount', 'baseAmount', 'vatRate', 'irpfRate'].includes(name);
+        setFormData(prev => ({...prev, [name]: isNumeric ? parseFloat(value) : value}));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        
+        const finalTransaction: ScheduledTransaction = {
+            id: formData.id!,
+            concept: formData.concept!,
+            scope: formData.scope!,
+            type: formData.type!,
+            frequency: formData.frequency!,
+            startDate: new Date(formData.startDate!).toISOString(),
+            endDate: hasEndDate && formData.endDate ? new Date(formData.endDate).toISOString() : undefined,
+            location: formData.location,
+            baseAmount: formData.scope === 'professional' ? formData.baseAmount : undefined,
+            vatRate: formData.scope === 'professional' ? formData.vatRate : undefined,
+            irpfRate: formData.scope === 'professional' ? formData.irpfRate : undefined,
+            amount: formData.scope === 'personal' ? formData.amount : undefined,
+            categoryId: formData.scope === 'personal' ? formData.categoryId : undefined,
+        };
+        
+        saveData(prev => ({
+            ...prev,
+            scheduledTransactions: transactionToEdit 
+                ? prev.scheduledTransactions.map(st => st.id === transactionToEdit.id ? finalTransaction : st)
+                : [...prev.scheduledTransactions, finalTransaction]
+        }), transactionToEdit ? "Transacción programada actualizada." : "Transacción programada añadida.");
+        onClose();
+    };
+    
+    useEffect(() => {
+        if (!hasEndDate) {
+            setFormData(p => ({...p, endDate: undefined}));
+        }
+    }, [hasEndDate]);
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <Input label="Concepto" name="concept" value={formData.concept} onChange={handleChange} required />
+            
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                <Button type="button" variant={formData.scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, scope: 'professional'}))}>Profesional</Button>
+                <Button type="button" variant={formData.scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, scope: 'personal'}))}>Personal</Button>
+            </div>
+             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                <Button type="button" variant={formData.type === 'income' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'income'}))}>Ingreso</Button>
+                <Button type="button" variant={formData.type === 'expense' ? 'primary' : 'secondary'} onClick={() => setFormData(p => ({...p, type: 'expense'}))}>Gasto</Button>
+            </div>
+
+            {formData.scope === 'professional' ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border dark:border-slate-600 rounded-md">
+                   <Input label="Base (€)" name="baseAmount" type="number" min="0" step="0.01" value={formData.baseAmount} onChange={handleChange} required />
+                   <Input label="IVA (%)" name="vatRate" type="number" min="0" step="0.01" value={formData.vatRate} onChange={handleChange} required />
+                   <Input label="IRPF (%)" name="irpfRate" type="number" min="0" step="0.01" value={formData.irpfRate} onChange={handleChange} required />
+                </div>
+            ) : (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border dark:border-slate-600 rounded-md">
+                    <Input label="Importe Neto (€)" name="amount" type="number" min="0" step="0.01" value={formData.amount} onChange={handleChange} required />
+                     <Select label="Categoría" name="categoryId" value={formData.categoryId} onChange={handleChange}>
+                        {personalCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                     </Select>
+                 </div>
+            )}
+            
+            <Select label="Ubicación del dinero" name="location" value={formData.location} onChange={handleChange}>
+                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
+            </Select>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select label="Frecuencia" name="frequency" value={formData.frequency} onChange={handleChange}>
+                    {Object.entries({'one-off': 'Puntual', 'weekly': 'Semanal', 'monthly': 'Mensual', 'quarterly': 'Trimestral', 'yearly': 'Anual'}).map(([key, label]) => 
+                        <option key={key} value={key}>{label}</option>
+                    )}
+                </Select>
+                <DatePickerInput 
+                    label={formData.frequency === 'one-off' ? "Fecha" : "Fecha de Inicio"} 
+                    selectedDate={formData.startDate} 
+                    onDateChange={(d) => setFormData(p => ({...p, startDate: d.toISOString()}))} 
+                    required 
+                />
+            </div>
+            
+             {formData.frequency !== 'one-off' && (
+                <div className="space-y-4">
+                    <Switch label="Tiene fecha de fin" checked={hasEndDate} onChange={setHasEndDate} />
+                     <AnimatePresence>
+                        {hasEndDate && (
+                             <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <DatePickerInput 
+                                    label="Fecha de Fin"
+                                    selectedDate={formData.endDate}
+                                    onDateChange={(d) => setFormData(p => ({...p, endDate: d.toISOString()}))}
+                                    required={hasEndDate}
+                                />
+                             </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button type="submit">{transactionToEdit ? 'Guardar Cambios' : 'Añadir'}</Button>
             </div>
         </form>
     );

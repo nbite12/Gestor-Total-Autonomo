@@ -142,38 +142,23 @@ export interface SavingsGoal {
 
 export type PotentialFrequency = 'one-off' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
-export interface PotentialIncome {
-    id: string;
-    concept: string;
-    // DEPRECATED - For backward compatibility
-    type?: 'monthly' | 'one-off';
-    date?: string; // ISO string, for one-off type
-    // NEW FIELDS
-    frequency: PotentialFrequency;
-    startDate: string; // For recurring, it's the first occurrence. For one-off, it's the date.
-    endDate?: string;
-    lastGeneratedDate?: string;
-    source: MoneySource;
-    location: MoneyLocation;
-    amount?: number;
-    baseAmount?: number;
-    vatRate?: number;
-    irpfRate?: number;
-}
-
-export interface PotentialExpense {
+export interface ScheduledTransaction {
   id: string;
   concept: string;
-  // DEPRECATED - For backward compatibility
-  type?: 'monthly' | 'one-off';
-  date?: string; // ISO string, for one-off type
-  // NEW FIELDS
+  scope: 'professional' | 'personal';
+  type: 'income' | 'expense';
   frequency: PotentialFrequency;
-  startDate: string;
-  endDate?: string;
-  lastGeneratedDate?: string;
-  amount: number;
-  categoryId: string;
+  startDate: string; // ISO
+  endDate?: string; // ISO
+  lastGeneratedDate?: string; // ISO
+  // Professional
+  baseAmount?: number;
+  vatRate?: number;
+  irpfRate?: number;
+  location?: MoneyLocation;
+  // Personal
+  amount?: number;
+  categoryId?: string;
 }
 
 export interface UserSettings {
@@ -204,9 +189,11 @@ export interface AppData {
   personalMovements: PersonalMovement[];
   transfers: Transfer[];
   savingsGoals: SavingsGoal[];
-  potentialIncomes: PotentialIncome[];
-  potentialExpenses: PotentialExpense[];
+  scheduledTransactions: ScheduledTransaction[];
   professionalCategories: Category[];
   personalCategories: Category[];
   settings: UserSettings;
+  // Deprecated, for migration purposes
+  potentialIncomes?: any[];
+  potentialExpenses?: any[];
 }

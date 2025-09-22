@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, createContext, useRef } from 'react';
-import { AppView, Theme, AppData } from './types';
+import { AppView, Theme, AppData, ScheduledTransaction, PotentialFrequency, MoneySource, MoneyLocation } from './types';
 import { Icon, Button } from './components/ui';
 import ProfessionalView from './components/ProfessionalView';
 import PersonalView from './components/PersonalView';
@@ -38,7 +38,7 @@ const AppContainer: React.FC = () => {
     const initialData: AppData = useMemo(() => ({
         incomes: [], expenses: [], personalMovements: [], transfers: [],
         investmentGoods: [],
-        savingsGoals: [], potentialIncomes: [], potentialExpenses: [],
+        savingsGoals: [], scheduledTransactions: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
         settings: {
@@ -80,24 +80,75 @@ const AppContainer: React.FC = () => {
             try {
                 setIsDataLoading(true);
                 const remoteData = await api<AppData>('/data'); 
-                const hydratedData = {
+                const hydratedData: AppData = {
                     ...initialData,
                     ...remoteData,
                     settings: {
                         ...initialData.settings,
                         ...(remoteData.settings || {}),
                     },
+                    scheduledTransactions: remoteData.scheduledTransactions || [],
                 };
+                
+                let dataWasMigrated = false;
+                // --- ONE-TIME DATA MIGRATION ---
+                if (remoteData.potentialIncomes || remoteData.potentialExpenses) {
+                    const newScheduledTransactions: ScheduledTransaction[] = [...(hydratedData.scheduledTransactions || [])];
 
-                const automationResult = runRecurringTransactionsAutomation(hydratedData);
-                if (automationResult.hasChanged) {
-                    setDataState(automationResult.updatedData);
-                    // Save the automated changes back to the server in the background
-                    api('/data', { method: 'POST', body: automationResult.updatedData })
-                        .catch(err => console.error("Failed to save automated data changes:", err));
-                } else {
-                    setDataState(hydratedData);
+                    (remoteData.potentialIncomes || []).forEach((pi: any) => {
+                        const isProfessional = pi.source === MoneySource.AUTONOMO;
+                        newScheduledTransactions.push({
+                            id: pi.id || `mig-pi-${Date.now()}`,
+                            concept: pi.concept,
+                            scope: isProfessional ? 'professional' : 'personal',
+                            type: 'income',
+                            frequency: pi.frequency || (pi.type === 'monthly' ? 'monthly' : 'one-off'),
+                            startDate: pi.startDate || pi.date,
+                            endDate: pi.endDate,
+                            lastGeneratedDate: pi.lastGeneratedDate,
+                            baseAmount: isProfessional ? pi.baseAmount : undefined,
+                            vatRate: isProfessional ? pi.vatRate : undefined,
+                            irpfRate: isProfessional ? pi.irpfRate : undefined,
+                            amount: !isProfessional ? pi.amount : undefined,
+                            location: pi.location || (isProfessional ? MoneyLocation.PRO_BANK : MoneyLocation.PERS_BANK),
+                        });
+                    });
+
+                    (remoteData.potentialExpenses || []).forEach((pe: any) => {
+                        newScheduledTransactions.push({
+                            id: pe.id || `mig-pe-${Date.now()}`,
+                            concept: pe.concept,
+                            scope: 'personal',
+                            type: 'expense',
+                            frequency: pe.frequency || (pe.type === 'monthly' ? 'monthly' : 'one-off'),
+                            startDate: pe.startDate || pe.date,
+                            endDate: pe.endDate,
+                            lastGeneratedDate: pe.lastGeneratedDate,
+                            amount: pe.amount,
+                            categoryId: pe.categoryId,
+                            location: MoneyLocation.PERS_BANK,
+                        });
+                    });
+                    
+                    hydratedData.scheduledTransactions = newScheduledTransactions;
+                    delete hydratedData.potentialIncomes;
+                    delete hydratedData.potentialExpenses;
+                    dataWasMigrated = true;
                 }
+                
+                // --- AUTOMATION & SAVING ---
+                const automationResult = runRecurringTransactionsAutomation(hydratedData);
+                const finalData = automationResult.updatedData;
+
+                if (automationResult.hasChanged || dataWasMigrated) {
+                    setDataState(finalData);
+                    // Save changes back to the server in the background
+                    api('/data', { method: 'POST', body: finalData })
+                        .catch(err => console.error("Failed to save automated/migrated data changes:", err));
+                } else {
+                    setDataState(finalData);
+                }
+
 
                 setIsPrivacyMode(hydratedData.settings.defaultPrivacyMode);
                 
@@ -279,7 +330,7 @@ const AppContainer: React.FC = () => {
                     </div>
                 </header>
                 
-                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-24">
+                <main className="flex-grow container mx-auto p-4 sm:p-6 lg:p-8 pb-32">
                     {renderView()}
                 </main>
 

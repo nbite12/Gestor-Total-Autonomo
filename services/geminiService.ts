@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification, PotentialIncome, MoneySource, PersonalMovement, Transfer, SavingsGoal, PotentialExpense } from '../types';
+// FIX: Removed PotentialIncome and PotentialExpense, added ScheduledTransaction to align with current data model.
+import { Income, Expense, InvestmentGood, Category, AppData, MoneyLocation, TransferJustification, MoneySource, PersonalMovement, Transfer, SavingsGoal, ScheduledTransaction } from '../types';
 
 // Extend the window interface for SpeechRecognition
 declare global {
@@ -312,7 +313,8 @@ const calculateBalances = (appData: AppData): { [key in MoneyLocation]: number }
 }
 
 const summarizeDataForAI = (appData: AppData): string => {
-    const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, potentialIncomes, potentialExpenses, personalCategories } = appData;
+    // FIX: Use scheduledTransactions instead of deprecated potentialIncomes/potentialExpenses
+    const { settings, incomes, expenses, investmentGoods, personalMovements, transfers, savingsGoals, scheduledTransactions, personalCategories } = appData;
 
     // --- NET CAPITAL SUMMARY ---
     const allBalances = calculateBalances(appData);
@@ -422,34 +424,46 @@ const summarizeDataForAI = (appData: AppData): string => {
         })),
     };
 
-    const getNetPotentialIncome = (pi: PotentialIncome): number => {
-        if (pi.source === MoneySource.AUTONOMO) {
-            const base = pi.baseAmount || 0;
-            const vat = base * (pi.vatRate || 0) / 100;
-            const irpf = base * (pi.irpfRate || 0) / 100;
+    const getNetScheduledIncomeAmount = (st: ScheduledTransaction): number => {
+        if (st.scope === 'professional') {
+            const base = st.baseAmount || 0;
+            const vat = base * (st.vatRate || 0) / 100;
+            const irpf = base * (st.irpfRate || 0) / 100;
             return base + vat - irpf;
         }
-        return pi.amount || 0;
+        return st.amount || 0;
     };
 
+    const getNetScheduledExpenseAmount = (st: ScheduledTransaction): number => {
+        if (st.scope === 'professional') {
+            const base = st.baseAmount || 0;
+            const vat = base * (st.vatRate || 0) / 100;
+            return base + vat;
+        }
+        return st.amount || 0;
+    };
+
+    const scheduledIncomes = (scheduledTransactions || []).filter(st => st.type === 'income');
+    const scheduledExpenses = (scheduledTransactions || []).filter(st => st.type === 'expense');
+
     const future_projections_summary = {
-        potential_monthly_incomes: potentialIncomes.filter(pi => pi.frequency === 'monthly').map(pi => ({
-            concept: pi.concept,
-            net_amount: Math.round(getNetPotentialIncome(pi))
+        potential_monthly_incomes: scheduledIncomes.filter(st => st.frequency === 'monthly').map(st => ({
+            concept: st.concept,
+            net_amount: Math.round(getNetScheduledIncomeAmount(st))
         })),
-        potential_one_off_incomes: potentialIncomes.filter(pi => pi.frequency === 'one-off').map(pi => ({
-            concept: pi.concept,
-            net_amount: Math.round(getNetPotentialIncome(pi)),
-            date: pi.startDate?.split('T')[0]
+        potential_one_off_incomes: scheduledIncomes.filter(st => st.frequency === 'one-off').map(st => ({
+            concept: st.concept,
+            net_amount: Math.round(getNetScheduledIncomeAmount(st)),
+            date: st.startDate?.split('T')[0]
         })),
-        potential_monthly_expenses: potentialExpenses.filter(pe => pe.frequency === 'monthly').map(pe => ({
-            concept: pe.concept,
-            amount: pe.amount
+        potential_monthly_expenses: scheduledExpenses.filter(st => st.frequency === 'monthly').map(st => ({
+            concept: st.concept,
+            amount: Math.round(getNetScheduledExpenseAmount(st))
         })),
-        potential_one_off_expenses: potentialExpenses.filter(pe => pe.frequency === 'one-off').map(pe => ({
-            concept: pe.concept,
-            amount: pe.amount,
-            date: pe.startDate?.split('T')[0]
+        potential_one_off_expenses: scheduledExpenses.filter(st => st.frequency === 'one-off').map(st => ({
+            concept: st.concept,
+            amount: Math.round(getNetScheduledExpenseAmount(st)),
+            date: st.startDate?.split('T')[0]
         }))
     };
     

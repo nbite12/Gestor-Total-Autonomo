@@ -3,13 +3,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { icons as lucideIcons } from 'lucide-react';
 
 // --- Icon Component (usando Lucide) ---
-export const Icon = ({ name, className = 'w-6 h-6' }) => {
+// FIX: Add ...props to allow passing additional attributes like 'title'
+export const Icon = ({ name, className = 'w-6 h-6', ...props }: { name: string, className?: string, [key: string]: any }) => {
   const LucideIcon = lucideIcons[name];
   if (!LucideIcon) { 
     console.warn(`Icon "${name}" not found.`);
     return null; 
   }
-  return <LucideIcon className={className} strokeWidth={1.5} />;
+  return <LucideIcon className={className} strokeWidth={1.5} {...props} />;
 };
 
 
