@@ -10,6 +10,7 @@ import { IncomeForm, ExpenseForm, InvestmentGoodForm } from './TransactionForms'
 import { AiModal } from './AiModal';
 import { UnsupportedModelsModal } from './ui';
 import { SegmentedControl } from './SegmentedControl';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Type definitions ---
 type ProViewTab = 'analisis' | 'libros' | 'pdf';
@@ -389,6 +390,7 @@ const UnifiedExpenseBook: React.FC<{
                         const icon = isRefund ? 'Receipt' : (isExpense ? 'TrendingDown' : 'Package');
                         const iconBg = isRefund ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : (isExpense ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200');
                         const amountColor = isRefund ? 'text-green-500' : 'text-red-500';
+                        const displayAmount = isRefund ? Math.abs(total) : -Math.abs(total);
 
                         return (
                              <div key={`${item.itemType}-${item.id}`} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!item.isPaid ? 'opacity-60 italic' : ''}`}>
@@ -404,7 +406,7 @@ const UnifiedExpenseBook: React.FC<{
                                 <div className="flex items-center gap-4 w-full basis-auto justify-end">
                                     <div className="text-right">
                                         <p className={`font-semibold break-words ${amountColor}`}>
-                                            {formatCurrency(Math.abs(total))}
+                                            {formatCurrency(displayAmount)}
                                         </p>
                                         {!item.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
                                     </div>
@@ -450,7 +452,7 @@ const AnalisisFiscalView: React.FC = () => {
     const { data, formatCurrency } = context;
     const { incomes, expenses, investmentGoods, settings } = data;
 
-    const [isModel130BreakdownOpen, setIsModel130BreakdownOpen] = useState(false);
+    const [isModel130FormulaVisible, setIsModel130FormulaVisible] = useState(false);
     const [period, setPeriod] = useState<{ startDate: Date; endDate: Date }>(() => {
         const now = new Date();
         const year = now.getFullYear();
@@ -631,7 +633,38 @@ const AnalisisFiscalView: React.FC = () => {
                 <h3 className="text-xl font-bold mb-4">Liquidaciones del Periodo ({periodQuarter}T {periodYear})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     <Card className="p-6"><ModelCardHeader model="303 (IVA)" tutorialLink="http://www.youtube.com/watch?v=N7IdGTRpe8o" link="https://sede.agenciatributaria.gob.es/Sede/iva/presentar-declaracion-iva-modelo-303/formas-presentacion-modelo-303.html" tooltip="Declaración trimestral del IVA." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="IVA Repercutido (Nacional)" value={fiscalCalculations.model303.ivaRepercutidoNacional} color="green" /><ModelRow label="IVA Repercutido (Intracom.)" value={fiscalCalculations.model303.ivaRepercutidoIntracomunitario} color="green" /><ModelRow label="IVA Soportado (Deducible)" value={fiscalCalculations.model303.ivaSoportadoDeducible} color="red" negative /><ModelRow label="IVA Soportado (Intracom.)" value={fiscalCalculations.model303.ivaSoportadoIntracomunitario} color="red" negative /><ModelResult label="Resultado IVA" value={fiscalCalculations.model303.result} resultText={v => v >= 0 ? 'A Pagar' : 'A Compensar'} /></div><StatusFooter status={quarterlyStatus} /></Card>
-                    <Card className="p-6"><ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral sobre el rendimiento neto acumulado." /><div className="mt-4 space-y-2 text-sm"><ModelRow label="Rendimiento Neto (Acum.)" value={fiscalCalculations.model130.netProfitYTD} /><ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} /><Button variant="ghost" size="sm" className="w-full mt-2" onClick={() => setIsModel130BreakdownOpen(true)}>Ver desglose</Button></div><StatusFooter status={quarterlyStatus} /></Card>
+                    <Card className="p-6">
+                        <ModelCardHeader model="130 (IRPF)" tutorialLink="http://www.youtube.com/watch?v=UHABkojAhHE" link="https://sede.agenciatributaria.gob.es/Sede/ayuda/consultas-informaticas/presentacion-declaraciones-ayuda-tecnica/modelo-130.html" tooltip="Pago a cuenta trimestral sobre el rendimiento neto acumulado." />
+                        <div className="mt-4 space-y-2 text-sm">
+                            <ModelResult label="Resultado IRPF" value={fiscalCalculations.model130.result} resultText={() => 'A Pagar'} />
+                             <Button variant="ghost" size="sm" className="w-full mt-2" onClick={() => setIsModel130FormulaVisible(p => !p)}>
+                                <Icon name={isModel130FormulaVisible ? "ChevronUp" : "ChevronDown"} className="w-4 h-4 mr-1" />
+                                {isModel130FormulaVisible ? 'Ocultar' : 'Ver'} cálculo
+                            </Button>
+                            <AnimatePresence>
+                            {isModel130FormulaVisible && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="mt-2 text-xs space-y-1 overflow-hidden bg-black/5 dark:bg-white/5 p-2 rounded-md"
+                                >
+                                    <div className="flex justify-between"><span>Ingresos Acumulados:</span> <span>{formatCurrency(fiscalCalculations.model130.grossYTD)}</span></div>
+                                    <div className="flex justify-between"><span>Gastos Deducibles Acumulados:</span> <span>-{formatCurrency(fiscalCalculations.model130.deductibleExpensesYTD)}</span></div>
+                                    <div className="border-t dark:border-slate-600 my-1"/>
+                                    <div className="flex justify-between font-semibold"><span>= Rendimiento Neto:</span> <span>{formatCurrency(fiscalCalculations.model130.netProfitYTD)}</span></div>
+                                    <div className="flex justify-between"><span>x 20% Pago a Cuenta:</span> <span>{formatCurrency(fiscalCalculations.model130.quoteYTD)}</span></div>
+                                    <div className="border-t dark:border-slate-600 my-1"/>
+                                    <div className="flex justify-between"><span>- Retenciones Soportadas:</span> <span>-{formatCurrency(fiscalCalculations.model130.retencionesSoportadasYTD)}</span></div>
+                                    <div className="flex justify-between"><span>- Pagos Trimestres Anteriores:</span> <span>-{formatCurrency(fiscalCalculations.model130.pagosAnteriores130)}</span></div>
+                                    <div className="border-t-2 dark:border-slate-500 my-1"/>
+                                    <div className="flex justify-between font-bold text-base"><span>= Total a Ingresar:</span> <span>{formatCurrency(fiscalCalculations.model130.result)}</span></div>
+                                </motion.div>
+                            )}
+                            </AnimatePresence>
+                        </div>
+                        <StatusFooter status={quarterlyStatus} />
+                    </Card>
                     {settings.hiresProfessionals && <Card className="p-6"><ModelCardHeader model="111 (Retenciones Prof.)" tutorialLink="http://www.youtube.com/watch?v=UDoDQgFHNu4" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH01.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en facturas de otros profesionales." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model111} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
                     {settings.rentsOffice && <Card className="p-6"><ModelCardHeader model="115 (Retenciones Alq.)" tutorialLink="http://www.youtube.com/watch?v=fMfRZo2DvH0" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GH02.shtml" tooltip="Ingreso trimestral de las retenciones de IRPF practicadas en la factura del alquiler de tu local u oficina." /><div className="mt-4 space-y-2 text-sm"><ModelResult label="Total a Ingresar" value={fiscalCalculations.model115} resultText={() => 'A Pagar'} /></div><StatusFooter status={quarterlyStatus} /></Card>}
                 </div>
@@ -651,10 +684,6 @@ const AnalisisFiscalView: React.FC = () => {
                 </div>
                 <Card className="p-6 mt-6"><ModelCardHeader model="347 (Operaciones con Terceros)" tutorialLink="http://www.youtube.com/watch?v=2rsiDQPOiQk" link="https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI27.shtml" tooltip="Declaración informativa anual de clientes y proveedores con los que has superado 3.005,06€ de operaciones." /><div className="mt-4">{fiscalCalculations.model347.length > 0 ? (<ul className="space-y-2 text-sm max-h-60 overflow-y-auto pr-2">{fiscalCalculations.model347.map(op => (<li key={op.nif} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-700 rounded-md"><div><p className="font-semibold">{op.name}</p><p className="text-xs text-slate-500">{op.nif}</p></div><p className="font-bold">{formatCurrency(op.total)}</p></li>))}</ul>) : (<p className="text-center text-slate-500 py-4">No se han detectado operaciones superiores a 3.005,06€ con ningún tercero este año.</p>)}</div><StatusFooter status={annualStatus347} customText={`para la declaración del año ${rentaYear}`}/></Card>
             </section>
-
-             <Modal isOpen={isModel130BreakdownOpen} onClose={() => setIsModel130BreakdownOpen(false)} title={`Desglose Modelo 130 - ${periodQuarter}T ${periodYear}`}>
-                <Model130BreakdownModal breakdown={fiscalCalculations.model130} />
-            </Modal>
         </div>
     );
 };
@@ -692,26 +721,6 @@ const StatusFooter: React.FC<{status: {isOpen: boolean, text: string}, customTex
         {status.text} {customText}
     </div>
 );
-const Model130BreakdownModal: React.FC<{ breakdown: any }> = ({ breakdown }) => {
-    const { formatCurrency } = useContext(AppContext)!;
-    return (
-        <div className="space-y-4 text-sm">
-            <p>El Modelo 130 es un pago a cuenta del IRPF que se calcula sobre el rendimiento neto acumulado durante el año.</p>
-            <div className="space-y-2 rounded-lg bg-black/5 dark:bg-white/5 p-4">
-                <ModelRow label="Ingresos computables (Acumulado)" value={breakdown.grossYTD} color="green" />
-                <ModelRow label="Gastos deducibles (Acumulado)" value={breakdown.deductibleExpensesYTD} color="red" negative />
-                <div className="border-t dark:border-slate-600 my-2" />
-                <ModelRow label="Rendimiento Neto Previo (Acumulado)" value={breakdown.netProfitYTD} />
-                <div className="border-t dark:border-slate-600 my-2" />
-                <ModelRow label="20% sobre Rendimiento Neto" value={breakdown.quoteYTD} />
-                <ModelRow label="Retenciones soportadas (Acumulado)" value={breakdown.retencionesSoportadasYTD} color="green" negative />
-                <ModelRow label="Pagos de trimestres anteriores" value={breakdown.pagosAnteriores130} color="green" negative />
-                <div className="border-t-2 dark:border-slate-500 my-2" />
-                <ModelResult label="Total a Ingresar" value={breakdown.result} resultText={() => ''} />
-            </div>
-        </div>
-    );
-};
 
 const GenerarPDFsView: React.FC = () => {
     const { data } = useContext(AppContext)!;

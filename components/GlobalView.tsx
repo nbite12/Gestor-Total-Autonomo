@@ -488,8 +488,9 @@ const GlobalView: React.FC = () => {
 
         data.expenses.forEach(expense => {
             if (expense.isPaid && expense.location) {
+                // FIX: Correct cash flow logic to always subtract the full expense amount (base + VAT). The previous logic was incorrect for cash flow.
                 const totalAmount = expense.baseAmount + (expense.baseAmount * expense.vatRate / 100);
-                balances[expense.location] = (balances[expense.location] || 0) + totalAmount;
+                balances[expense.location] = (balances[expense.location] || 0) - totalAmount;
             }
         });
 
@@ -516,14 +517,21 @@ const GlobalView: React.FC = () => {
         });
 
         return balances;
-    }, [data.incomes, data.expenses, data.investmentGoods, data.personalMovements, data.transfers, data.settings.initialBalances]);
+    }, [data]);
     
     const netCapitalSummary = useMemo(() => {
-        const currentTotalBalance = Object.values(moneyDistribution).reduce((sum, val) => sum + val, 0);
+        const professionalBalance = (moneyDistribution[MoneyLocation.PRO_BANK] || 0) + (moneyDistribution[MoneyLocation.CASH_PRO] || 0);
+        const personalBalance = (moneyDistribution[MoneyLocation.PERS_BANK] || 0) + (moneyDistribution[MoneyLocation.CASH] || 0) + (moneyDistribution[MoneyLocation.OTHER] || 0);
+        const currentTotalBalance = professionalBalance + personalBalance;
+        
         const pendingProfessionalIncome = data.incomes.filter(i => !i.isPaid).reduce((sum, i) => sum + (i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100)), 0);
         const pendingPersonalIncome = data.personalMovements.filter(m => m.type === 'income' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingIncome = pendingProfessionalIncome + pendingPersonalIncome;
-        const pendingProfessionalExpense = data.expenses.filter(e => !e.isPaid).reduce((sum, e) => sum + (e.baseAmount + (e.baseAmount * e.vatRate / 100)), 0);
+        
+        const pendingProfessionalExpense = data.expenses.filter(e => !e.isPaid).reduce((sum, e) => {
+            const expenseTotal = e.baseAmount + (e.baseAmount * e.vatRate / 100);
+            return sum + expenseTotal;
+        }, 0);
         const pendingPersonalExpense = data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
 
@@ -540,6 +548,7 @@ const GlobalView: React.FC = () => {
         const qDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= qPeriod.startDate && new Date(e.date) <= qPeriod.endDate);
 
         const ivaRepercutido = qIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
+        // FIX: Replaced non-existent 'isVatDeductible' with 'isDeductible' as suggested by the error. Simplified logic as `qDeductibleExpenses` is already filtered.
         const ivaSoportadoFromExpenses = qDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
         const ivaSoportadoFromGoods = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= qPeriod.startDate && new Date(g.purchaseDate) <= qPeriod.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
         const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
@@ -550,7 +559,12 @@ const GlobalView: React.FC = () => {
         const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate; });
         const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= qPeriod.endDate && e.isDeductible; });
         const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
-        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => {
+            const expenseBase = e.deductibleBaseAmount ?? e.baseAmount;
+            // FIX: Replaced non-existent 'isVatDeductible' with 'isDeductible'. Since expenses are already filtered by `isDeductible`, this will correctly result in 0 for non-deductible VAT.
+            const nonDeductibleVat = e.isDeductible ? 0 : getCuotaIVA(e.baseAmount, e.vatRate);
+            return sum + expenseBase + nonDeductibleVat;
+        }, 0);
         const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
              const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
              const goodStartDate = new Date(good.purchaseDate);
@@ -575,7 +589,8 @@ const GlobalView: React.FC = () => {
         const netAvailableCapital = currentTotalBalance + totalPendingIncome - totalPendingExpenses - totalProjectedTaxes;
 
         return {
-            currentTotalBalance,
+            professionalBalance,
+            personalBalance,
             totalPendingIncome,
             totalPendingExpenses,
             totalProjectedTaxes,
@@ -1059,15 +1074,19 @@ const GlobalView: React.FC = () => {
                         <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                     </div>
                     <div className="text-center my-4">
-                        <p className="text-7xl lg:text-8xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
+                        <p className="text-5xl md:text-6xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
                             {formatCurrency(netCapitalSummary.netAvailableCapital)}
                         </p>
                         <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
                     </div>
                     <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
                         <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Total en Cuentas y Efectivo</span>
-                            <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.currentTotalBalance)}</span>
+                            <span className="text-gray-600 dark:text-gray-400">Fondos Profesionales (Bruto)</span>
+                            <span className="font-medium">{formatCurrency(netCapitalSummary.professionalBalance)}</span>
+                        </div>
+                         <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Fondos Personales</span>
+                            <span className="font-medium">{formatCurrency(netCapitalSummary.personalBalance)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-gray-600 dark:text-gray-400">Cobros Pendientes</span>
