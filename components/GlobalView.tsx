@@ -345,19 +345,15 @@ const GlobalView: React.FC = () => {
         return { startDate: start, endDate: end };
     });
     
-    const [includeSavings, setIncludeSavings] = useState(true);
-    const [includeScheduled, setIncludeScheduled] = useState(true);
-    const [includePendingTransactions, setIncludePendingTransactions] = useState(false);
-    const [showProjection, setShowProjection] = useState(false);
     const [isTaxesBreakdownOpen, setIsTaxesBreakdownOpen] = useState(false);
 
-    const [includeNetCapitalItems, setIncludeNetCapitalItems] = useState({
+    const includeNetCapitalItems = settings.netCapitalToggles || {
         pendingIncome: true,
         pendingExpenses: true,
         taxes: true,
         scheduledIncome: true,
         scheduledExpenses: true,
-    });
+    };
 
 
     const [isScheduledModalOpen, setIsScheduledModalOpen] = useState(false);
@@ -394,7 +390,19 @@ const GlobalView: React.FC = () => {
     };
 
     const handleToggleNetCapitalItem = (item: keyof typeof includeNetCapitalItems) => {
-        setIncludeNetCapitalItems(prev => ({ ...prev, [item]: !prev[item] }));
+        saveData(prev => {
+            const currentToggles = prev.settings.netCapitalToggles || includeNetCapitalItems;
+            return {
+                ...prev,
+                settings: {
+                    ...prev.settings,
+                    netCapitalToggles: {
+                        ...currentToggles,
+                        [item]: !currentToggles[item],
+                    }
+                }
+            }
+        }, "Preferencia de vista guardada.");
     };
 
 
@@ -896,64 +904,112 @@ const GlobalView: React.FC = () => {
             
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             
-            {isProfessionalModeEnabled && (
-                <Card className="p-6">
-                    <div className="flex justify-between items-start">
-                        <h3 className="text-xl font-semibold">Capital Neto Disponible</h3>
-                        <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
-                    </div>
-                    <div className="text-center my-4">
-                        <p className="text-5xl md:text-6xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
-                            {formatCurrency(netCapitalSummary.netAvailableCapital)}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
-                    </div>
-                    <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
-                        <div className="flex justify-between items-center">
-                            <span className="text-gray-600 dark:text-gray-400">Fondos (Bruto)</span>
-                            <span className="font-medium">{formatCurrency(netCapitalSummary.professionalBalance + netCapitalSummary.personalBalance)}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {isProfessionalModeEnabled && (
+                    <Card className="p-6">
+                        <div className="flex justify-between items-start">
+                            <h3 className="text-xl font-semibold">Capital Neto Disponible</h3>
+                            <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                         </div>
-                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingIncome ? 'opacity-40' : ''}`}>
-                            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Toggle checked={includeNetCapitalItems.pendingIncome} onChange={() => handleToggleNetCapitalItem('pendingIncome')} />
-                                Cobros Pendientes
-                            </span>
-                            <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
+                        <div className="text-center my-4">
+                            <p className="text-5xl md:text-6xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
+                                {formatCurrency(netCapitalSummary.netAvailableCapital)}
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
                         </div>
-                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingExpenses ? 'opacity-40' : ''}`}>
-                             <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Toggle checked={includeNetCapitalItems.pendingExpenses} onChange={() => handleToggleNetCapitalItem('pendingExpenses')} />
-                                Pagos Pendientes
-                            </span>
-                            <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
+                        <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
+                            <div className="flex justify-between items-center">
+                                <span className="text-gray-600 dark:text-gray-400">Fondos (Bruto)</span>
+                                <span className="font-medium">{formatCurrency(netCapitalSummary.professionalBalance + netCapitalSummary.personalBalance)}</span>
+                            </div>
+                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingIncome ? 'opacity-40' : ''}`}>
+                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Toggle checked={includeNetCapitalItems.pendingIncome} onChange={() => handleToggleNetCapitalItem('pendingIncome')} />
+                                    Cobros Pendientes
+                                </span>
+                                <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
+                            </div>
+                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingExpenses ? 'opacity-40' : ''}`}>
+                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Toggle checked={includeNetCapitalItems.pendingExpenses} onChange={() => handleToggleNetCapitalItem('pendingExpenses')} />
+                                    Pagos Pendientes
+                                </span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
+                            </div>
+                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
+                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Toggle checked={includeNetCapitalItems.scheduledIncome} onChange={() => handleToggleNetCapitalItem('scheduledIncome')} />
+                                    Ingresos Programados (Trimestre)
+                                </span>
+                                <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInQuarter)}</span>
+                            </div>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
+                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
+                                    Gastos Programados (Trimestre)
+                                </span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInQuarter)}</span>
+                            </div>
+                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
+                               <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Toggle checked={includeNetCapitalItems.taxes} onChange={() => handleToggleNetCapitalItem('taxes')} />
+                                    Impuestos Trimestrales (Est.)
+                                    <button onClick={() => setIsTaxesBreakdownOpen(true)} className="text-slate-400 hover:text-primary-500">
+                                        <Icon name="Info" className="w-4 h-4" />
+                                    </button>
+                                </span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
+                            </div>
                         </div>
-                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
-                             <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Toggle checked={includeNetCapitalItems.scheduledIncome} onChange={() => handleToggleNetCapitalItem('scheduledIncome')} />
-                                Ingresos Programados (Trimestre)
-                            </span>
-                            <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInQuarter)}</span>
+                    </Card>
+                )}
+                <Card className={`p-6 ${!isProfessionalModeEnabled ? 'lg:col-span-2' : ''}`}>
+                    <h3 className="text-xl font-semibold mb-4">Saldos por Ubicación</h3>
+                    <div className="space-y-3">
+                        {isProfessionalModeEnabled && (
+                            <>
+                                <div className="flex justify-between items-center text-sm">
+                                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                        <Icon name="Landmark" className="w-4 h-4" />
+                                        <span>{MoneyLocation.PRO_BANK}</span>
+                                    </div>
+                                    <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.PRO_BANK] || 0)}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm">
+                                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                        <Icon name="Wallet" className="w-4 h-4" />
+                                        <span>{MoneyLocation.CASH_PRO}</span>
+                                    </div>
+                                    <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.CASH_PRO] || 0)}</span>
+                                </div>
+                                <div className="border-t dark:border-slate-700 my-2 !mt-3 !mb-3" />
+                            </>
+                        )}
+                        <div className="flex justify-between items-center text-sm">
+                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                <Icon name="Landmark" className="w-4 h-4" />
+                                <span>{MoneyLocation.PERS_BANK}</span>
+                            </div>
+                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.PERS_BANK] || 0)}</span>
                         </div>
-                         <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
-                             <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
-                                Gastos Programados (Trimestre)
-                            </span>
-                            <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInQuarter)}</span>
+                        <div className="flex justify-between items-center text-sm">
+                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                <Icon name="Wallet" className="w-4 h-4" />
+                                <span>{MoneyLocation.CASH}</span>
+                            </div>
+                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.CASH] || 0)}</span>
                         </div>
-                        <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
-                           <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                <Toggle checked={includeNetCapitalItems.taxes} onChange={() => handleToggleNetCapitalItem('taxes')} />
-                                Impuestos Trimestrales (Est.)
-                                <button onClick={() => setIsTaxesBreakdownOpen(true)} className="text-slate-400 hover:text-primary-500">
-                                    <Icon name="Info" className="w-4 h-4" />
-                                </button>
-                            </span>
-                            <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
+                        <div className="flex justify-between items-center text-sm">
+                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                <Icon name="Bitcoin" className="w-4 h-4" />
+                                <span>{MoneyLocation.OTHER}</span>
+                            </div>
+                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.OTHER] || 0)}</span>
                         </div>
                     </div>
                 </Card>
-            )}
+            </div>
+
 
             <PeriodSelector onPeriodChange={handlePeriodChange} />
 

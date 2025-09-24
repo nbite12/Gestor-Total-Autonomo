@@ -180,6 +180,13 @@ export interface UserSettings {
       [key in MoneyLocation]?: number;
   };
   hasCompletedOnboarding?: boolean;
+  netCapitalToggles?: {
+      pendingIncome: boolean;
+      pendingExpenses: boolean;
+      taxes: boolean;
+      scheduledIncome: boolean;
+      scheduledExpenses: boolean;
+  };
 }
 
 export interface AppData {

@@ -54,6 +54,13 @@ const AppContainer: React.FC = () => {
             defaultPrivacyMode: false,
             initialBalances: {},
             hasCompletedOnboarding: false,
+            netCapitalToggles: {
+                pendingIncome: true,
+                pendingExpenses: true,
+                taxes: true,
+                scheduledIncome: true,
+                scheduledExpenses: true,
+            },
         },
     }), []);
 
