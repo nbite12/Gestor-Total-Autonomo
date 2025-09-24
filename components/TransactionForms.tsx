@@ -86,7 +86,7 @@ export const DatePickerInput: React.FC<{ label: string; selectedDate: string | u
 
 
 // --- Form Components ---
-export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income> | null; defaultIsPaid?: boolean; }> = ({ onClose, incomeToEdit, defaultIsPaid = true }) => {
+export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<Income> | null; defaultIsPaid?: boolean; fromScheduledId?: string | null; }> = ({ onClose, incomeToEdit, defaultIsPaid = true, fromScheduledId }) => {
   const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
   const [formData, setFormData] = useState<Partial<Income>>({
     id: incomeToEdit?.id || `inc-${Date.now()}`,
@@ -168,12 +168,26 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
         newIncome.paymentDate = newIncome.date;
     }
 
-    saveData(prevData => ({
-      ...prevData,
-      incomes: isEditing
-        ? prevData.incomes.map(i => i.id === incomeToEdit!.id ? newIncome : i)
-        : [...prevData.incomes, newIncome],
-    }), isEditing ? "Ingreso actualizado." : "Ingreso añadido.");
+    saveData(prevData => {
+        const updatedIncomes = isEditing
+            ? prevData.incomes.map(i => i.id === incomeToEdit!.id ? newIncome : i)
+            : [...prevData.incomes, newIncome];
+            
+        let updatedScheduledTransactions = prevData.scheduledTransactions;
+        if (fromScheduledId) {
+            updatedScheduledTransactions = prevData.scheduledTransactions.map(st => 
+                st.id === fromScheduledId 
+                    ? { ...st, lastGeneratedDate: newIncome.date }
+                    : st
+            );
+        }
+
+        return {
+            ...prevData,
+            incomes: updatedIncomes,
+            scheduledTransactions: updatedScheduledTransactions,
+        };
+    }, isEditing ? "Ingreso actualizado." : "Ingreso añadido.");
     onClose();
   };
   
@@ -234,7 +248,7 @@ export const IncomeForm: React.FC<{ onClose: () => void; incomeToEdit?: Partial<
   );
 };
 
-export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; isRefundInitialState?: boolean; }> = ({ onClose, expenseToEdit, defaultIsPaid = true, isRefundInitialState = false }) => {
+export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partial<Expense> | null; defaultIsPaid?: boolean; isRefundInitialState?: boolean; fromScheduledId?: string | null; }> = ({ onClose, expenseToEdit, defaultIsPaid = true, isRefundInitialState = false, fromScheduledId }) => {
     const { data, saveData, isProfessionalModeEnabled } = useContext(AppContext)!;
     
     const [isRefund, setIsRefund] = useState(isRefundInitialState || (expenseToEdit?.baseAmount ? expenseToEdit.baseAmount < 0 : false));
@@ -329,12 +343,26 @@ export const ExpenseForm: React.FC<{ onClose: () => void; expenseToEdit?: Partia
             newExpense.paymentDate = newExpense.date;
         }
 
-        saveData(prevData => ({
-            ...prevData,
-            expenses: isEditing
+        saveData(prevData => {
+            const updatedExpenses = isEditing
                 ? prevData.expenses.map(ex => ex.id === expenseToEdit!.id ? newExpense : ex)
-                : [...prevData.expenses, newExpense],
-        }), isEditing ? "Gasto actualizado." : (isRefund ? "Abono añadido." : "Gasto añadido."));
+                : [...prevData.expenses, newExpense];
+            
+            let updatedScheduledTransactions = prevData.scheduledTransactions;
+            if (fromScheduledId) {
+                updatedScheduledTransactions = prevData.scheduledTransactions.map(st => 
+                    st.id === fromScheduledId 
+                        ? { ...st, lastGeneratedDate: newExpense.date }
+                        : st
+                );
+            }
+
+            return {
+                ...prevData,
+                expenses: updatedExpenses,
+                scheduledTransactions: updatedScheduledTransactions,
+            };
+        }, isEditing ? "Gasto actualizado." : (isRefund ? "Abono añadido." : "Gasto añadido."));
         onClose();
     };
 
@@ -490,7 +518,7 @@ export const InvestmentGoodForm: React.FC<{ onClose: () => void; goodToEdit?: Pa
 };
 
 
-export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Partial<PersonalMovement> | null; defaultIsPaid?: boolean; }> = ({ onClose, movementToEdit, defaultIsPaid = true }) => {
+export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Partial<PersonalMovement> | null; defaultIsPaid?: boolean; fromScheduledId?: string | null; }> = ({ onClose, movementToEdit, defaultIsPaid = true, fromScheduledId }) => {
     const { data, saveData } = useContext(AppContext)!;
     const [formData, setFormData] = useState<Partial<PersonalMovement>>({
         id: movementToEdit?.id || `pm-${Date.now()}`,
@@ -520,12 +548,26 @@ export const MovementForm: React.FC<{ onClose: () => void; movementToEdit?: Part
             newMovement.paymentDate = newMovement.date;
         }
 
-        saveData(prev => ({
-            ...prev,
-            personalMovements: isEditing
+        saveData(prev => {
+            const updatedPersonalMovements = isEditing
                 ? prev.personalMovements.map(m => m.id === movementToEdit!.id ? newMovement : m)
-                : [...prev.personalMovements, newMovement]
-        }), isEditing ? "Movimiento actualizado." : "Movimiento añadido.");
+                : [...prev.personalMovements, newMovement];
+
+            let updatedScheduledTransactions = prev.scheduledTransactions;
+            if (fromScheduledId) {
+                updatedScheduledTransactions = prev.scheduledTransactions.map(st => 
+                    st.id === fromScheduledId 
+                        ? { ...st, lastGeneratedDate: newMovement.date }
+                        : st
+                );
+            }
+
+            return {
+                ...prev,
+                personalMovements: updatedPersonalMovements,
+                scheduledTransactions: updatedScheduledTransactions,
+            };
+        }, isEditing ? "Movimiento actualizado." : "Movimiento añadido.");
         onClose();
     };
 

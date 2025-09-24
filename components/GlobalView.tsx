@@ -17,20 +17,15 @@ const getMonthsInRange = (startDate: Date, endDate: Date): number => {
     return (endYear - startYear) * 12 + (endMonth - startMonth) + 1;
 };
 
-const getMonthsRemaining = (deadline: string): number => {
-    const deadlineDate = new Date(deadline);
-    const now = new Date();
-    
-    // Set to end of the day to include today in calculations
-    deadlineDate.setHours(23, 59, 59, 999);
-    now.setHours(0, 0, 0, 0);
-
-    if (deadlineDate < now) return 0;
-    
-    const months = (deadlineDate.getFullYear() - now.getFullYear()) * 12 + (deadlineDate.getMonth() - now.getMonth());
-    
-    // If deadline is in the same month, we count it as 1 month remaining for contribution.
-    return months <= 0 ? 1 : months;
+const getNextDate = (currentDate: Date, frequency: 'weekly' | 'monthly' | 'quarterly' | 'yearly'): Date => {
+    const next = new Date(currentDate);
+    switch (frequency) {
+        case 'weekly': next.setDate(next.getDate() + 7); break;
+        case 'monthly': next.setMonth(next.getMonth() + 1); break;
+        case 'quarterly': next.setMonth(next.getMonth() + 3); break;
+        case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+    }
+    return next;
 };
 
 const frequencyLabels: { [key in PotentialFrequency]: string } = {
@@ -52,196 +47,6 @@ const formatDateTime = (isoDate: Date) => {
 };
 
 
-// --- Contabilize Modal ---
-const ContabilizeModal: React.FC<{
-    item: Income | Expense | PersonalMovement;
-    onClose: () => void;
-    onSave: (id: string, paymentDate: string, location: MoneyLocation) => void;
-}> = ({ item, onClose, onSave }) => {
-    const [paymentDate, setPaymentDate] = useState(new Date().toISOString());
-    const [location, setLocation] = useState(item.location || MoneyLocation.PRO_BANK);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(item.id, new Date(paymentDate).toISOString(), location);
-        onClose();
-    }
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <p>Contabilizar: <strong>{item.concept}</strong></p>
-            <DatePickerInput 
-                label="Fecha de Pago/Cobro"
-                selectedDate={paymentDate}
-                onDateChange={(d) => setPaymentDate(d.toISOString())}
-                required
-            />
-            <Select
-                label="Ubicación del Dinero"
-                value={location}
-                onChange={(e) => setLocation(e.target.value as MoneyLocation)}
-            >
-                {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-            </Select>
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">Confirmar Pago</Button>
-            </div>
-        </form>
-    )
-};
-
-// --- Periodize Modal ---
-const PeriodizeExpenseModal: React.FC<{
-    expense: Expense;
-    onClose: () => void;
-}> = ({ expense, onClose }) => {
-    const { saveData } = useContext(AppContext)!;
-    const [paymentDate, setPaymentDate] = useState(expense.date);
-    const [location, setLocation] = useState(expense.location || MoneyLocation.PRO_BANK);
-    const [periodStartDate, setPeriodStartDate] = useState(expense.date);
-    const [periodEndDate, setPeriodEndDate] = useState(() => {
-        const date = new Date(expense.date);
-        date.setFullYear(date.getFullYear() + 1);
-        date.setDate(date.getDate() - 1);
-        return date.toISOString();
-    });
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const pStartDate = new Date(periodStartDate);
-        const pEndDate = new Date(periodEndDate);
-
-        if (pEndDate <= pStartDate) {
-            alert("La fecha de fin debe ser posterior a la fecha de inicio.");
-            return;
-        }
-
-        saveData(prev => {
-            const months = getMonthsInRange(pStartDate, pEndDate);
-            if (months <= 0) return prev;
-
-            const monthlyBase = expense.baseAmount / months;
-            
-            const paymentExpense: Expense = {
-                ...expense,
-                id: `exp-pmt-${Date.now()}`,
-                date: new Date(paymentDate).toISOString(),
-                isPaid: true,
-                paymentDate: new Date(paymentDate).toISOString(),
-                location: location,
-                isDeductible: false,
-                concept: `${expense.concept} (Pago Periodificado)`
-            };
-
-            const periodizedExpenses: Expense[] = [];
-            for (let i = 0; i < months; i++) {
-                const monthDate = new Date(pStartDate);
-                monthDate.setMonth(monthDate.getMonth() + i);
-
-                const newMonthlyExpense: Expense = {
-                    ...expense,
-                    id: `exp-prd-${Date.now()}-${i}`,
-                    date: monthDate.toISOString(),
-                    baseAmount: monthlyBase,
-                    isPaid: false, // These are accounting entries, not cash flow
-                    location: undefined,
-                    paymentDate: undefined,
-                    isDeductible: true,
-                    concept: `${expense.concept} (Mes ${i+1}/${months})`,
-                    attachment: undefined, // Attachment stays with payment record
-                };
-                periodizedExpenses.push(newMonthlyExpense);
-            }
-
-            const updatedExpenses = prev.expenses
-                .filter(e => e.id !== expense.id) // Remove original
-                .concat([paymentExpense, ...periodizedExpenses]); // Add new ones
-            
-            return { ...prev, expenses: updatedExpenses };
-        }, "Gasto periodificado correctamente.");
-
-        onClose();
-    };
-
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-             <p>Periodizar: <strong>{expense.concept}</strong></p>
-             <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
-                <legend className="text-sm font-medium px-2">Detalles del Pago Real</legend>
-                 <DatePickerInput 
-                    label="Fecha de Pago"
-                    selectedDate={paymentDate}
-                    onDateChange={(d) => setPaymentDate(d.toISOString())}
-                    required
-                />
-                <Select
-                    label="Pagado Desde"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value as MoneyLocation)}
-                >
-                    {Object.values(MoneyLocation).map(l => <option key={l} value={l}>{l}</option>)}
-                </Select>
-             </fieldset>
-
-             <fieldset className="p-4 border border-slate-300 dark:border-slate-600 rounded-md space-y-4">
-                <legend className="text-sm font-medium px-2">Periodo a Cubrir</legend>
-                 <DatePickerInput 
-                    label="Fecha de Inicio del Gasto"
-                    selectedDate={periodStartDate}
-                    onDateChange={(d) => setPeriodStartDate(d.toISOString())}
-                    required
-                />
-                <DatePickerInput 
-                    label="Fecha de Fin del Gasto"
-                    selectedDate={periodEndDate}
-                    onDateChange={(d) => setPeriodEndDate(d.toISOString())}
-                    required
-                />
-             </fieldset>
-
-             <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-                <Button type="submit">Confirmar y Periodizar</Button>
-            </div>
-        </form>
-    )
-}
-
-// --- Add Pending Transaction Modal ---
-const AddPendingTransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; isProfessionalModeEnabled: boolean; }> = ({ isOpen, onClose, isProfessionalModeEnabled }) => {
-    const [scope, setScope] = useState<'professional' | 'personal'>(isProfessionalModeEnabled ? 'professional' : 'personal');
-    const [type, setType] = useState<'income' | 'expense'>('income');
-  
-    return (
-      <Modal isOpen={isOpen} onClose={onClose} title="Añadir Transacción Pendiente">
-        <div className="flex flex-col space-y-4">
-          {isProfessionalModeEnabled && (
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
-                <Button variant={scope === 'professional' ? 'primary' : 'secondary'} onClick={() => setScope('professional')} className="flex-1">Profesional</Button>
-                <Button variant={scope === 'personal' ? 'primary' : 'secondary'} onClick={() => setScope('personal')} className="flex-1">Personal</Button>
-            </div>
-          )}
-          
-          {scope === 'professional' && (
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-200 dark:bg-slate-700 rounded-lg">
-                <Button variant={type === 'income' ? 'primary' : 'secondary'} onClick={() => setType('income')} className="flex-1">Ingreso / Cobro</Button>
-                <Button variant={type === 'expense' ? 'primary' : 'secondary'} onClick={() => setType('expense')} className="flex-1">Gasto / Pago</Button>
-            </div>
-          )}
-          
-          <div className="pt-2">
-            {scope === 'professional' && type === 'income' && <IncomeForm onClose={onClose} defaultIsPaid={false} />}
-            {scope === 'professional' && type === 'expense' && <ExpenseForm onClose={onClose} defaultIsPaid={false} />}
-            {scope === 'personal' && <MovementForm onClose={onClose} defaultIsPaid={false} />}
-          </div>
-        </div>
-      </Modal>
-    );
-  };
-  
 // --- Add Recorded Transaction Modal ---
 const AddRecordedTransactionModal: React.FC<{
     isOpen: boolean;
@@ -364,18 +169,17 @@ const GlobalView: React.FC = () => {
     const [goalToEdit, setGoalToEdit] = useState<SavingsGoal | null>(null);
     const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
     const [celebrationType, setCelebrationType] = useState<'none' | 'contribution' | 'goalComplete'>('none');
+    const [showProjections, setShowProjections] = useState(false);
 
-
-    // State for pending transaction modals
-    const [itemToContabilize, setItemToContabilize] = useState<Income | Expense | PersonalMovement | null>(null);
-    const [expenseToPeriodize, setExpenseToPeriodize] = useState<Expense | null>(null);
-    const [isAddPendingModalOpen, setIsAddPendingModalOpen] = useState(false);
     const [isAddRecordedModalOpen, setIsAddRecordedModalOpen] = useState(false);
 
-    // State for editing pending transactions
-    const [professionalIncomeToEdit, setProfessionalIncomeToEdit] = useState<Income | null>(null);
-    const [professionalExpenseToEdit, setProfessionalExpenseToEdit] = useState<Expense | null>(null);
-    const [personalMovementToEdit, setPersonalMovementToEdit] = useState<PersonalMovement | null>(null);
+    // FIX: Change state types to allow partial objects for pre-filling forms.
+    // This resolves type errors when creating new transactions from scheduled ones,
+    // as the scheduled transaction doesn't contain all required fields for a full Income/Expense/PersonalMovement.
+    const [professionalIncomeToEdit, setProfessionalIncomeToEdit] = useState<Partial<Income> | null>(null);
+    const [professionalExpenseToEdit, setProfessionalExpenseToEdit] = useState<Partial<Expense> | null>(null);
+    const [personalMovementToEdit, setPersonalMovementToEdit] = useState<Partial<PersonalMovement> | null>(null);
+    const [confirmingScheduledId, setConfirmingScheduledId] = useState<string | null>(null);
     
     const [typeFilters, setTypeFilters] = useState({
         proIncome: true,
@@ -409,8 +213,6 @@ const GlobalView: React.FC = () => {
     const handlePeriodChange = useCallback((startDate: Date, endDate: Date) => setPeriod({ startDate, endDate }), []);
 
     // --- Memoized Calculations ---
-    const monthsInPeriod = useMemo(() => getMonthsInRange(period.startDate, period.endDate), [period]);
-    
     const getNetScheduledAmount = useCallback((st: ScheduledTransaction): number => {
         if (st.scope === 'professional') {
             const base = st.baseAmount || 0;
@@ -528,6 +330,7 @@ const GlobalView: React.FC = () => {
         let scheduledExpenseInQuarter = 0;
 
         scheduledTransactions.forEach(st => {
+            if(st.frequency === 'one-off') return;
             const occurrences = countOccurrences(st.frequency, new Date(st.startDate), st.endDate ? new Date(st.endDate) : undefined, qStartDate, qEndDate);
             const amount = getNetScheduledAmount(st);
             if (st.type === 'income') {
@@ -604,23 +407,7 @@ const GlobalView: React.FC = () => {
 
     }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences]);
 
-    const pendingIncomes = useMemo(() => data.incomes.filter(i => !i.isPaid), [data.incomes]);
-    const pendingExpenses = useMemo(() => data.expenses.filter(e => !e.isPaid), [data.expenses]);
-    const pendingPersonalIncomes = useMemo(() => data.personalMovements.filter(m => m.type === 'income' && !m.isPaid), [data.personalMovements]);
-    const pendingPersonalExpenses = useMemo(() => data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid), [data.personalMovements]);
-
     const unifiedTransactions = useMemo(() => {
-        const getNextDate = (currentDate: Date, frequency: 'weekly' | 'monthly' | 'quarterly' | 'yearly'): Date => {
-            const next = new Date(currentDate);
-            switch (frequency) {
-                case 'weekly': next.setDate(next.getDate() + 7); break;
-                case 'monthly': next.setMonth(next.getMonth() + 1); break;
-                case 'quarterly': next.setMonth(next.getMonth() + 3); break;
-                case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
-            }
-            return next;
-        };
-        
         const typeLabels: { [key: string]: { label: string, color: string } } = {
             proIncome: { label: 'Ingreso Pro.', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
             proExpense: { label: 'Gasto Pro.', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' },
@@ -629,7 +416,7 @@ const GlobalView: React.FC = () => {
             transfer: { label: 'Transferencia', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' },
         };
 
-        const allTransactions = [
+        const allTransactions: any[] = [
             ...(isProfessionalModeEnabled ? incomes.map(i => ({
                 id: `inc-${i.id}`,
                 date: new Date(i.date),
@@ -639,8 +426,6 @@ const GlobalView: React.FC = () => {
                 details: `Cliente: ${i.clientName}`,
                 amount: i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100),
                 isPaid: i.isPaid,
-                autoGenerated: i.autoGenerated,
-                isProjection: false,
                 originalItem: i,
             })) : []),
             ...(isProfessionalModeEnabled ? expenses.map(e => ({
@@ -652,8 +437,6 @@ const GlobalView: React.FC = () => {
                 details: `Proveedor: ${e.providerName}`,
                 amount: -(e.baseAmount + (e.baseAmount * e.vatRate / 100)),
                 isPaid: e.isPaid,
-                autoGenerated: e.autoGenerated,
-                isProjection: false,
                 originalItem: e,
             })) : []),
             ...personalMovements.map(p => ({
@@ -665,8 +448,6 @@ const GlobalView: React.FC = () => {
                 details: `Categoría: ${personalCategories.find(c => c.id === p.categoryId)?.name || '-'}`,
                 amount: p.type === 'income' ? p.amount : -p.amount,
                 isPaid: p.isPaid ?? false,
-                autoGenerated: p.autoGenerated,
-                isProjection: false,
                 originalItem: p,
             })),
             ...transfers.map(t => ({
@@ -678,102 +459,146 @@ const GlobalView: React.FC = () => {
                 details: `${t.fromLocation} -> ${t.toLocation}`,
                 amount: t.amount,
                 isPaid: true,
-                autoGenerated: false,
-                isProjection: false,
                 originalItem: t,
             })),
         ];
 
-        const projectedTransactions: any[] = [];
-        scheduledTransactions.forEach(st => {
-            if (!st.startDate) return;
-
-            let currentDate = new Date(st.startDate);
-            const itemEndDate = st.endDate ? new Date(st.endDate) : null;
+        if (showProjections) {
+            const projections: any[] = [];
             
-            while (currentDate < period.startDate && st.frequency !== 'one-off') {
-                const nextDate = getNextDate(currentDate, st.frequency);
-                if (nextDate <= currentDate) break;
-                currentDate = nextDate;
-            }
+            scheduledTransactions.forEach(st => {
+                // Skip one-off if already generated
+                if (st.frequency === 'one-off' && st.lastGeneratedDate) {
+                    return; 
+                }
 
-            while (currentDate <= period.endDate) {
-                if (itemEndDate && currentDate > itemEndDate) break;
+                let cursorDate;
+                if (st.frequency !== 'one-off' && st.lastGeneratedDate) {
+                    cursorDate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
+                } else {
+                    cursorDate = new Date(st.startDate);
+                }
 
-                const amount = getNetScheduledAmount(st);
-                const typeKey = st.scope === 'professional' ? (st.type === 'income' ? 'proIncome' : 'proExpense') : (st.type === 'income' ? 'persIncome' : 'persExpense');
-                
-                projectedTransactions.push({
-                    id: `proj-${st.id}-${currentDate.getTime()}`,
-                    date: new Date(currentDate),
-                    type: typeKey,
-                    typeLabel: typeLabels[typeKey],
-                    concept: st.concept,
-                    details: `Programado ${frequencyLabels[st.frequency]}`,
-                    amount: st.type === 'income' ? amount : -amount,
-                    isPaid: false,
-                    autoGenerated: false,
-                    isProjection: true,
-                });
+                const futureLimit = new Date();
+                futureLimit.setFullYear(futureLimit.getFullYear() + 5); // safety break
 
-                if (st.frequency === 'one-off') break;
-                const next = getNextDate(currentDate, st.frequency);
-                if (next <= currentDate) break;
-                currentDate = next;
-            }
-        });
+                while (cursorDate <= futureLimit && (!st.endDate || cursorDate <= new Date(st.endDate))) {
+                    if (cursorDate > period.endDate) break;
+
+                    if (cursorDate >= period.startDate) {
+                        const amount = getNetScheduledAmount(st);
+                        const typeKey = st.scope === 'professional' 
+                            ? (st.type === 'income' ? 'proIncome' : 'proExpense') 
+                            : (st.type === 'income' ? 'persIncome' : 'persExpense');
+                        
+                        projections.push({
+                            id: `proj-${st.id}-${cursorDate.toISOString()}`,
+                            date: new Date(cursorDate),
+                            type: typeKey,
+                            typeLabel: typeLabels[typeKey],
+                            concept: st.concept,
+                            details: `Programado (${frequencyLabels[st.frequency]})`,
+                            amount: st.type === 'income' ? amount : -amount,
+                            isPaid: false,
+                            isProjection: true,
+                            originalItem: st,
+                        });
+                    }
+                    
+                    if (st.frequency === 'one-off') break;
+                    
+                    const nextCursor = getNextDate(cursorDate, st.frequency);
+                    if (nextCursor <= cursorDate) break;
+                    cursorDate = nextCursor;
+                }
+            });
+            allTransactions.push(...projections);
+        }
         
-        return [...allTransactions, ...projectedTransactions]
+        return allTransactions
             .filter(t => t.date >= period.startDate && t.date <= period.endDate)
-            .filter(t => {
-                // If it's a projection, it has no 'originalItem', so it always passes this filter.
-                if (t.isProjection) return true;
-                // For actual items, apply the type filter.
-                return typeFilters[t.type as keyof typeof typeFilters];
-            })
+            .filter(t => typeFilters[t.type as keyof typeof typeFilters])
             .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled, scheduledTransactions, getNetScheduledAmount]);
+    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled, showProjections, scheduledTransactions, getNetScheduledAmount]);
+
+    const pastDueScheduled = useMemo(() => {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // Check against the end of today
+
+        return scheduledTransactions
+            .map(st => {
+                if (!st.startDate) return null;
+
+                let nextDueDate: Date;
+                if (st.frequency === 'one-off') {
+                    if (st.lastGeneratedDate) return null; // already generated
+                    nextDueDate = new Date(st.startDate);
+                } else {
+                     if (!st.lastGeneratedDate) {
+                        nextDueDate = new Date(st.startDate);
+                    } else {
+                        let candidate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
+                        if (candidate.getTime() <= new Date(st.lastGeneratedDate).getTime()) {
+                             candidate.setDate(candidate.getDate() + 1);
+                             candidate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
+                        }
+                        nextDueDate = candidate;
+                    }
+                }
+                
+                const isDue = nextDueDate < today;
+                const hasNotEnded = !st.endDate || nextDueDate <= new Date(st.endDate);
+                
+                if (isDue && hasNotEnded) {
+                    return { ...st, dueDate: nextDueDate };
+                }
+                return null;
+            })
+            .filter((item): item is ScheduledTransaction & { dueDate: Date } => item !== null)
+            .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    }, [scheduledTransactions]);
 
 
     // --- Handlers ---
-    const handleSaveContabilizar = (id: string, paymentDate: string, location: MoneyLocation) => {
-        saveData(prev => {
-            const isIncome = prev.incomes.some(i => i.id === id);
-            const isExpense = prev.expenses.some(e => e.id === id);
-            
-            if (isIncome) {
-                return { ...prev, incomes: prev.incomes.map(i => i.id === id ? { ...i, isPaid: true, paymentDate, location } : i) };
-            } else if (isExpense) {
-                return { ...prev, expenses: prev.expenses.map(e => e.id === id ? { ...e, isPaid: true, paymentDate, location } : e) };
-            } else { // Personal Movement
-                return { ...prev, personalMovements: prev.personalMovements.map(m => m.id === id ? { ...m, isPaid: true, paymentDate, location } : m) };
+    const handleConfirmScheduled = (st: ScheduledTransaction & { dueDate: Date }) => {
+        const dueDateISO = st.dueDate.toISOString();
+        const commonData = {
+            concept: st.concept,
+            date: dueDateISO,
+            isPaid: true,
+            paymentDate: dueDateISO,
+            location: st.location,
+        };
+        
+        setConfirmingScheduledId(st.id);
+    
+        if (st.scope === 'professional') {
+            if (st.type === 'income') {
+                setProfessionalIncomeToEdit({
+                    ...commonData,
+                    baseAmount: st.baseAmount,
+                    vatRate: st.vatRate,
+                    irpfRate: st.irpfRate,
+                    clientName: st.concept, // Best guess
+                });
+            } else { // expense
+                setProfessionalExpenseToEdit({
+                    ...commonData,
+                    baseAmount: st.baseAmount,
+                    vatRate: st.vatRate,
+                    providerName: st.concept, // Best guess
+                    categoryId: '', // User must select
+                });
             }
-        }, "Transacción contabilizada.");
-    };
-
-    const handleDeletePending = (id: string, type: 'income' | 'expense' | 'personal_movement') => {
-        if (!window.confirm('¿Estás seguro de que quieres eliminar esta transacción pendiente? Esta acción no se puede deshacer.')) return;
-        saveData(prev => {
-            switch (type) {
-                case 'income':
-                    return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
-                case 'expense':
-                    return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
-                case 'personal_movement':
-                    return { ...prev, personalMovements: prev.personalMovements.filter(pm => pm.id !== id) };
-                default:
-                    return prev;
-            }
-        }, "Transacción pendiente eliminada.");
-    };
-
-    const handleGoalContributionChange = (goalId: string, value: string) => {
-        const amount = parseFloat(value);
-        saveData(prev => ({
-            ...prev,
-            savingsGoals: prev.savingsGoals.map(g => g.id === goalId ? {...g, plannedContribution: isNaN(amount) ? undefined : amount} : g)
-        }), "Aportación de ahorro planificada actualizada.");
+        } else { // personal
+            setPersonalMovementToEdit({
+                ...commonData,
+                amount: st.amount,
+                type: st.type,
+                categoryId: st.categoryId,
+            });
+        }
     };
     
     const handleOpenScheduledModal = (st?: ScheduledTransaction) => {
@@ -793,18 +618,7 @@ const GlobalView: React.FC = () => {
     }
     
     const handleEditUnified = (item: any) => {
-         if (item.isProjection) {
-            // Find the original scheduled transaction to edit it
-            const originalId = item.id.split('-')[1];
-            const originalST = scheduledTransactions.find(st => st.id === originalId);
-            if(originalST) {
-                handleOpenScheduledModal(originalST);
-            }
-            return;
-        }
-
-        const prefixedId = item.id;
-        const [type, ...idParts] = prefixedId.split('-');
+        const [type, ...idParts] = item.id.split('-');
         const id = idParts.join('-');
 
         switch (type) {
@@ -832,38 +646,19 @@ const GlobalView: React.FC = () => {
     };
 
     const handleDeleteUnified = (item: any) => {
-        if (item.isProjection) {
-            if (window.confirm('Esto eliminará la regla de transacción programada que genera esta proyección. ¿Continuar?')) {
-                const originalId = item.id.split('-')[1];
-                handleDeleteScheduled(originalId);
-            }
-            return;
-        }
-
         if (!window.confirm('¿Estás seguro de que quieres eliminar esta transacción?')) return;
         
-        const prefixedId = item.id;
-        const [type, ...idParts] = prefixedId.split('-');
+        const [type, ...idParts] = item.id.split('-');
         const id = idParts.join('-');
-
         let message = "Transacción eliminada.";
 
         saveData(prev => {
             switch (type) {
-                case 'inc':
-                    message = "Ingreso profesional eliminado.";
-                    return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
-                case 'exp':
-                    message = "Gasto profesional eliminado.";
-                    return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
-                case 'pm':
-                    message = "Movimiento personal eliminado.";
-                    return { ...prev, personalMovements: prev.personalMovements.filter(pm => pm.id !== id) };
-                case 'tr':
-                    message = "Transferencia eliminada.";
-                    return { ...prev, transfers: prev.transfers.filter(t => t.id !== id) };
-                default:
-                    return prev;
+                case 'inc': message = "Ingreso profesional eliminado."; return { ...prev, incomes: prev.incomes.filter(i => i.id !== id) };
+                case 'exp': message = "Gasto profesional eliminado."; return { ...prev, expenses: prev.expenses.filter(e => e.id !== id) };
+                case 'pm': message = "Movimiento personal eliminado."; return { ...prev, personalMovements: prev.personalMovements.filter(pm => pm.id !== id) };
+                case 'tr': message = "Transferencia eliminada."; return { ...prev, transfers: prev.transfers.filter(t => t.id !== id) };
+                default: return prev;
             }
         }, message);
     };
@@ -892,7 +687,7 @@ const GlobalView: React.FC = () => {
         <div className="space-y-8">
             <div className="flex items-center gap-3">
                 <Icon name="Globe" className="w-8 h-8 text-primary-500" />
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Proyección</h2>
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Visión Global y Planificación</h2>
             </div>
 
             <div className="flex justify-center">
@@ -904,53 +699,89 @@ const GlobalView: React.FC = () => {
             
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             
+            {pastDueScheduled.length > 0 && (
+                <Card className="p-6 mb-8 border-yellow-500 border-2">
+                    <div className="flex items-center gap-3 mb-4">
+                        <Icon name="AlertTriangle" className="w-8 h-8 text-yellow-500" />
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Acciones Pendientes</h2>
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                        Tienes transacciones programadas que han vencido y necesitan tu confirmación para ser registradas.
+                    </p>
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                        {pastDueScheduled.map(st => (
+                            <div key={`${st.id}-${st.dueDate.toISOString()}`} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-md">
+                                <div className="flex-grow">
+                                    <p className="font-semibold">{st.concept}</p>
+                                    <p className="text-sm text-slate-500">
+                                        Vencimiento: {st.dueDate.toLocaleDateString('es-ES')}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                     <Button size="sm" onClick={() => handleConfirmScheduled(st)}>
+                                        <Icon name="Check" className="w-4 h-4 mr-1"/>
+                                        Registrar
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => handleOpenScheduledModal(st)} title="Editar programación">
+                                        <Icon name="Pencil" className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteScheduled(st.id)} title="Eliminar programación">
+                                        <Icon name="Trash2" className="w-4 h-4 text-red-500" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {isProfessionalModeEnabled && (
                     <Card className="p-6">
                         <div className="flex justify-between items-start">
-                            <h3 className="text-xl font-semibold">Capital Neto Disponible</h3>
+                            <h3 className="text-xl font-semibold">Capital Actual y Proyección</h3>
                             <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
                         </div>
                         <div className="text-center my-4">
                             <p className="text-5xl md:text-6xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
                                 {formatCurrency(netCapitalSummary.netAvailableCapital)}
                             </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Estimación después de obligaciones</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Capital Neto Estimado</p>
                         </div>
-                        <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
+                         <div className="text-sm space-y-2 border-t dark:border-slate-700 pt-4">
                             <div className="flex justify-between items-center">
-                                <span className="text-gray-600 dark:text-gray-400">Fondos (Bruto)</span>
+                                <span className="text-gray-600 dark:text-gray-400">Fondos Actuales (Bruto)</span>
                                 <span className="font-medium">{formatCurrency(netCapitalSummary.professionalBalance + netCapitalSummary.personalBalance)}</span>
                             </div>
-                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingIncome ? 'opacity-40' : ''}`}>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingIncome ? 'opacity-40' : ''}`}>
                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.pendingIncome} onChange={() => handleToggleNetCapitalItem('pendingIncome')} />
                                     Cobros Pendientes
                                 </span>
                                 <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.totalPendingIncome)}</span>
                             </div>
-                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingExpenses ? 'opacity-40' : ''}`}>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.pendingExpenses ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.pendingExpenses} onChange={() => handleToggleNetCapitalItem('pendingExpenses')} />
                                     Pagos Pendientes
                                 </span>
                                 <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalPendingExpenses)}</span>
                             </div>
-                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.scheduledIncome} onChange={() => handleToggleNetCapitalItem('scheduledIncome')} />
-                                    Ingresos Programados (Trimestre)
+                                    Ingresos Programados (recurring)
                                 </span>
                                 <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInQuarter)}</span>
                             </div>
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
-                                    Gastos Programados (Trimestre)
+                                    Gastos Programados (recurring)
                                 </span>
                                 <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInQuarter)}</span>
                             </div>
-                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.taxes} onChange={() => handleToggleNetCapitalItem('taxes')} />
                                     Impuestos Trimestrales (Est.)
@@ -1011,8 +842,6 @@ const GlobalView: React.FC = () => {
             </div>
 
 
-            <PeriodSelector onPeriodChange={handlePeriodChange} />
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Planning Panels */}
                 <Card className="p-6">
@@ -1072,8 +901,14 @@ const GlobalView: React.FC = () => {
             </div>
 
             <Card className="p-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-semibold">Registro Global de Movimientos</h3>
+                <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+                     <div className="flex flex-wrap items-center gap-4">
+                        <h3 className="text-xl font-semibold">Registro Global de Movimientos</h3>
+                        <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-full">
+                            <span className="text-sm font-medium pl-2">Mostrar Proyecciones</span>
+                            <Toggle checked={showProjections} onChange={() => setShowProjections(p => !p)} />
+                        </div>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                         {isProfessionalModeEnabled && (
                             <>
@@ -1086,22 +921,25 @@ const GlobalView: React.FC = () => {
                         <Button size="sm" variant={typeFilters.transfer ? 'primary' : 'secondary'} onClick={() => handleFilterChange('transfer')}>Transferencia</Button>
                     </div>
                 </div>
+                
+                <PeriodSelector onPeriodChange={handlePeriodChange} />
 
                 <div className="overflow-y-auto max-h-[40rem] mt-4">
                     <div className="divide-y divide-slate-200/50 dark:divide-white/10">
                         {unifiedTransactions.map(t => {
-                            const iconName = t.type === 'transfer' ? 'ArrowRightLeft' : t.amount > 0 ? 'TrendingUp' : 'TrendingDown';
+                            const isProjection = t.isProjection;
+                            const iconName = isProjection ? 'Calendar' : t.type === 'transfer' ? 'ArrowRightLeft' : t.amount > 0 ? 'TrendingUp' : 'TrendingDown';
+                             const projectionColor = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+
                             return (
-                                <div key={t.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!t.isPaid ? 'opacity-60 italic' : ''} ${t.isProjection ? 'opacity-60' : ''}`}>
+                                <div key={t.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-3 transition-colors ${!t.isPaid ? 'opacity-60' : ''} ${isProjection ? 'opacity-60 italic' : ''}`}>
                                     <div className="flex items-center gap-4 flex-grow min-w-[200px]">
-                                        <div className={`p-2 rounded-lg ${t.typeLabel.color} flex-shrink-0`}>
+                                        <div className={`p-2 rounded-lg ${isProjection ? projectionColor : t.typeLabel.color} flex-shrink-0`}>
                                             <Icon name={iconName} className="w-5 h-5" />
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <p className="font-semibold">{t.concept}</p>
-                                                {t.autoGenerated && <Icon name="Bot" className="w-4 h-4 text-slate-500" title="Generado automáticamente"/>}
-                                                {t.isProjection && <Icon name="Clock" className="w-4 h-4 text-slate-500" title="Proyección futura"/>}
                                             </div>
                                             <div className="flex items-baseline gap-2 text-sm">
                                                 <p className="text-gray-600 dark:text-gray-400 truncate">{t.details}</p>
@@ -1117,14 +955,19 @@ const GlobalView: React.FC = () => {
                                             }`}>
                                                 {formatCurrency(t.amount)}
                                             </p>
-                                            {!t.isPaid && <span className="text-xs text-yellow-500">Pendiente</span>}
+                                            {!t.isPaid && !isProjection && <span className="text-xs text-yellow-500">Pendiente</span>}
                                         </div>
-                                        <div className="flex items-center">
-                                             {!t.isPaid && !t.isProjection && (
-                                                <Button size="sm" variant="secondary" onClick={() => setItemToContabilize(t.originalItem)}>Contabilizar</Button>
+                                         <div className="flex items-center w-24 justify-end">
+                                            {isProjection ? (
+                                                <Button size="sm" variant="secondary" onClick={() => handleConfirmScheduled(t.originalItem)} title="Registrar">
+                                                    <Icon name="PlusCircle" className="w-4 h-4 mr-1" /> Registrar
+                                                </Button>
+                                            ) : (
+                                                <>
+                                                    <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.originalItem)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.originalItem)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                                </>
                                             )}
-                                            <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
-                                            <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                         </div>
                                     </div>
                                 </div>
@@ -1146,32 +989,22 @@ const GlobalView: React.FC = () => {
             <Modal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} title={transferToEdit ? "Editar Transferencia" : "Nueva Transferencia"}>
                 <TransferForm onClose={() => setIsTransferModalOpen(false)} transferToEdit={transferToEdit} />
             </Modal>
-            {itemToContabilize && (
-                 <Modal isOpen={true} onClose={() => setItemToContabilize(null)} title="Contabilizar Transacción">
-                    <ContabilizeModal item={itemToContabilize} onClose={() => setItemToContabilize(null)} onSave={handleSaveContabilizar} />
-                 </Modal>
-            )}
-            {expenseToPeriodize && (
-                 <Modal isOpen={true} onClose={() => setExpenseToPeriodize(null)} title="Periodizar Gasto">
-                    <PeriodizeExpenseModal expense={expenseToPeriodize} onClose={() => setExpenseToPeriodize(null)} />
-                 </Modal>
-            )}
-            <AddPendingTransactionModal isOpen={isAddPendingModalOpen} onClose={() => setIsAddPendingModalOpen(false)} isProfessionalModeEnabled={isProfessionalModeEnabled} />
+
             <AddRecordedTransactionModal isOpen={isAddRecordedModalOpen} onClose={() => setIsAddRecordedModalOpen(false)} isProfessionalModeEnabled={isProfessionalModeEnabled} />
 
             {professionalIncomeToEdit && (
-                <Modal isOpen={true} onClose={() => setProfessionalIncomeToEdit(null)} title="Editar Ingreso Profesional">
-                    <IncomeForm onClose={() => setProfessionalIncomeToEdit(null)} incomeToEdit={professionalIncomeToEdit} />
+                <Modal isOpen={true} onClose={() => { setProfessionalIncomeToEdit(null); setConfirmingScheduledId(null); }} title={confirmingScheduledId ? "Confirmar Ingreso Programado" : (professionalIncomeToEdit.id ? "Editar Ingreso" : "Nuevo Ingreso")}>
+                    <IncomeForm onClose={() => { setProfessionalIncomeToEdit(null); setConfirmingScheduledId(null); }} incomeToEdit={professionalIncomeToEdit} fromScheduledId={confirmingScheduledId} />
                 </Modal>
             )}
             {professionalExpenseToEdit && (
-                <Modal isOpen={true} onClose={() => setProfessionalExpenseToEdit(null)} title="Editar Gasto Profesional">
-                    <ExpenseForm onClose={() => setProfessionalExpenseToEdit(null)} expenseToEdit={professionalExpenseToEdit} />
+                <Modal isOpen={true} onClose={() => { setProfessionalExpenseToEdit(null); setConfirmingScheduledId(null); }} title={confirmingScheduledId ? "Confirmar Gasto Programado" : (professionalExpenseToEdit.id ? "Editar Gasto" : "Nuevo Gasto")}>
+                    <ExpenseForm onClose={() => { setProfessionalExpenseToEdit(null); setConfirmingScheduledId(null); }} expenseToEdit={professionalExpenseToEdit} fromScheduledId={confirmingScheduledId} />
                 </Modal>
             )}
             {personalMovementToEdit && (
-                <Modal isOpen={true} onClose={() => setPersonalMovementToEdit(null)} title="Editar Movimiento Personal">
-                    <MovementForm onClose={() => setPersonalMovementToEdit(null)} movementToEdit={personalMovementToEdit} />
+                <Modal isOpen={true} onClose={() => { setPersonalMovementToEdit(null); setConfirmingScheduledId(null); }} title={confirmingScheduledId ? "Confirmar Movimiento Programado" : (personalMovementToEdit.id ? "Editar Movimiento" : "Nuevo Movimiento")}>
+                    <MovementForm onClose={() => { setPersonalMovementToEdit(null); setConfirmingScheduledId(null); }} movementToEdit={personalMovementToEdit} fromScheduledId={confirmingScheduledId} />
                 </Modal>
             )}
              <Modal isOpen={isGoalFormOpen} onClose={handleCloseGoalForm} title={goalToEdit ? "Editar Objetivo de Ahorro" : "Crear Nuevo Objetivo de Ahorro"}>
