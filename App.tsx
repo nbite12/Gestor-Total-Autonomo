@@ -41,6 +41,7 @@ const AppContainer: React.FC = () => {
         savingsGoals: [], scheduledTransactions: [],
         professionalCategories: DEFAULT_PROFESSIONAL_CATEGORIES,
         personalCategories: DEFAULT_PERSONAL_CATEGORIES,
+        snoozedActions: {},
         settings: {
             nif: '', fullName: '', address: '',
             defaultVatRate: 21, defaultIrpfRate: 15, monthlyAutonomoFee: 80,
@@ -95,6 +96,7 @@ const AppContainer: React.FC = () => {
                         ...(remoteData.settings || {}),
                     },
                     scheduledTransactions: remoteData.scheduledTransactions || [],
+                    snoozedActions: remoteData.snoozedActions || {},
                 };
                 
                 let dataWasMigrated = false;

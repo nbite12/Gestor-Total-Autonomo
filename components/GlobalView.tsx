@@ -135,6 +135,21 @@ const Toggle: React.FC<{ checked: boolean; onChange: () => void; }> = ({ checked
     </button>
 );
 
+const FilterButton: React.FC<{ label: string; active: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
+    <button
+        onClick={onClick}
+        className={`relative rounded-full px-3 py-1 text-sm font-medium transition-colors focus:outline-none ${active ? 'text-primary-600 dark:text-primary-300' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+    >
+        {active && (
+            <motion.div
+                layoutId="global-filter-pill"
+                className="absolute inset-0 bg-white dark:bg-black/20 rounded-full shadow"
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            />
+        )}
+        <span className="relative z-10">{label}</span>
+    </button>
+);
 
 // --- Global View ---
 const GlobalView: React.FC = () => {
@@ -151,6 +166,14 @@ const GlobalView: React.FC = () => {
     });
     
     const [isTaxesBreakdownOpen, setIsTaxesBreakdownOpen] = useState(false);
+    const [projectionPeriod, setProjectionPeriod] = useState<'this_month' | 'this_quarter' | '6_months' | '1_year' | 'custom'>('this_quarter');
+    const [customProjectionStart, setCustomProjectionStart] = useState<Date>(new Date());
+    const [customProjectionEnd, setCustomProjectionEnd] = useState<Date>(() => {
+        const end = new Date();
+        end.setMonth(end.getMonth() + 3);
+        return end;
+    });
+
 
     const includeNetCapitalItems = settings.netCapitalToggles || {
         pendingIncome: true,
@@ -170,12 +193,10 @@ const GlobalView: React.FC = () => {
     const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
     const [celebrationType, setCelebrationType] = useState<'none' | 'contribution' | 'goalComplete'>('none');
     const [showProjections, setShowProjections] = useState(false);
+    const [showPending, setShowPending] = useState(true);
 
     const [isAddRecordedModalOpen, setIsAddRecordedModalOpen] = useState(false);
 
-    // FIX: Change state types to allow partial objects for pre-filling forms.
-    // This resolves type errors when creating new transactions from scheduled ones,
-    // as the scheduled transaction doesn't contain all required fields for a full Income/Expense/PersonalMovement.
     const [professionalIncomeToEdit, setProfessionalIncomeToEdit] = useState<Partial<Income> | null>(null);
     const [professionalExpenseToEdit, setProfessionalExpenseToEdit] = useState<Partial<Expense> | null>(null);
     const [personalMovementToEdit, setPersonalMovementToEdit] = useState<Partial<PersonalMovement> | null>(null);
@@ -188,6 +209,10 @@ const GlobalView: React.FC = () => {
         persExpense: true,
         transfer: true,
     });
+
+    const [isActionsCardOpen, setIsActionsCardOpen] = useState(false);
+    const [snoozingAction, setSnoozingAction] = useState<any | null>(null);
+    const [snoozeDate, setSnoozeDate] = useState<Date>(new Date());
     
     const handleFilterChange = (filterKey: keyof typeof typeFilters) => {
         setTypeFilters(prev => ({ ...prev, [filterKey]: !prev[filterKey] }));
@@ -230,6 +255,10 @@ const GlobalView: React.FC = () => {
         periodStart: Date,
         periodEnd: Date
     ): number => {
+        if (frequency === 'one-off') {
+            return startDate >= periodStart && startDate <= periodEnd ? 1 : 0;
+        }
+
         if (startDate > periodEnd) return 0;
         
         let count = 0;
@@ -241,7 +270,6 @@ const GlobalView: React.FC = () => {
             if (currentDate >= periodStart) {
                 count++;
             }
-            if(frequency === 'one-off') break;
 
             const tempDate = new Date(currentDate);
             switch (frequency) {
@@ -320,25 +348,57 @@ const GlobalView: React.FC = () => {
         const pendingPersonalExpense = data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
 
+        // Calculate projection period for scheduled transactions
+        let projectionStart: Date;
+        let projectionEnd: Date;
+    
+        if (projectionPeriod === 'custom') {
+            projectionStart = new Date(customProjectionStart);
+            projectionStart.setHours(0, 0, 0, 0);
+            projectionEnd = new Date(customProjectionEnd);
+            projectionEnd.setHours(23, 59, 59, 999);
+        } else {
+            projectionStart = new Date();
+            projectionStart.setHours(0, 0, 0, 0);
+            projectionEnd = new Date(); // re-init
+            switch (projectionPeriod) {
+                case 'this_month':
+                    projectionEnd = new Date(projectionStart.getFullYear(), projectionStart.getMonth() + 1, 0);
+                    break;
+                case 'this_quarter':
+                    const currentQuarter = Math.floor(projectionStart.getMonth() / 3);
+                    projectionEnd = new Date(projectionStart.getFullYear(), currentQuarter * 3 + 3, 0);
+                    break;
+                case '6_months':
+                    projectionEnd.setMonth(projectionEnd.getMonth() + 6);
+                    break;
+                case '1_year':
+                    projectionEnd.setFullYear(projectionEnd.getFullYear() + 1);
+                    break;
+            }
+            projectionEnd.setHours(23, 59, 59, 999);
+        }
+        
+        let scheduledIncomeInPeriod = 0;
+        let scheduledExpenseInPeriod = 0;
+        
+        scheduledTransactions.forEach(st => {
+            const occurrences = countOccurrences(st.frequency, new Date(st.startDate), st.endDate ? new Date(st.endDate) : undefined, projectionStart, projectionEnd);
+            const amount = getNetScheduledAmount(st);
+            if (st.type === 'income') {
+                scheduledIncomeInPeriod += occurrences * amount;
+            } else {
+                scheduledExpenseInPeriod += occurrences * amount;
+            }
+        });
+
+
+        // Tax calculations for current quarter
         const now = new Date();
         const year = now.getFullYear();
         const quarter = Math.floor(now.getMonth() / 3);
         const qStartDate = new Date(year, quarter * 3, 1);
         const qEndDate = new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999);
-        
-        let scheduledIncomeInQuarter = 0;
-        let scheduledExpenseInQuarter = 0;
-
-        scheduledTransactions.forEach(st => {
-            if(st.frequency === 'one-off') return;
-            const occurrences = countOccurrences(st.frequency, new Date(st.startDate), st.endDate ? new Date(st.endDate) : undefined, qStartDate, qEndDate);
-            const amount = getNetScheduledAmount(st);
-            if (st.type === 'income') {
-                scheduledIncomeInQuarter += occurrences * amount;
-            } else {
-                scheduledExpenseInQuarter += occurrences * amount;
-            }
-        });
 
         const { incomes, expenses, investmentGoods, settings } = data;
         const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
@@ -389,8 +449,8 @@ const GlobalView: React.FC = () => {
             + (includeNetCapitalItems.pendingIncome ? totalPendingIncome : 0)
             - (includeNetCapitalItems.pendingExpenses ? totalPendingExpenses : 0)
             - (includeNetCapitalItems.taxes ? totalProjectedTaxes : 0)
-            + (includeNetCapitalItems.scheduledIncome ? scheduledIncomeInQuarter : 0)
-            - (includeNetCapitalItems.scheduledExpenses ? scheduledExpenseInQuarter : 0);
+            + (includeNetCapitalItems.scheduledIncome ? scheduledIncomeInPeriod : 0)
+            - (includeNetCapitalItems.scheduledExpenses ? scheduledExpenseInPeriod : 0);
 
 
         return {
@@ -399,13 +459,13 @@ const GlobalView: React.FC = () => {
             totalPendingIncome,
             totalPendingExpenses,
             totalProjectedTaxes,
-            scheduledIncomeInQuarter,
-            scheduledExpenseInQuarter,
+            scheduledIncomeInPeriod,
+            scheduledExpenseInPeriod,
             netAvailableCapital,
             taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes }
         };
 
-    }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences]);
+    }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences, projectionPeriod, customProjectionStart, customProjectionEnd]);
 
     const unifiedTransactions = useMemo(() => {
         const typeLabels: { [key: string]: { label: string, color: string } } = {
@@ -474,7 +534,7 @@ const GlobalView: React.FC = () => {
 
                 let cursorDate;
                 if (st.frequency !== 'one-off' && st.lastGeneratedDate) {
-                    cursorDate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
+                    cursorDate = getNextDate(new Date(st.lastGeneratedDate), st.frequency as any);
                 } else {
                     cursorDate = new Date(st.startDate);
                 }
@@ -507,7 +567,7 @@ const GlobalView: React.FC = () => {
                     
                     if (st.frequency === 'one-off') break;
                     
-                    const nextCursor = getNextDate(cursorDate, st.frequency);
+                    const nextCursor = getNextDate(cursorDate, st.frequency as any);
                     if (nextCursor <= cursorDate) break;
                     cursorDate = nextCursor;
                 }
@@ -518,47 +578,133 @@ const GlobalView: React.FC = () => {
         return allTransactions
             .filter(t => t.date >= period.startDate && t.date <= period.endDate)
             .filter(t => typeFilters[t.type as keyof typeof typeFilters])
+            .filter(t => showPending || t.isPaid)
             .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled, showProjections, scheduledTransactions, getNetScheduledAmount]);
+    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled, showProjections, scheduledTransactions, getNetScheduledAmount, showPending]);
 
     const pastDueScheduled = useMemo(() => {
         const today = new Date();
-        today.setHours(23, 59, 59, 999); // Check against the end of today
+        today.setHours(23, 59, 59, 999);
 
         return scheduledTransactions
             .map(st => {
-                if (!st.startDate) return null;
+                // Ensure startDate is valid, otherwise skip.
+                if (!st.startDate || isNaN(new Date(st.startDate).getTime())) {
+                    return null;
+                }
 
+                const startDate = new Date(st.startDate);
                 let nextDueDate: Date;
+
                 if (st.frequency === 'one-off') {
-                    if (st.lastGeneratedDate) return null; // already generated
-                    nextDueDate = new Date(st.startDate);
+                    // A one-off task is due on its start date, if it hasn't been generated yet.
+                    if (st.lastGeneratedDate) return null;
+                    nextDueDate = startDate;
                 } else {
-                     if (!st.lastGeneratedDate) {
-                        nextDueDate = new Date(st.startDate);
-                    } else {
-                        let candidate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
-                        if (candidate.getTime() <= new Date(st.lastGeneratedDate).getTime()) {
-                             candidate.setDate(candidate.getDate() + 1);
-                             candidate = getNextDate(new Date(st.lastGeneratedDate), st.frequency);
-                        }
-                        nextDueDate = candidate;
-                    }
+                    // For recurring tasks, find the next due date after the last generated one, or from the start date.
+                    const lastGenerated = st.lastGeneratedDate && !isNaN(new Date(st.lastGeneratedDate).getTime())
+                        ? new Date(st.lastGeneratedDate)
+                        : null;
+
+                    nextDueDate = lastGenerated ? getNextDate(lastGenerated, st.frequency as any) : startDate;
                 }
                 
+                // Final validation: if the calculated date is invalid for any reason, skip it.
+                if (isNaN(nextDueDate.getTime())) {
+                    console.warn(`Could not calculate a valid next due date for scheduled transaction: ${st.id} - ${st.concept}`);
+                    return null;
+                }
+
                 const isDue = nextDueDate < today;
-                const hasNotEnded = !st.endDate || nextDueDate <= new Date(st.endDate);
-                
+                const endDate = st.endDate && !isNaN(new Date(st.endDate).getTime()) ? new Date(st.endDate) : null;
+                const hasNotEnded = !endDate || nextDueDate <= endDate;
+
                 if (isDue && hasNotEnded) {
                     return { ...st, dueDate: nextDueDate };
                 }
+                
                 return null;
             })
             .filter((item): item is ScheduledTransaction & { dueDate: Date } => item !== null)
             .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
     }, [scheduledTransactions]);
 
+    const categorizedActions = useMemo(() => {
+        const allActions: { id: string, type: string, emoji: string, concept: string, details: string, date: Date, originalItem: any }[] = [];
+
+        pastDueScheduled.forEach(st => {
+            allActions.push({
+                id: `sched-${st.id}-${st.dueDate.toISOString()}`,
+                type: 'scheduled',
+                emoji: '🗓️',
+                concept: st.concept,
+                details: `Vencimiento: ${st.dueDate.toLocaleDateString('es-ES')}`,
+                date: st.dueDate,
+                originalItem: st,
+            });
+        });
+
+        incomes.filter(i => !i.isPaid).forEach(i => {
+            allActions.push({
+                id: `inc-manual-${i.id}`,
+                type: 'proIncomeManual',
+                emoji: '❗',
+                concept: i.concept,
+                details: `Cobro pendiente a ${i.clientName}`,
+                date: new Date(i.date),
+                originalItem: i,
+            });
+        });
+        
+        expenses.filter(e => !e.isPaid).forEach(e => {
+            allActions.push({
+                id: `exp-manual-${e.id}`,
+                type: 'proExpenseManual',
+                emoji: '❗',
+                concept: e.concept,
+                details: `Pago pendiente a ${e.providerName}`,
+                date: new Date(e.date),
+                originalItem: e,
+            });
+        });
+
+        personalMovements.filter(m => !(m.isPaid ?? false)).forEach(m => {
+            allActions.push({
+                id: `pm-manual-${m.id}`,
+                type: 'persMovementManual',
+                emoji: '❗',
+                concept: m.concept,
+                details: `Movimiento personal pendiente (${m.type})`,
+                date: new Date(m.date),
+                originalItem: m,
+            });
+        });
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const urgent: any[] = [];
+        const snoozed: any[] = [];
+
+        allActions.forEach(action => {
+            const snoozeDateStr = data.snoozedActions?.[action.id];
+            if (snoozeDateStr) {
+                const snoozeDate = new Date(snoozeDateStr);
+                if (snoozeDate > today) {
+                    snoozed.push({ ...action, snoozeDate });
+                    return;
+                }
+            }
+            urgent.push(action);
+        });
+
+        return {
+            urgentActions: urgent.sort((a,b) => b.date.getTime() - a.date.getTime()),
+            snoozedActions: snoozed.sort((a,b) => a.snoozeDate.getTime() - b.snoozeDate.getTime()),
+        };
+
+    }, [pastDueScheduled, incomes, expenses, personalMovements, data.snoozedActions]);
 
     // --- Handlers ---
     const handleConfirmScheduled = (st: ScheduledTransaction & { dueDate: Date }) => {
@@ -599,6 +745,41 @@ const GlobalView: React.FC = () => {
                 categoryId: st.categoryId,
             });
         }
+    };
+
+    const handleConfirmManual = (item: any) => {
+        const paymentInfo = { isPaid: true, paymentDate: new Date().toISOString() };
+        switch (item.type) {
+            case 'proIncomeManual':
+                setProfessionalIncomeToEdit({ ...item.originalItem, ...paymentInfo });
+                break;
+            case 'proExpenseManual':
+                setProfessionalExpenseToEdit({ ...item.originalItem, ...paymentInfo });
+                break;
+            case 'persMovementManual':
+                setPersonalMovementToEdit({ ...item.originalItem, ...paymentInfo });
+                break;
+        }
+    };
+
+    const handleOpenSnoozeModal = (action: any) => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0,0,0,0);
+        setSnoozeDate(tomorrow);
+        setSnoozingAction(action);
+    };
+
+    const handleConfirmSnooze = () => {
+        if (!snoozingAction) return;
+        saveData(prev => ({
+            ...prev,
+            snoozedActions: {
+                ...(prev.snoozedActions || {}),
+                [snoozingAction.id]: snoozeDate.toISOString(),
+            }
+        }), "Recordatorio guardado.");
+        setSnoozingAction(null);
     };
     
     const handleOpenScheduledModal = (st?: ScheduledTransaction) => {
@@ -682,6 +863,59 @@ const GlobalView: React.FC = () => {
     const handleSaveContribution = (isGoalCompleted: boolean) => {
         setCelebrationType(isGoalCompleted ? 'goalComplete' : 'contribution');
     };
+    
+    const getProjectionPeriodLabel = () => {
+        switch (projectionPeriod) {
+            case 'this_month': return '(Este Mes)';
+            case 'this_quarter': return '(Este Trimestre)';
+            case '6_months': return '(6 Meses)';
+            case '1_year': return '(1 Año)';
+            case 'custom': return '(Personalizado)';
+            default: return '';
+        }
+    };
+    
+    const { urgentActions, snoozedActions } = categorizedActions;
+    const urgentCount = urgentActions.length;
+    const snoozedCount = snoozedActions.length;
+    const hasUrgent = urgentCount > 0;
+    const hasSnoozedOnly = !hasUrgent && snoozedCount > 0;
+
+    let cardState: 'urgent' | 'snoozed' | 'ok' = 'ok';
+    if (hasUrgent) {
+        cardState = 'urgent';
+    } else if (hasSnoozedOnly) {
+        cardState = 'snoozed';
+    }
+
+    const stateConfig = {
+        urgent: {
+            borderColor: 'border-red-500',
+            bgColor: 'bg-red-500/10',
+            icon: 'AlertTriangle',
+            iconColor: 'text-red-500',
+            iconAnimation: 'animate-pulse',
+            summary: `${urgentCount} urgente(s)${snoozedCount > 0 ? ` y ${snoozedCount} pospuesta(s)` : ''}`
+        },
+        snoozed: {
+            borderColor: 'border-orange-500',
+            bgColor: 'bg-orange-500/10',
+            icon: 'Clock',
+            iconColor: 'text-orange-500',
+            iconAnimation: '',
+            summary: `${snoozedCount} pospuesta(s)`
+        },
+        ok: {
+            borderColor: 'border-green-500',
+            bgColor: 'bg-green-500/10',
+            icon: 'CheckCircle',
+            iconColor: 'text-green-500',
+            iconAnimation: '',
+            summary: 'Todo al día'
+        }
+    };
+
+    const currentConfig = stateConfig[cardState];
 
     return (
         <div className="space-y-8">
@@ -699,49 +933,132 @@ const GlobalView: React.FC = () => {
             
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             
-            {pastDueScheduled.length > 0 && (
-                <Card className="p-6 mb-8 border-yellow-500 border-2">
-                    <div className="flex items-center gap-3 mb-4">
-                        <Icon name="AlertTriangle" className="w-8 h-8 text-yellow-500" />
-                        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Acciones Pendientes</h2>
+            <Card className={`p-0 overflow-hidden border transition-all duration-300 ${currentConfig.borderColor}`}>
+                <button 
+                    onClick={() => setIsActionsCardOpen(prev => !prev)} 
+                    className={`w-full flex items-center justify-between p-3 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${currentConfig.bgColor}`}
+                    aria-expanded={isActionsCardOpen}
+                    aria-controls="pending-actions-content"
+                >
+                    <div className="flex items-center gap-3 flex-grow min-w-0">
+                        <Icon name={currentConfig.icon} className={`w-6 h-6 flex-shrink-0 ${currentConfig.iconColor} ${currentConfig.iconAnimation}`} />
+                        <div className="flex-grow min-w-0 md:flex md:items-baseline md:gap-2">
+                            <span className="font-bold text-slate-800 dark:text-slate-100 block md:inline">Acciones Pendientes</span>
+                            <span className="text-sm text-slate-600 dark:text-slate-400 truncate block md:inline">
+                                {currentConfig.summary}
+                            </span>
+                        </div>
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                        Tienes transacciones programadas que han vencido y necesitan tu confirmación para ser registradas.
-                    </p>
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                        {pastDueScheduled.map(st => (
-                            <div key={`${st.id}-${st.dueDate.toISOString()}`} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-md">
-                                <div className="flex-grow">
-                                    <p className="font-semibold">{st.concept}</p>
-                                    <p className="text-sm text-slate-500">
-                                        Vencimiento: {st.dueDate.toLocaleDateString('es-ES')}
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                     <Button size="sm" onClick={() => handleConfirmScheduled(st)}>
-                                        <Icon name="Check" className="w-4 h-4 mr-1"/>
-                                        Registrar
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={() => handleOpenScheduledModal(st)} title="Editar programación">
-                                        <Icon name="Pencil" className="w-4 h-4" />
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteScheduled(st.id)} title="Eliminar programación">
-                                        <Icon name="Trash2" className="w-4 h-4 text-red-500" />
-                                    </Button>
+                    <Icon name={isActionsCardOpen ? "ChevronUp" : "ChevronDown"} className="w-5 h-5 text-slate-500 flex-shrink-0 ml-2" />
+                </button>
+
+                <AnimatePresence>
+                    {isActionsCardOpen && (
+                        <motion.div
+                            id="pending-actions-content"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                        >
+                            <div className="p-4 border-t dark:border-slate-700">
+                                <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                                    {urgentActions.map(action => (
+                                        <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-red-500/10 rounded-md border-l-4 border-red-500">
+                                            <div className="flex-grow flex items-center gap-3 min-w-0">
+                                                <span className="text-xl">{action.emoji}</span>
+                                                <div className="flex-grow min-w-0">
+                                                    <p className="font-semibold truncate">{action.concept}</p>
+                                                    <p className="text-sm text-slate-500 truncate">{action.details}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                                 <Button size="sm" variant="ghost" title="Recordar más tarde" onClick={() => handleOpenSnoozeModal(action)}>
+                                                    <Icon name="Clock" className="w-4 h-4 text-slate-500"/>
+                                                </Button>
+                                                <Button size="sm" onClick={() => action.type === 'scheduled' ? handleConfirmScheduled(action.originalItem) : handleConfirmManual(action)}>
+                                                    <Icon name="Check" className="w-4 h-4 mr-1"/>
+                                                    {action.type === 'scheduled' ? 'Registrar' : 'Confirmar'}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {snoozedActions.map(action => (
+                                         <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-orange-500/10 rounded-md border-l-4 border-orange-500">
+                                            <div className="flex-grow flex items-center gap-3 min-w-0">
+                                                <span className="text-xl">{action.emoji}</span>
+                                                <div className="flex-grow min-w-0">
+                                                    <p className="font-semibold truncate">{action.concept}</p>
+                                                    <p className="text-sm text-orange-600 dark:text-orange-400 truncate">Recordar el {action.snoozeDate.toLocaleDateString('es-ES')}</p>
+                                                </div>
+                                            </div>
+                                             <div className="flex items-center gap-1 flex-shrink-0">
+                                                 <Button size="sm" variant="ghost" title="Cambiar recordatorio" onClick={() => handleOpenSnoozeModal(action)}>
+                                                    <Icon name="Clock" className="w-4 h-4 text-slate-500"/>
+                                                </Button>
+                                                <Button size="sm" onClick={() => action.type === 'scheduled' ? handleConfirmScheduled(action.originalItem) : handleConfirmManual(action)}>
+                                                    <Icon name="Check" className="w-4 h-4 mr-1"/>
+                                                    {action.type === 'scheduled' ? 'Registrar' : 'Confirmar'}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                     {(urgentActions.length + snoozedActions.length) === 0 && (
+                                        <p className="text-center text-slate-500 py-4">No tienes ninguna acción pendiente.</p>
+                                    )}
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </Card>
-            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {isProfessionalModeEnabled && (
                     <Card className="p-6">
-                        <div className="flex justify-between items-start">
-                            <h3 className="text-xl font-semibold">Capital Actual y Proyección</h3>
-                            <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
+                        <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                             <div className="flex items-center gap-2">
+                                <h3 className="text-xl font-semibold">Capital Actual y Proyección</h3>
+                                <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
+                            </div>
+                            <select
+                                value={projectionPeriod}
+                                onChange={(e) => setProjectionPeriod(e.target.value as any)}
+                                className="block w-auto px-3 py-1.5 text-sm bg-white/10 dark:bg-black/10 backdrop-blur-sm border border-white/20 rounded-lg shadow-inner-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                                aria-label="Seleccionar periodo de proyección"
+                            >
+                                <option value="this_month">Este Mes</option>
+                                <option value="this_quarter">Este Trimestre</option>
+                                <option value="6_months">Próximos 6 Meses</option>
+                                <option value="1_year">Próximo Año</option>
+                                <option value="custom">Personalizado</option>
+                            </select>
                         </div>
+
+                         <AnimatePresence>
+                            {projectionPeriod === 'custom' && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="grid grid-cols-2 gap-4 mt-2 mb-4 p-4 bg-black/5 dark:bg-white/5 rounded-2xl">
+                                        <DatePickerInput 
+                                            label="Desde"
+                                            selectedDate={customProjectionStart.toISOString()}
+                                            onDateChange={setCustomProjectionStart}
+                                        />
+                                        <DatePickerInput 
+                                            label="Hasta"
+                                            selectedDate={customProjectionEnd.toISOString()}
+                                            onDateChange={setCustomProjectionEnd}
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         <div className="text-center my-4">
                             <p className="text-5xl md:text-6xl font-thin tracking-tight text-gray-800 dark:text-white break-words">
                                 {formatCurrency(netCapitalSummary.netAvailableCapital)}
@@ -770,16 +1087,16 @@ const GlobalView: React.FC = () => {
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.scheduledIncome} onChange={() => handleToggleNetCapitalItem('scheduledIncome')} />
-                                    Ingresos Programados (recurring)
+                                    Ingresos Prog. {getProjectionPeriodLabel()}
                                 </span>
-                                <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInQuarter)}</span>
+                                <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInPeriod)}</span>
                             </div>
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
-                                    Gastos Programados (recurring)
+                                    Gastos Prog. {getProjectionPeriodLabel()}
                                 </span>
-                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInQuarter)}</span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInPeriod)}</span>
                             </div>
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
@@ -840,7 +1157,6 @@ const GlobalView: React.FC = () => {
                     </div>
                 </Card>
             </div>
-
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Planning Panels */}
@@ -905,20 +1221,24 @@ const GlobalView: React.FC = () => {
                      <div className="flex flex-wrap items-center gap-4">
                         <h3 className="text-xl font-semibold">Registro Global de Movimientos</h3>
                         <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-full">
-                            <span className="text-sm font-medium pl-2">Mostrar Proyecciones</span>
+                            <span className="text-sm font-medium pl-2">Mostrar Programaciones</span>
                             <Toggle checked={showProjections} onChange={() => setShowProjections(p => !p)} />
                         </div>
+                        <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-full">
+                            <span className="text-sm font-medium pl-2">Mostrar Pendientes</span>
+                            <Toggle checked={showPending} onChange={() => setShowPending(p => !p)} />
+                        </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        {isProfessionalModeEnabled && (
+                    <div className="flex space-x-1 rounded-full bg-black/5 dark:bg-white/5 p-1">
+                         {isProfessionalModeEnabled && (
                             <>
-                                <Button size="sm" variant={typeFilters.proIncome ? 'primary' : 'secondary'} onClick={() => handleFilterChange('proIncome')}>Ingreso Pro.</Button>
-                                <Button size="sm" variant={typeFilters.proExpense ? 'primary' : 'secondary'} onClick={() => handleFilterChange('proExpense')}>Gasto Pro.</Button>
+                                <FilterButton label="Ingreso Pro." active={typeFilters.proIncome} onClick={() => handleFilterChange('proIncome')} />
+                                <FilterButton label="Gasto Pro." active={typeFilters.proExpense} onClick={() => handleFilterChange('proExpense')} />
                             </>
                         )}
-                        <Button size="sm" variant={typeFilters.persIncome ? 'primary' : 'secondary'} onClick={() => handleFilterChange('persIncome')}>Ingreso Pers.</Button>
-                        <Button size="sm" variant={typeFilters.persExpense ? 'primary' : 'secondary'} onClick={() => handleFilterChange('persExpense')}>Gasto Pers.</Button>
-                        <Button size="sm" variant={typeFilters.transfer ? 'primary' : 'secondary'} onClick={() => handleFilterChange('transfer')}>Transferencia</Button>
+                        <FilterButton label="Ingreso Pers." active={typeFilters.persIncome} onClick={() => handleFilterChange('persIncome')} />
+                        <FilterButton label="Gasto Pers." active={typeFilters.persExpense} onClick={() => handleFilterChange('persExpense')} />
+                        <FilterButton label="Transferencia" active={typeFilters.transfer} onClick={() => handleFilterChange('transfer')} />
                     </div>
                 </div>
                 
@@ -1017,6 +1337,22 @@ const GlobalView: React.FC = () => {
                         onClose={() => setGoalToAddFunds(null)}
                         onSaveSuccess={handleSaveContribution}
                     />
+                </Modal>
+            )}
+            {snoozingAction && (
+                <Modal isOpen={!!snoozingAction} onClose={() => setSnoozingAction(null)} title={`Recordar Más Tarde: ${snoozingAction.concept}`}>
+                    <div className="space-y-4">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Selecciona una fecha futura para que esta acción deje de considerarse urgente.</p>
+                        <DatePickerInput 
+                            label="Fecha del Recordatorio"
+                            selectedDate={snoozeDate.toISOString()}
+                            onDateChange={setSnoozeDate}
+                        />
+                        <div className="flex justify-end gap-2 pt-4">
+                            <Button variant="secondary" onClick={() => setSnoozingAction(null)}>Cancelar</Button>
+                            <Button onClick={handleConfirmSnooze}>Guardar Recordatorio</Button>
+                        </div>
+                    </div>
                 </Modal>
             )}
         </div>

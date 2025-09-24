@@ -200,6 +200,7 @@ export interface AppData {
   professionalCategories: Category[];
   personalCategories: Category[];
   settings: UserSettings;
+  snoozedActions?: { [actionId: string]: string }; // Key: unique action ID, Value: ISO date string
   // Deprecated, for migration purposes
   potentialIncomes?: any[];
   potentialExpenses?: any[];
