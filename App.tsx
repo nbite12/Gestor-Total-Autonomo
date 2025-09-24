@@ -62,6 +62,17 @@ const AppContainer: React.FC = () => {
                 scheduledIncome: true,
                 scheduledExpenses: true,
             },
+            globalViewFilters: {
+                typeFilters: {
+                  proIncome: true,
+                  proExpense: true,
+                  persIncome: true,
+                  persExpense: true,
+                  transfer: true,
+                },
+                showProjections: false,
+                showPending: true,
+            },
         },
     }), []);
 

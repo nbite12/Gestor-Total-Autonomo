@@ -192,9 +192,7 @@ const GlobalView: React.FC = () => {
     const [goalToEdit, setGoalToEdit] = useState<SavingsGoal | null>(null);
     const [goalToAddFunds, setGoalToAddFunds] = useState<SavingsGoal | null>(null);
     const [celebrationType, setCelebrationType] = useState<'none' | 'contribution' | 'goalComplete'>('none');
-    const [showProjections, setShowProjections] = useState(false);
-    const [showPending, setShowPending] = useState(true);
-
+    
     const [isAddRecordedModalOpen, setIsAddRecordedModalOpen] = useState(false);
 
     const [professionalIncomeToEdit, setProfessionalIncomeToEdit] = useState<Partial<Income> | null>(null);
@@ -202,22 +200,65 @@ const GlobalView: React.FC = () => {
     const [personalMovementToEdit, setPersonalMovementToEdit] = useState<Partial<PersonalMovement> | null>(null);
     const [confirmingScheduledId, setConfirmingScheduledId] = useState<string | null>(null);
     
-    const [typeFilters, setTypeFilters] = useState({
-        proIncome: true,
-        proExpense: true,
-        persIncome: true,
-        persExpense: true,
-        transfer: true,
-    });
-
     const [isActionsCardOpen, setIsActionsCardOpen] = useState(false);
     const [snoozingAction, setSnoozingAction] = useState<any | null>(null);
     const [snoozeDate, setSnoozeDate] = useState<Date>(new Date());
+
+    const globalFilters = useMemo(() => settings.globalViewFilters || {
+        typeFilters: {
+            proIncome: true,
+            proExpense: true,
+            persIncome: true,
+            persExpense: true,
+            transfer: true,
+        },
+        showProjections: false,
+        showPending: true,
+    }, [settings.globalViewFilters]);
     
-    const handleFilterChange = (filterKey: keyof typeof typeFilters) => {
-        setTypeFilters(prev => ({ ...prev, [filterKey]: !prev[filterKey] }));
+    const handleFilterChange = (filterKey: keyof typeof globalFilters.typeFilters) => {
+        saveData(prev => ({
+            ...prev,
+            settings: {
+                ...prev.settings,
+                globalViewFilters: {
+                    ...(prev.settings.globalViewFilters || globalFilters),
+                    typeFilters: {
+                        ...(prev.settings.globalViewFilters?.typeFilters || globalFilters.typeFilters),
+                        [filterKey]: !prev.settings.globalViewFilters?.typeFilters?.[filterKey],
+                    }
+                }
+            }
+        }), "Filtro actualizado.");
     };
 
+    const handleToggleShowProjections = () => {
+        saveData(prev => ({
+            ...prev,
+            settings: {
+                ...prev.settings,
+                globalViewFilters: {
+                    ...(prev.settings.globalViewFilters || globalFilters),
+                    showProjections: !prev.settings.globalViewFilters?.showProjections,
+                }
+            }
+        }), "Vista de proyecciones actualizada.");
+    };
+
+    const handleToggleShowPending = () => {
+        saveData(prev => ({
+            ...prev,
+            settings: {
+                ...prev.settings,
+                globalViewFilters: {
+                    ...(prev.settings.globalViewFilters || globalFilters),
+                    showPending: !prev.settings.globalViewFilters?.showPending,
+                }
+            }
+        }), "Vista de pendientes actualizada.");
+    };
+
+    
     const handleToggleNetCapitalItem = (item: keyof typeof includeNetCapitalItems) => {
         saveData(prev => {
             const currentToggles = prev.settings.netCapitalToggles || includeNetCapitalItems;
@@ -523,7 +564,7 @@ const GlobalView: React.FC = () => {
             })),
         ];
 
-        if (showProjections) {
+        if (globalFilters.showProjections) {
             const projections: any[] = [];
             
             scheduledTransactions.forEach(st => {
@@ -577,72 +618,50 @@ const GlobalView: React.FC = () => {
         
         return allTransactions
             .filter(t => t.date >= period.startDate && t.date <= period.endDate)
-            .filter(t => typeFilters[t.type as keyof typeof typeFilters])
-            .filter(t => showPending || t.isPaid)
+            .filter(t => globalFilters.typeFilters[t.type as keyof typeof globalFilters.typeFilters])
+            .filter(t => {
+                if (t.isProjection) {
+                    return true; // Projections are already filtered by showProjections, so if it's here, show it.
+                }
+                // For non-projections (recorded transactions)
+                return globalFilters.showPending || t.isPaid;
+            })
             .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    }, [incomes, expenses, personalMovements, transfers, period, typeFilters, personalCategories, isProfessionalModeEnabled, showProjections, scheduledTransactions, getNetScheduledAmount, showPending]);
+    }, [incomes, expenses, personalMovements, transfers, period, globalFilters, personalCategories, isProfessionalModeEnabled, scheduledTransactions, getNetScheduledAmount]);
 
-    const pastDueScheduled = useMemo(() => {
+    const categorizedActions = useMemo(() => {
+        const allActions: { id: string, type: string, emoji: string, concept: string, date: Date, isScheduled: boolean, originalItem: any }[] = [];
         const today = new Date();
         today.setHours(23, 59, 59, 999);
 
-        return scheduledTransactions
-            .map(st => {
-                // Ensure startDate is valid, otherwise skip.
-                if (!st.startDate || isNaN(new Date(st.startDate).getTime())) {
-                    return null;
-                }
+        scheduledTransactions.forEach(st => {
+            if (!st.startDate || isNaN(new Date(st.startDate).getTime())) return;
+            const startDate = new Date(st.startDate);
+            let nextDueDate: Date;
+            if (st.frequency === 'one-off') {
+                if (st.lastGeneratedDate) return;
+                nextDueDate = startDate;
+            } else {
+                const lastGenerated = st.lastGeneratedDate && !isNaN(new Date(st.lastGeneratedDate).getTime()) ? new Date(st.lastGeneratedDate) : null;
+                nextDueDate = lastGenerated ? getNextDate(lastGenerated, st.frequency as any) : startDate;
+            }
+            if (isNaN(nextDueDate.getTime())) return;
 
-                const startDate = new Date(st.startDate);
-                let nextDueDate: Date;
-
-                if (st.frequency === 'one-off') {
-                    // A one-off task is due on its start date, if it hasn't been generated yet.
-                    if (st.lastGeneratedDate) return null;
-                    nextDueDate = startDate;
-                } else {
-                    // For recurring tasks, find the next due date after the last generated one, or from the start date.
-                    const lastGenerated = st.lastGeneratedDate && !isNaN(new Date(st.lastGeneratedDate).getTime())
-                        ? new Date(st.lastGeneratedDate)
-                        : null;
-
-                    nextDueDate = lastGenerated ? getNextDate(lastGenerated, st.frequency as any) : startDate;
-                }
-                
-                // Final validation: if the calculated date is invalid for any reason, skip it.
-                if (isNaN(nextDueDate.getTime())) {
-                    console.warn(`Could not calculate a valid next due date for scheduled transaction: ${st.id} - ${st.concept}`);
-                    return null;
-                }
-
-                const isDue = nextDueDate < today;
-                const endDate = st.endDate && !isNaN(new Date(st.endDate).getTime()) ? new Date(st.endDate) : null;
-                const hasNotEnded = !endDate || nextDueDate <= endDate;
-
-                if (isDue && hasNotEnded) {
-                    return { ...st, dueDate: nextDueDate };
-                }
-                
-                return null;
-            })
-            .filter((item): item is ScheduledTransaction & { dueDate: Date } => item !== null)
-            .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-    }, [scheduledTransactions]);
-
-    const categorizedActions = useMemo(() => {
-        const allActions: { id: string, type: string, emoji: string, concept: string, details: string, date: Date, originalItem: any }[] = [];
-
-        pastDueScheduled.forEach(st => {
-            allActions.push({
-                id: `sched-${st.id}-${st.dueDate.toISOString()}`,
-                type: 'scheduled',
-                emoji: '🗓️',
-                concept: st.concept,
-                details: `Vencimiento: ${st.dueDate.toLocaleDateString('es-ES')}`,
-                date: st.dueDate,
-                originalItem: st,
-            });
+            const isDue = nextDueDate < today;
+            const endDate = st.endDate && !isNaN(new Date(st.endDate).getTime()) ? new Date(st.endDate) : null;
+            const hasNotEnded = !endDate || nextDueDate <= endDate;
+            if (isDue && hasNotEnded) {
+                allActions.push({
+                    id: `sched-${st.id}-${nextDueDate.toISOString()}`,
+                    type: 'scheduled',
+                    emoji: '🗓️',
+                    concept: st.concept,
+                    date: nextDueDate,
+                    isScheduled: true,
+                    originalItem: { ...st, dueDate: nextDueDate },
+                });
+            }
         });
 
         incomes.filter(i => !i.isPaid).forEach(i => {
@@ -651,8 +670,8 @@ const GlobalView: React.FC = () => {
                 type: 'proIncomeManual',
                 emoji: '❗',
                 concept: i.concept,
-                details: `Cobro pendiente a ${i.clientName}`,
                 date: new Date(i.date),
+                isScheduled: false,
                 originalItem: i,
             });
         });
@@ -663,8 +682,8 @@ const GlobalView: React.FC = () => {
                 type: 'proExpenseManual',
                 emoji: '❗',
                 concept: e.concept,
-                details: `Pago pendiente a ${e.providerName}`,
                 date: new Date(e.date),
+                isScheduled: false,
                 originalItem: e,
             });
         });
@@ -675,14 +694,14 @@ const GlobalView: React.FC = () => {
                 type: 'persMovementManual',
                 emoji: '❗',
                 concept: m.concept,
-                details: `Movimiento personal pendiente (${m.type})`,
                 date: new Date(m.date),
+                isScheduled: false,
                 originalItem: m,
             });
         });
         
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
 
         const urgent: any[] = [];
         const snoozed: any[] = [];
@@ -691,7 +710,7 @@ const GlobalView: React.FC = () => {
             const snoozeDateStr = data.snoozedActions?.[action.id];
             if (snoozeDateStr) {
                 const snoozeDate = new Date(snoozeDateStr);
-                if (snoozeDate > today) {
+                if (snoozeDate > startOfToday) {
                     snoozed.push({ ...action, snoozeDate });
                     return;
                 }
@@ -700,11 +719,11 @@ const GlobalView: React.FC = () => {
         });
 
         return {
-            urgentActions: urgent.sort((a,b) => b.date.getTime() - a.date.getTime()),
+            urgentActions: urgent.sort((a,b) => a.date.getTime() - b.date.getTime()),
             snoozedActions: snoozed.sort((a,b) => a.snoozeDate.getTime() - b.snoozeDate.getTime()),
         };
 
-    }, [pastDueScheduled, incomes, expenses, personalMovements, data.snoozedActions]);
+    }, [scheduledTransactions, incomes, expenses, personalMovements, data.snoozedActions]);
 
     // --- Handlers ---
     const handleConfirmScheduled = (st: ScheduledTransaction & { dueDate: Date }) => {
@@ -933,7 +952,7 @@ const GlobalView: React.FC = () => {
             
             <Celebration type={celebrationType} onComplete={() => setCelebrationType('none')} />
             
-            <Card className={`p-0 overflow-hidden border transition-all duration-300 ${currentConfig.borderColor}`}>
+            <Card className={`p-0 overflow-hidden border-2 transition-all duration-300 ${currentConfig.borderColor}`}>
                 <button 
                     onClick={() => setIsActionsCardOpen(prev => !prev)} 
                     className={`w-full flex items-center justify-between p-3 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${currentConfig.bgColor}`}
@@ -961,15 +980,20 @@ const GlobalView: React.FC = () => {
                             exit={{ height: 0, opacity: 0 }}
                             className="overflow-hidden"
                         >
-                            <div className="p-4 border-t dark:border-slate-700">
+                            <div className="p-4 border-t-2 dark:border-slate-700">
                                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                                     {urgentActions.map(action => (
-                                        <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-red-500/10 rounded-md border-l-4 border-red-500">
+                                        <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-red-500/10 rounded-lg border-l-4 border-red-500">
                                             <div className="flex-grow flex items-center gap-3 min-w-0">
                                                 <span className="text-xl">{action.emoji}</span>
                                                 <div className="flex-grow min-w-0">
-                                                    <p className="font-semibold truncate">{action.concept}</p>
-                                                    <p className="text-sm text-slate-500 truncate">{action.details}</p>
+                                                    <div className="flex items-center gap-2">
+                                                      <p className="font-semibold truncate">{action.concept}</p>
+                                                      {action.isScheduled && (
+                                                        <span className="text-xs px-2 py-0.5 bg-slate-200 dark:bg-slate-600 rounded-full flex-shrink-0">Programado</span>
+                                                      )}
+                                                    </div>
+                                                    <p className="text-sm text-slate-500 truncate">Vence el {action.date.toLocaleDateString('es-ES')}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1 flex-shrink-0">
@@ -984,12 +1008,17 @@ const GlobalView: React.FC = () => {
                                         </div>
                                     ))}
                                     {snoozedActions.map(action => (
-                                         <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-orange-500/10 rounded-md border-l-4 border-orange-500">
+                                         <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-orange-500/10 rounded-lg border-l-4 border-orange-500">
                                             <div className="flex-grow flex items-center gap-3 min-w-0">
                                                 <span className="text-xl">{action.emoji}</span>
                                                 <div className="flex-grow min-w-0">
-                                                    <p className="font-semibold truncate">{action.concept}</p>
-                                                    <p className="text-sm text-orange-600 dark:text-orange-400 truncate">Recordar el {action.snoozeDate.toLocaleDateString('es-ES')}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-semibold truncate">{action.concept}</p>
+                                                        {action.isScheduled && (
+                                                            <span className="text-xs px-2 py-0.5 bg-slate-200 dark:bg-slate-600 rounded-full flex-shrink-0">Programado</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm text-orange-600 dark:text-orange-400 truncate">Pospuesto hasta el {action.snoozeDate.toLocaleDateString('es-ES')}</p>
                                                 </div>
                                             </div>
                                              <div className="flex items-center gap-1 flex-shrink-0">
@@ -1222,23 +1251,23 @@ const GlobalView: React.FC = () => {
                         <h3 className="text-xl font-semibold">Registro Global de Movimientos</h3>
                         <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-full">
                             <span className="text-sm font-medium pl-2">Mostrar Programaciones</span>
-                            <Toggle checked={showProjections} onChange={() => setShowProjections(p => !p)} />
+                            <Toggle checked={globalFilters.showProjections} onChange={handleToggleShowProjections} />
                         </div>
                         <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 p-1 rounded-full">
                             <span className="text-sm font-medium pl-2">Mostrar Pendientes</span>
-                            <Toggle checked={showPending} onChange={() => setShowPending(p => !p)} />
+                            <Toggle checked={globalFilters.showPending} onChange={handleToggleShowPending} />
                         </div>
                     </div>
                     <div className="flex space-x-1 rounded-full bg-black/5 dark:bg-white/5 p-1">
                          {isProfessionalModeEnabled && (
                             <>
-                                <FilterButton label="Ingreso Pro." active={typeFilters.proIncome} onClick={() => handleFilterChange('proIncome')} />
-                                <FilterButton label="Gasto Pro." active={typeFilters.proExpense} onClick={() => handleFilterChange('proExpense')} />
+                                <FilterButton label="Ingreso Pro." active={globalFilters.typeFilters.proIncome} onClick={() => handleFilterChange('proIncome')} />
+                                <FilterButton label="Gasto Pro." active={globalFilters.typeFilters.proExpense} onClick={() => handleFilterChange('proExpense')} />
                             </>
                         )}
-                        <FilterButton label="Ingreso Pers." active={typeFilters.persIncome} onClick={() => handleFilterChange('persIncome')} />
-                        <FilterButton label="Gasto Pers." active={typeFilters.persExpense} onClick={() => handleFilterChange('persExpense')} />
-                        <FilterButton label="Transferencia" active={typeFilters.transfer} onClick={() => handleFilterChange('transfer')} />
+                        <FilterButton label="Ingreso Pers." active={globalFilters.typeFilters.persIncome} onClick={() => handleFilterChange('persIncome')} />
+                        <FilterButton label="Gasto Pers." active={globalFilters.typeFilters.persExpense} onClick={() => handleFilterChange('persExpense')} />
+                        <FilterButton label="Transferencia" active={globalFilters.typeFilters.transfer} onClick={() => handleFilterChange('transfer')} />
                     </div>
                 </div>
                 
@@ -1284,8 +1313,8 @@ const GlobalView: React.FC = () => {
                                                 </Button>
                                             ) : (
                                                 <>
-                                                    <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t.originalItem)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
-                                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t.originalItem)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                                    <Button size="sm" variant="ghost" onClick={() => handleEditUnified(t)} title="Editar"><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                                    <Button size="sm" variant="ghost" onClick={() => handleDeleteUnified(t)} title="Eliminar"><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
                                                 </>
                                             )}
                                         </div>

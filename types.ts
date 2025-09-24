@@ -187,6 +187,17 @@ export interface UserSettings {
       scheduledIncome: boolean;
       scheduledExpenses: boolean;
   };
+  globalViewFilters?: {
+    typeFilters: {
+      proIncome: boolean;
+      proExpense: boolean;
+      persIncome: boolean;
+      persExpense: boolean;
+      transfer: boolean;
+    };
+    showProjections: boolean;
+    showPending: boolean;
+  };
 }
 
 export interface AppData {
