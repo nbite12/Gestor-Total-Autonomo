@@ -120,6 +120,7 @@ const checkFilingPeriod = (model: TaxModel, year: number, quarter: number): { is
     if (!filingDates) return { isOpen: false, text: 'Plazo no definido' };
 
     const { start: filingStart, end: filingEnd } = filingDates;
+    filingEnd.setHours(23, 59, 59, 999); // FIX: Ensure end date includes the whole day
     
     if (today >= filingStart && today <= filingEnd) {
         const daysLeft = diffInCalendarDays(today, filingEnd);
@@ -136,6 +137,53 @@ const checkFilingPeriod = (model: TaxModel, year: number, quarter: number): { is
     }
 };
 
+// Helper function for Model 130 quarter calculation
+const calculateQuarterly130 = (
+    targetQuarter: number,
+    targetYear: number,
+    pagosAnteriores130: number,
+    allIncomes: Income[],
+    allExpenses: Expense[],
+    allInvestmentGoods: InvestmentGood[],
+    settings: AppData['settings']
+) => {
+    const endDate = new Date(targetYear, targetQuarter * 3, 0, 23, 59, 59, 999);
+    const incomesYTD = allIncomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === targetYear && d <= endDate; });
+    const expensesYTD = allExpenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === targetYear && d <= endDate && e.isDeductible; });
+
+    const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+    const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+    
+    const amortizationYTD = allInvestmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) <= endDate).reduce((sum, good) => {
+        const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+        const goodStartDate = new Date(good.purchaseDate);
+        const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+        
+        const effectiveStartDate = goodStartDate < new Date(targetYear, 0, 1) ? new Date(targetYear, 0, 1) : goodStartDate;
+        const effectiveEndDate = endDate < goodEndDate ? endDate : goodEndDate;
+        
+        if (effectiveEndDate > effectiveStartDate) {
+            const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+            return sum + (days * dailyAmortization);
+        }
+        return sum;
+    }, 0);
+    
+    const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (targetQuarter * 3);
+    const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+    const netProfitYTD = grossYTD - deductibleExpensesYTD;
+    const quoteYTD = netProfitYTD * 0.20;
+    const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+    
+    const result = Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130);
+
+    return {
+        grossYTD, deductibleExpensesYTD, netProfitYTD, quoteYTD,
+        retencionesSoportadasYTD, pagosAnteriores130, result
+    };
+};
+
+
 // Helper function for Model 100
 const calculateAnnualRent = (year: number, appData: AppData) => {
     const { incomes, expenses, investmentGoods, settings } = appData;
@@ -146,9 +194,12 @@ const calculateAnnualRent = (year: number, appData: AppData) => {
     const annualAmortization = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= year).reduce((sum, good) => {
         const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
         const goodStartDate = new Date(good.purchaseDate);
+        const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+        
         const effectiveStartDate = goodStartDate < new Date(year, 0, 1) ? new Date(year, 0, 1) : goodStartDate;
-        const effectiveEndDate = new Date(year, 11, 31);
-        if (effectiveEndDate >= effectiveStartDate && new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate()) >= effectiveStartDate) {
+        const effectiveEndDate = new Date(year, 11, 31) < goodEndDate ? new Date(year, 11, 31) : goodEndDate;
+
+        if (effectiveEndDate >= effectiveStartDate) {
             const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
             return sum + (daysInPeriod * dailyAmortization);
         }
@@ -167,8 +218,18 @@ const calculateAnnualRent = (year: number, appData: AppData) => {
 
     const { totalQuota: cuotaIntegra, breakdown, effectiveRate } = calculateAnnualIRPFBreakdown(finalNetProfit);
     const retencionesSoportadas = yearIncomes.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
-    // Simplified 130 calculation for the whole year for now
-    const pagosACuenta130 = Math.max(0, finalNetProfit * 0.20); // This is a simplification
+    
+    const pagosACuenta130 = (() => {
+        let accumulatedPayments = 0;
+        let total = 0;
+        for (let q = 1; q <= 4; q++) {
+            const quarterResult = calculateQuarterly130(q, year, accumulatedPayments, incomes, expenses, investmentGoods, settings);
+            total += quarterResult.result;
+            accumulatedPayments += quarterResult.result;
+        }
+        return total;
+    })();
+
     const resultadoFinal = cuotaIntegra - retencionesSoportadas - pagosACuenta130;
     
     return { 
@@ -478,43 +539,6 @@ const AnalisisFiscalView: React.FC = () => {
     const [rentaYear, setRentaYear] = useState<number>(availableYears[0] || new Date().getFullYear());
 
     const fiscalCalculations = useMemo(() => {
-        const calculate130ForQuarter = (targetQuarter: number, targetYear: number) => {
-            const endDate = new Date(targetYear, targetQuarter * 3, 0, 23, 59, 59, 999);
-            const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === targetYear && d <= endDate; });
-            const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === targetYear && d <= endDate && e.isDeductible; });
-            
-            const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
-            const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
-            const amortizationYTD = investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate).getFullYear() <= targetYear).reduce((sum, good) => {
-                 const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
-                 const goodStartDate = new Date(good.purchaseDate);
-                 const effectiveStartDate = goodStartDate < new Date(targetYear, 0, 1) ? new Date(targetYear, 0, 1) : goodStartDate;
-                 if (effectiveStartDate > endDate) return sum;
-                 const effectiveEndDate = endDate;
-                 const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
-                 return sum + (days * dailyAmortization);
-            }, 0);
-            const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (targetQuarter * 3);
-            const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
-            const netProfitYTD = grossYTD - deductibleExpensesYTD;
-            const quoteYTD = netProfitYTD * 0.20;
-            const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
-            
-            let pagosAnteriores130 = 0;
-            if (targetQuarter > 1) {
-                for (let q = 1; q < targetQuarter; q++) {
-                    pagosAnteriores130 += calculate130ForQuarter(q, targetYear).result;
-                }
-            }
-            
-            const result = Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130);
-            
-            return {
-                grossYTD, deductibleExpensesYTD, netProfitYTD, quoteYTD,
-                retencionesSoportadasYTD, pagosAnteriores130, result
-            };
-        };
-
         // --- Period Calculations (303, 130, 111, 115) ---
         const periodIncomes = incomes.filter(i => new Date(i.date) >= period.startDate && new Date(i.date) <= period.endDate);
         const periodExpenses = expenses.filter(e => new Date(e.date) >= period.startDate && new Date(e.date) <= period.endDate);
@@ -557,7 +581,14 @@ const AnalisisFiscalView: React.FC = () => {
         // 130
         const quarterOfPeriod = Math.floor(period.startDate.getMonth() / 3) + 1;
         const yearOfPeriod = period.startDate.getFullYear();
-        const model130 = calculate130ForQuarter(quarterOfPeriod, yearOfPeriod);
+        
+        let pagosAnteriores130 = 0;
+        for (let q = 1; q < quarterOfPeriod; q++) {
+            // Recalculate previous payments iteratively for accuracy
+            const prevQResult = calculateQuarterly130(q, yearOfPeriod, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+            pagosAnteriores130 += prevQResult.result;
+        }
+        const model130 = calculateQuarterly130(quarterOfPeriod, yearOfPeriod, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
         
         // Model 349
         const opsByNif349: { [nif: string]: { name: string; total: number; key: 'E' | 'A' } } = {};
