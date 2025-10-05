@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // --- Helper Functions ---
 const getMonthsInRange = (startDate: Date, endDate: Date): number => {
+    if (endDate < startDate) return 0;
     const startYear = startDate.getFullYear();
     const endYear = endDate.getFullYear();
     const startMonth = startDate.getMonth();
@@ -80,6 +81,7 @@ const calculateQuarterly130 = (
         return sum;
     }, 0);
     
+    // The monthly fee is already accounted for in projected expenses, but for the official 130 model, it's a key deductible.
     const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (targetQuarter * 3);
     const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
     const netProfitYTD = grossYTD - deductibleExpensesYTD;
@@ -158,24 +160,23 @@ const InfoBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 
 // --- Taxes Breakdown Modal ---
-const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; breakdown: any; formatCurrency: (val: number) => string; }> = ({ isOpen, onClose, breakdown, formatCurrency }) => {
+const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; breakdown: any; formatCurrency: (val: number) => string; projectionPeriodLabel: string; }> = ({ isOpen, onClose, breakdown, formatCurrency, projectionPeriodLabel }) => {
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Desglose de Impuestos Trimestrales">
+        <Modal isOpen={isOpen} onClose={onClose} title="Desglose de Impuestos Estimados">
             <div className="space-y-4 text-sm">
-                <p className="text-slate-600 dark:text-slate-400">Esta es una estimación de los impuestos a pagar para el trimestre actual, basada en los datos introducidos hasta ahora.</p>
+                <p className="text-slate-600 dark:text-slate-400">Esta es una estimación para el trimestre fiscal que finaliza junto con tu periodo de proyección ({projectionPeriodLabel}).</p>
                 <div className="space-y-2 rounded-lg bg-black/5 dark:bg-white/5 p-4">
                     <div className="flex justify-between"><span>Modelo 303 (IVA):</span> <span className="font-semibold">{formatCurrency(breakdown.model303Result)}</span></div>
                     <div className="flex justify-between"><span>Modelo 130 (IRPF):</span> <span className="font-semibold">{formatCurrency(breakdown.model130Result)}</span></div>
                     <div className="flex justify-between"><span>Modelo 111 (Ret. Prof.):</span> <span className="font-semibold">{formatCurrency(breakdown.model111Result)}</span></div>
                     <div className="flex justify-between"><span>Modelo 115 (Ret. Alquiler):</span> <span className="font-semibold">{formatCurrency(breakdown.model115Result)}</span></div>
-                    <div className="flex justify-between"><span>Cuota Autónomo (Proyección):</span> <span className="font-semibold">{formatCurrency(breakdown.projectedAutonomoFee)}</span></div>
-
+                    
                     <div className="border-t-2 dark:border-slate-500 my-2 pt-2 flex justify-between text-base">
-                        <span className="font-bold">Total Estimado:</span>
-                        <span className="font-bold">{formatCurrency(breakdown.totalProjectedTaxes + breakdown.projectedAutonomoFee)}</span>
+                        <span className="font-bold">Total Impuestos Estimados:</span>
+                        <span className="font-bold">{formatCurrency(breakdown.totalProjectedTaxes)}</span>
                     </div>
                 </div>
-                <InfoBox>La 'Cuota de Autónomo' se calcula para el periodo de proyección seleccionado, mientras que los modelos de impuestos (303, 130, etc.) se calculan para el trimestre fiscal actual.</InfoBox>
+                 <InfoBox>Los modelos de impuestos (303, 130, etc.) se calculan para el trimestre fiscal correspondiente. La cuota de autónomo, al ser un gasto mensual, se proyecta dentro de "Gastos Prog." en la vista principal.</InfoBox>
             </div>
         </Modal>
     );
@@ -497,16 +498,14 @@ const GlobalView: React.FC = () => {
         
         const monthsInProjection = getMonthsInRange(projectionStart, projectionEnd);
         const projectedAutonomoFee = (settings.monthlyAutonomoFee || 0) * monthsInProjection;
+        const totalProjectedExpenses = scheduledExpenseInPeriod + projectedAutonomoFee;
 
+        // Tax calculations for the quarter of the projection's END DATE
+        const taxYear = projectionEnd.getFullYear();
+        const taxQuarter = Math.floor(projectionEnd.getMonth() / 3) + 1;
+        const qStartDate = new Date(taxYear, (taxQuarter - 1) * 3, 1);
+        const qEndDate = new Date(taxYear, taxQuarter * 3, 0, 23, 59, 59, 999);
 
-        // Tax calculations for current quarter
-        const now = new Date();
-        const year = now.getFullYear();
-        const quarter = Math.floor(now.getMonth() / 3) + 1;
-        const qStartDate = new Date(year, (quarter - 1) * 3, 1);
-        const qEndDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999);
-
-        // FIX: Remove redundant variable declaration that was causing an error.
         const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
         
         const qIncomes = incomes.filter(i => new Date(i.date) >= qStartDate && new Date(i.date) <= qEndDate);
@@ -519,11 +518,11 @@ const GlobalView: React.FC = () => {
         const model303Result = Math.max(0, ivaRepercutido - ivaSoportado);
 
         let pagosAnteriores130 = 0;
-        for (let q = 1; q < quarter; q++) {
-            const prevQResult = calculateQuarterly130(q, year, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+        for (let q = 1; q < taxQuarter; q++) {
+            const prevQResult = calculateQuarterly130(q, taxYear, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
             pagosAnteriores130 += prevQResult.result;
         }
-        const model130Data = calculateQuarterly130(quarter, year, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+        const model130Data = calculateQuarterly130(taxQuarter, taxYear, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
         const model130Result = model130Data.result;
 
         const qAllExpenses = expenses.filter(e => new Date(e.date) >= qStartDate && new Date(e.date) <= qEndDate);
@@ -531,16 +530,13 @@ const GlobalView: React.FC = () => {
         const model115Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         
         const totalProjectedTaxes = model303Result + model130Result + model111Result + model115Result;
-        
-        const totalProjectedExpenses = scheduledExpenseInPeriod;
 
-        const netAvailableCapital = currentTotalBalance 
+        const netAvailableCapital = currentTotalBalance
             + (includeNetCapitalItems.pendingIncome ? totalPendingIncome : 0)
             - (includeNetCapitalItems.pendingExpenses ? totalPendingExpenses : 0)
-            - (includeNetCapitalItems.taxes ? (totalProjectedTaxes + projectedAutonomoFee) : 0)
+            - (includeNetCapitalItems.taxes ? totalProjectedTaxes : 0)
             + (includeNetCapitalItems.scheduledIncome ? scheduledIncomeInPeriod : 0)
             - (includeNetCapitalItems.scheduledExpenses ? totalProjectedExpenses : 0);
-
 
         return {
             professionalBalance,
@@ -549,10 +545,9 @@ const GlobalView: React.FC = () => {
             totalPendingExpenses,
             totalProjectedTaxes,
             scheduledIncomeInPeriod,
-            scheduledExpenseInPeriod,
-            projectedAutonomoFee,
+            totalProjectedExpenses,
             netAvailableCapital,
-            taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes, projectedAutonomoFee }
+            taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes }
         };
 
     }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences, projectionPeriod, customProjectionStart, customProjectionEnd]);
@@ -774,6 +769,35 @@ const GlobalView: React.FC = () => {
 
     }, [scheduledTransactions, incomes, expenses, personalMovements, data.snoozedActions]);
 
+    type DisplayScheduledTransaction = ScheduledTransaction & { isVirtual?: boolean };
+
+    const allScheduledTransactions = useMemo<DisplayScheduledTransaction[]>(() => {
+        const manualTransactions: DisplayScheduledTransaction[] = [...scheduledTransactions];
+        
+        const hasManualAutonomoEntry = manualTransactions.some(st => 
+            st.concept.toLowerCase().includes('autonomo') || st.concept.toLowerCase().includes('autónomo')
+        );
+    
+        if (isProfessionalModeEnabled && settings.monthlyAutonomoFee > 0 && !hasManualAutonomoEntry) {
+            const virtualAutonomoFee: DisplayScheduledTransaction = {
+                id: 'virtual-autonomo-fee',
+                concept: 'Cuota de Autónomo',
+                scope: 'professional',
+                type: 'expense',
+                frequency: 'monthly',
+                startDate: new Date(0).toISOString(),
+                baseAmount: settings.monthlyAutonomoFee,
+                vatRate: 0,
+                irpfRate: 0,
+                location: MoneyLocation.PRO_BANK,
+                isVirtual: true,
+            };
+            return [...manualTransactions, virtualAutonomoFee];
+        }
+    
+        return manualTransactions;
+    }, [scheduledTransactions, settings.monthlyAutonomoFee, isProfessionalModeEnabled]);
+
     // --- Handlers ---
     const handleConfirmScheduled = (st: ScheduledTransaction & { dueDate: Date }) => {
         const dueDateISO = st.dueDate.toISOString();
@@ -967,16 +991,16 @@ const GlobalView: React.FC = () => {
         setCelebrationType(isGoalCompleted ? 'goalComplete' : 'contribution');
     };
     
-    const getProjectionPeriodLabel = () => {
+    const getProjectionPeriodLabel = useCallback(() => {
         switch (projectionPeriod) {
-            case 'this_month': return '(Este Mes)';
-            case 'this_quarter': return '(Este Trimestre)';
-            case '6_months': return '(6 Meses)';
-            case '1_year': return '(1 Año)';
-            case 'custom': return '(Personalizado)';
+            case 'this_month': return 'Este Mes';
+            case 'this_quarter': return 'Este Trimestre';
+            case '6_months': return '6 Meses';
+            case '1_year': return '1 Año';
+            case 'custom': return 'Personalizado';
             default: return '';
         }
-    };
+    }, [projectionPeriod]);
     
     const { urgentActions, snoozedActions } = categorizedActions;
     const urgentCount = urgentActions.length;
@@ -1138,7 +1162,7 @@ const GlobalView: React.FC = () => {
                         <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                              <div className="flex items-center gap-2">
                                 <h3 className="text-xl font-semibold">Capital Actual y Proyección</h3>
-                                <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre actual." />
+                                <HelpTooltip content="Estimación de tu dinero total después de cobrar lo pendiente, pagar deudas y liquidar los impuestos del trimestre." />
                             </div>
                             <select
                                 value={projectionPeriod}
@@ -1206,16 +1230,17 @@ const GlobalView: React.FC = () => {
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledIncome ? 'opacity-40' : ''}`}>
                                  <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Toggle checked={includeNetCapitalItems.scheduledIncome} onChange={() => handleToggleNetCapitalItem('scheduledIncome')} />
-                                    Ingresos Prog. {getProjectionPeriodLabel()}
+                                    Ingresos Prog. ({getProjectionPeriodLabel()})
                                 </span>
                                 <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInPeriod)}</span>
                             </div>
                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                 <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
-                                    Gastos Prog. {getProjectionPeriodLabel()}
+                                    Gastos Prog. ({getProjectionPeriodLabel()})
+                                     <HelpTooltip content="Incluye gastos programados y la cuota de autónomo mensual de tus Ajustes. Para registrar pagos reales de la cuota, añádelos como un 'Gasto Profesional' con 0% de IVA." />
                                 </span>
-                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInPeriod)}</span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedExpenses)}</span>
                             </div>
                              <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
@@ -1225,13 +1250,7 @@ const GlobalView: React.FC = () => {
                                         <Icon name="Info" className="w-4 h-4" />
                                     </button>
                                 </span>
-                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes + netCapitalSummary.projectedAutonomoFee)}</span>
-                            </div>
-                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
-                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400 pl-7">
-                                    └ Cuota Autónomo (Est.)
-                                </span>
-                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.projectedAutonomoFee)}</span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
                             </div>
                         </div>
                     </Card>
@@ -1291,28 +1310,37 @@ const GlobalView: React.FC = () => {
                         <Button size="sm" onClick={() => handleOpenScheduledModal()}> <Icon name="Plus" className="w-4 h-4" /> Añadir</Button>
                     </div>
                     <div className="space-y-3 max-h-40 overflow-y-auto pr-2">
-                        {scheduledTransactions.length > 0 ? scheduledTransactions.map(st => {
+                        {allScheduledTransactions.length > 0 ? allScheduledTransactions.map(st => {
+                             const isVirtual = st.isVirtual;
                              const amount = getNetScheduledAmount(st);
                              const color = st.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
                              const scopeColor = st.scope === 'professional' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800';
                              return (
-                           <div key={st.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
-                               <div className="flex justify-between items-start">
-                                   <div>
-                                       <p className="font-semibold">{st.concept}</p>
-                                       <p className={`text-lg font-bold ${color}`}>{formatCurrency(amount)}</p>
-                                   </div>
-                                   <div className="flex-shrink-0">
-                                       <Button variant="ghost" size="sm" onClick={() => handleOpenScheduledModal(st)}><Icon name="Pencil" className="w-4 h-4" /></Button>
-                                       <Button variant="ghost" size="sm" onClick={() => handleDeleteScheduled(st.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
-                                   </div>
-                               </div>
-                               <div className="flex flex-wrap gap-2 mt-1">
-                                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${scopeColor}`}>{st.scope === 'professional' ? 'Profesional' : 'Personal'}</span>
-                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{frequencyLabels[st.frequency]}</span>
-                               </div>
-                           </div>
-                        )}) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade transacciones futuras para proyectar tu crecimiento.</p>}
+                                <div key={st.id} className="text-sm p-2 bg-slate-50 dark:bg-slate-700/50 rounded-md">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="flex items-center gap-1">
+                                                <p className="font-semibold">{st.concept}</p>
+                                                {isVirtual && <HelpTooltip content="Este gasto se basa en la 'Cuota de Autónomo' de tus Ajustes y no se puede editar aquí." />}
+                                            </div>
+                                            <p className={`text-lg font-bold ${color}`}>{formatCurrency(amount)}</p>
+                                        </div>
+                                        <div className="flex-shrink-0">
+                                            {!isVirtual && (
+                                                <>
+                                                    <Button variant="ghost" size="sm" onClick={() => handleOpenScheduledModal(st)}><Icon name="Pencil" className="w-4 h-4" /></Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteScheduled(st.id)}><Icon name="Trash2" className="w-4 h-4 text-red-500" /></Button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-1">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${scopeColor}`}>{st.scope === 'professional' ? 'Profesional' : 'Personal'}</span>
+                                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-800 dark:bg-slate-600 dark:text-slate-200">{frequencyLabels[st.frequency]}</span>
+                                    </div>
+                                </div>
+                            );
+                        }) : <p className="text-sm text-center text-gray-600 dark:text-gray-400">Añade transacciones futuras para proyectar tu crecimiento.</p>}
                     </div>
                 </Card>
                  <Card className="p-6">
@@ -1427,7 +1455,7 @@ const GlobalView: React.FC = () => {
 
 
             {/* Modals for this view */}
-            <TaxesBreakdownModal isOpen={isTaxesBreakdownOpen} onClose={() => setIsTaxesBreakdownOpen(false)} breakdown={netCapitalSummary.taxesBreakdown} formatCurrency={formatCurrency} />
+            <TaxesBreakdownModal isOpen={isTaxesBreakdownOpen} onClose={() => setIsTaxesBreakdownOpen(false)} breakdown={netCapitalSummary.taxesBreakdown} formatCurrency={formatCurrency} projectionPeriodLabel={getProjectionPeriodLabel()} />
             <Modal isOpen={isScheduledModalOpen} onClose={() => setIsScheduledModalOpen(false)} title={scheduledToEdit ? "Editar Transacción Programada" : "Nueva Transacción Programada"}>
                 <ScheduledTransactionForm onClose={() => setIsScheduledModalOpen(false)} transactionToEdit={scheduledToEdit} />
             </Modal>
