@@ -2,7 +2,7 @@ import React, { useState, useContext, useMemo, useCallback, useRef, useEffect } 
 import { AppContext } from '../App';
 import { Card, Icon, HelpTooltip, Button, Modal, Input, Select, Celebration } from './ui';
 import { PeriodSelector } from './PeriodSelector';
-import { ScheduledTransaction, MoneyLocation, Transfer, TransferJustification, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal, PotentialFrequency } from '../types';
+import { ScheduledTransaction, MoneyLocation, Transfer, TransferJustification, Income, Expense, PersonalMovement, InvestmentGood, SavingsGoal, PotentialFrequency, AppData } from '../types';
 // FIX: Import DatePickerInput to be used in modals within this component.
 import { IncomeForm, ExpenseForm, MovementForm, TransferForm, SavingsGoalForm, AddFundsForm, ScheduledTransactionForm, DatePickerInput } from './TransactionForms';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,6 +44,54 @@ const formatDateTime = (isoDate: Date) => {
         hour: '2-digit',
         minute: '2-digit'
     }).replace(',', '');
+};
+
+const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
+
+// Helper function for Model 130 quarter calculation (from ProfessionalView)
+const calculateQuarterly130 = (
+    targetQuarter: number,
+    targetYear: number,
+    pagosAnteriores130: number,
+    allIncomes: Income[],
+    allExpenses: Expense[],
+    allInvestmentGoods: InvestmentGood[],
+    settings: AppData['settings']
+) => {
+    const endDate = new Date(targetYear, targetQuarter * 3, 0, 23, 59, 59, 999);
+    const incomesYTD = allIncomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === targetYear && d <= endDate; });
+    const expensesYTD = allExpenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === targetYear && d <= endDate && e.isDeductible; });
+
+    const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
+    const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+    
+    const amortizationYTD = allInvestmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) <= endDate).reduce((sum, good) => {
+        const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
+        const goodStartDate = new Date(good.purchaseDate);
+        const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
+        
+        const effectiveStartDate = goodStartDate < new Date(targetYear, 0, 1) ? new Date(targetYear, 0, 1) : goodStartDate;
+        const effectiveEndDate = endDate < goodEndDate ? endDate : goodEndDate;
+        
+        if (effectiveEndDate > effectiveStartDate) {
+            const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
+            return sum + (days * dailyAmortization);
+        }
+        return sum;
+    }, 0);
+    
+    const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (targetQuarter * 3);
+    const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
+    const netProfitYTD = grossYTD - deductibleExpensesYTD;
+    const quoteYTD = netProfitYTD * 0.20;
+    const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
+    
+    const result = Math.max(0, quoteYTD - retencionesSoportadasYTD - pagosAnteriores130);
+
+    return {
+        grossYTD, deductibleExpensesYTD, netProfitYTD, quoteYTD,
+        retencionesSoportadasYTD, pagosAnteriores130, result
+    };
 };
 
 
@@ -98,6 +146,17 @@ const AddRecordedTransactionModal: React.FC<{
     );
 };
 
+// --- Local InfoBox Component for Modals ---
+const InfoBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="p-3 my-2 bg-blue-50 dark:bg-blue-900/50 border-l-4 border-blue-400 text-blue-800 dark:text-blue-200 rounded-r-lg">
+        <div className="flex items-start gap-2">
+            <Icon name="Info" className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">{children}</div>
+        </div>
+    </div>
+);
+
+
 // --- Taxes Breakdown Modal ---
 const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; breakdown: any; formatCurrency: (val: number) => string; }> = ({ isOpen, onClose, breakdown, formatCurrency }) => {
     return (
@@ -109,11 +168,14 @@ const TaxesBreakdownModal: React.FC<{ isOpen: boolean; onClose: () => void; brea
                     <div className="flex justify-between"><span>Modelo 130 (IRPF):</span> <span className="font-semibold">{formatCurrency(breakdown.model130Result)}</span></div>
                     <div className="flex justify-between"><span>Modelo 111 (Ret. Prof.):</span> <span className="font-semibold">{formatCurrency(breakdown.model111Result)}</span></div>
                     <div className="flex justify-between"><span>Modelo 115 (Ret. Alquiler):</span> <span className="font-semibold">{formatCurrency(breakdown.model115Result)}</span></div>
+                    <div className="flex justify-between"><span>Cuota Autónomo (Proyección):</span> <span className="font-semibold">{formatCurrency(breakdown.projectedAutonomoFee)}</span></div>
+
                     <div className="border-t-2 dark:border-slate-500 my-2 pt-2 flex justify-between text-base">
                         <span className="font-bold">Total Estimado:</span>
-                        <span className="font-bold">{formatCurrency(breakdown.totalProjectedTaxes)}</span>
+                        <span className="font-bold">{formatCurrency(breakdown.totalProjectedTaxes + breakdown.projectedAutonomoFee)}</span>
                     </div>
                 </div>
+                <InfoBox>La 'Cuota de Autónomo' se calcula para el periodo de proyección seleccionado, mientras que los modelos de impuestos (303, 130, etc.) se calculan para el trimestre fiscal actual.</InfoBox>
             </div>
         </Modal>
     );
@@ -432,18 +494,20 @@ const GlobalView: React.FC = () => {
                 scheduledExpenseInPeriod += occurrences * amount;
             }
         });
+        
+        const monthsInProjection = getMonthsInRange(projectionStart, projectionEnd);
+        const projectedAutonomoFee = (settings.monthlyAutonomoFee || 0) * monthsInProjection;
 
 
         // Tax calculations for current quarter
         const now = new Date();
         const year = now.getFullYear();
-        const quarter = Math.floor(now.getMonth() / 3);
-        const qStartDate = new Date(year, quarter * 3, 1);
-        const qEndDate = new Date(year, quarter * 3 + 3, 0, 23, 59, 59, 999);
+        const quarter = Math.floor(now.getMonth() / 3) + 1;
+        const qStartDate = new Date(year, (quarter - 1) * 3, 1);
+        const qEndDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999);
 
-        const { incomes, expenses, investmentGoods, settings } = data;
+        // FIX: Remove redundant variable declaration that was causing an error.
         const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
-        const getCuotaIRPF = (base: number, rate: number) => base * (rate / 100);
         
         const qIncomes = incomes.filter(i => new Date(i.date) >= qStartDate && new Date(i.date) <= qEndDate);
         const qDeductibleExpenses = expenses.filter(e => e.isDeductible && new Date(e.date) >= qStartDate && new Date(e.date) <= qEndDate);
@@ -454,44 +518,28 @@ const GlobalView: React.FC = () => {
         const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
         const model303Result = Math.max(0, ivaRepercutido - ivaSoportado);
 
-        const yearOfPeriod = qStartDate.getFullYear();
-        const quarterOfPeriod = quarter + 1;
-        const incomesYTD = incomes.filter(i => { const d = new Date(i.date); return d.getFullYear() === yearOfPeriod && d <= qEndDate; });
-        const expensesYTD = expenses.filter(e => { const d = new Date(e.date); return d.getFullYear() === yearOfPeriod && d <= qEndDate && e.isDeductible; });
-        const grossYTD = incomesYTD.reduce((sum, i) => sum + i.baseAmount, 0);
-        const expensesFromInvoicesYTD = expensesYTD.reduce((sum, e) => {
-            const expenseBase = e.deductibleBaseAmount ?? e.baseAmount;
-            const nonDeductibleVat = e.isDeductible ? 0 : getCuotaIVA(e.baseAmount, e.vatRate);
-            return sum + expenseBase + nonDeductibleVat;
-        }, 0);
-        const amortizationYTD = investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
-             const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
-             const goodStartDate = new Date(good.purchaseDate);
-             if (goodStartDate.getFullYear() > yearOfPeriod) return sum;
-             const effectiveStartDate = goodStartDate < new Date(yearOfPeriod, 0, 1) ? new Date(yearOfPeriod, 0, 1) : goodStartDate;
-             const effectiveEndDate = qEndDate;
-             const days = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
-             return sum + (days * dailyAmortization);
-        }, 0);
-        const autonomoFeeYTD = (settings.monthlyAutonomoFee || 0) * (quarterOfPeriod * 3);
-        const deductibleExpensesYTD = expensesFromInvoicesYTD + amortizationYTD + autonomoFeeYTD;
-        const netProfitYTD = grossYTD - deductibleExpensesYTD;
-        const quoteYTD = netProfitYTD * 0.20;
-        const retencionesSoportadasYTD = incomesYTD.reduce((sum, i) => sum + getCuotaIRPF(i.baseAmount, i.irpfRate), 0);
-        const model130Result = Math.max(0, quoteYTD - retencionesSoportadasYTD);
+        let pagosAnteriores130 = 0;
+        for (let q = 1; q < quarter; q++) {
+            const prevQResult = calculateQuarterly130(q, year, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+            pagosAnteriores130 += prevQResult.result;
+        }
+        const model130Data = calculateQuarterly130(quarter, year, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+        const model130Result = model130Data.result;
 
         const qAllExpenses = expenses.filter(e => new Date(e.date) >= qStartDate && new Date(e.date) <= qEndDate);
         const model111Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && !e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         const model115Result = qAllExpenses.reduce((sum, e) => sum + (e.irpfRetentionAmount && e.isRentalExpense ? e.irpfRetentionAmount : 0), 0);
         
         const totalProjectedTaxes = model303Result + model130Result + model111Result + model115Result;
+        
+        const totalProjectedExpenses = scheduledExpenseInPeriod;
 
         const netAvailableCapital = currentTotalBalance 
             + (includeNetCapitalItems.pendingIncome ? totalPendingIncome : 0)
             - (includeNetCapitalItems.pendingExpenses ? totalPendingExpenses : 0)
-            - (includeNetCapitalItems.taxes ? totalProjectedTaxes : 0)
+            - (includeNetCapitalItems.taxes ? (totalProjectedTaxes + projectedAutonomoFee) : 0)
             + (includeNetCapitalItems.scheduledIncome ? scheduledIncomeInPeriod : 0)
-            - (includeNetCapitalItems.scheduledExpenses ? scheduledExpenseInPeriod : 0);
+            - (includeNetCapitalItems.scheduledExpenses ? totalProjectedExpenses : 0);
 
 
         return {
@@ -502,8 +550,9 @@ const GlobalView: React.FC = () => {
             totalProjectedTaxes,
             scheduledIncomeInPeriod,
             scheduledExpenseInPeriod,
+            projectedAutonomoFee,
             netAvailableCapital,
-            taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes }
+            taxesBreakdown: { model303Result, model130Result, model111Result, model115Result, totalProjectedTaxes, projectedAutonomoFee }
         };
 
     }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences, projectionPeriod, customProjectionStart, customProjectionEnd]);
@@ -1161,9 +1210,9 @@ const GlobalView: React.FC = () => {
                                 </span>
                                 <span className="font-medium text-green-500">+{formatCurrency(netCapitalSummary.scheduledIncomeInPeriod)}</span>
                             </div>
-                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
-                                 <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                    <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
+                            <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.scheduledExpenses ? 'opacity-40' : ''}`}>
+                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                <Toggle checked={includeNetCapitalItems.scheduledExpenses} onChange={() => handleToggleNetCapitalItem('scheduledExpenses')} />
                                     Gastos Prog. {getProjectionPeriodLabel()}
                                 </span>
                                 <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.scheduledExpenseInPeriod)}</span>
@@ -1176,7 +1225,13 @@ const GlobalView: React.FC = () => {
                                         <Icon name="Info" className="w-4 h-4" />
                                     </button>
                                 </span>
-                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes)}</span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.totalProjectedTaxes + netCapitalSummary.projectedAutonomoFee)}</span>
+                            </div>
+                             <div className={`flex justify-between items-center transition-opacity ${!includeNetCapitalItems.taxes ? 'opacity-40' : ''}`}>
+                                <span className="flex items-center gap-2 text-gray-600 dark:text-gray-400 pl-7">
+                                    └ Cuota Autónomo (Est.)
+                                </span>
+                                <span className="font-medium text-red-500">-{formatCurrency(netCapitalSummary.projectedAutonomoFee)}</span>
                             </div>
                         </div>
                     </Card>

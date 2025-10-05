@@ -539,7 +539,7 @@ const AnalisisFiscalView: React.FC = () => {
     const [rentaYear, setRentaYear] = useState<number>(availableYears[0] || new Date().getFullYear());
 
     const fiscalCalculations = useMemo(() => {
-        // --- Period Calculations (303, 130, 111, 115) ---
+        // --- Period Calculations (303, 111, 115) ---
         const periodIncomes = incomes.filter(i => new Date(i.date) >= period.startDate && new Date(i.date) <= period.endDate);
         const periodExpenses = expenses.filter(e => new Date(e.date) >= period.startDate && new Date(e.date) <= period.endDate);
         const periodDeductibleExpenses = periodExpenses.filter(e => e.isDeductible);
@@ -770,25 +770,27 @@ const GenerarPDFsView: React.FC = () => {
 
     const handleGenerate = () => {
         const { startDate, endDate } = period;
+        const { incomes, expenses, investmentGoods, transfers, settings } = data;
 
-        const filteredIncomes = data.incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
-        const filteredExpenses = data.expenses.filter(e => new Date(e.date) >= startDate && new Date(e.date) <= endDate);
-        const filteredInvestmentGoods = data.investmentGoods.filter(g => new Date(g.purchaseDate) >= startDate && new Date(g.purchaseDate) <= endDate);
-        const filteredTransfers = data.transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+        const filteredIncomes = incomes.filter(i => new Date(i.date) >= startDate && new Date(i.date) <= endDate);
+        const filteredExpenses = expenses.filter(e => new Date(e.date) >= startDate && new Date(e.date) <= endDate);
+        const filteredInvestmentGoods = investmentGoods.filter(g => new Date(g.purchaseDate) >= startDate && new Date(g.purchaseDate) <= endDate);
+        const filteredTransfers = transfers.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
 
         switch (documentType) {
             case 'incomeBook':
-                generateIncomesPDF(filteredIncomes, { allExpenses: data.expenses, allInvestmentGoods: data.investmentGoods, settings: data.settings, period });
+                generateIncomesPDF(filteredIncomes);
                 break;
             case 'expenseBook':
-                generateExpensesPDF(filteredExpenses, filteredInvestmentGoods, { allIncomes: data.incomes, allInvestmentGoods: data.investmentGoods, settings: data.settings, period });
+                generateExpensesPDF(filteredExpenses, filteredInvestmentGoods);
                 break;
             case 'fullReport':
-                const deductibleExpenses = filteredExpenses.filter(e => e.isDeductible);
-                const totalGrossInvoiced = filteredIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
-                const totalExpensesFromInvoices = deductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
+                // Period-based calculations for P&L and IVA
+                const periodDeductibleExpenses = filteredExpenses.filter(e => e.isDeductible);
+                const periodGrossInvoiced = filteredIncomes.reduce((sum, i) => sum + i.baseAmount, 0);
+                const periodExpensesFromInvoices = periodDeductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
 
-                const totalAmortization = data.investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
+                const periodAmortization = data.investmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
                     const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
                     const goodStartDate = new Date(good.purchaseDate);
                     const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
@@ -804,27 +806,41 @@ const GenerarPDFsView: React.FC = () => {
                 const monthsInPeriod = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth()) + 1;
                 const cuotaAutonomo = (data.settings.monthlyAutonomoFee || 0) * monthsInPeriod;
                 
-                const totalDeductibleExpenses = totalExpensesFromInvoices + cuotaAutonomo + totalAmortization;
-                const netProfit = totalGrossInvoiced - totalDeductibleExpenses;
+                const periodTotalDeductibleExpenses = periodExpensesFromInvoices + cuotaAutonomo + periodAmortization;
+                const periodNetProfit = periodGrossInvoiced - periodTotalDeductibleExpenses;
                 
                 const ivaRepercutido = filteredIncomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-                const ivaSoportadoFromExpenses = deductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
+                const ivaSoportadoFromExpenses = periodDeductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
                 const ivaSoportadoFromGoods = data.investmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= startDate && new Date(g.purchaseDate) <= endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
                 const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
                 const vatResult = ivaRepercutido - ivaSoportado;
-                const irpfToPay = netProfit * 0.2;
+
+                // Cumulative calculation for IRPF (Modelo 130)
+                const quarterOfPeriod = Math.floor(startDate.getMonth() / 3) + 1;
+                const yearOfPeriod = startDate.getFullYear();
+                
+                let pagosAnteriores130 = 0;
+                for (let q = 1; q < quarterOfPeriod; q++) {
+                    const prevQResult = calculateQuarterly130(q, yearOfPeriod, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
+                    pagosAnteriores130 += prevQResult.result;
+                }
+                const model130 = calculateQuarterly130(quarterOfPeriod, yearOfPeriod, pagosAnteriores130, incomes, expenses, investmentGoods, settings);
 
                 const summary = {
-                    totalGrossInvoiced,
-                    totalExpenses: totalDeductibleExpenses,
-                    netProfit,
-                    ivaRepercutido,
-                    ivaSoportado,
-                    vatResult,
-                    irpfToPay: Math.max(0, irpfToPay)
+                    period: {
+                        grossInvoiced: periodGrossInvoiced,
+                        totalDeductibleExpenses: periodTotalDeductibleExpenses,
+                        netProfit: periodNetProfit,
+                        ivaRepercutido,
+                        ivaSoportado,
+                        vatResult,
+                    },
+                    cumulative: {
+                        model130,
+                    }
                 };
 
-                generateComprehensivePeriodPDF(filteredIncomes, deductibleExpenses, data.investmentGoods.filter(g => g.isDeductible), filteredTransfers, data.settings, { startDate, endDate }, summary);
+                generateComprehensivePeriodPDF(filteredIncomes, periodDeductibleExpenses, data.investmentGoods.filter(g => g.isDeductible), filteredTransfers, data.settings, { startDate, endDate }, summary);
                 break;
         }
     };

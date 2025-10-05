@@ -9,48 +9,16 @@ declare global {
 // --- Shared Helpers ---
 const formatDate = (isoDate: string | Date) => new Date(isoDate).toLocaleDateString('es-ES');
 const formatCurrency = (amount: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-const getCuotaIVA = (base: number, rate: number) => base * (rate / 100);
 
-
-// --- Internal Helper Functions for Summaries ---
-const calculateSummaryForPeriod = (
-    incomes: Income[],
-    expenses: Expense[],
-    allInvestmentGoods: InvestmentGood[],
-    settings: UserSettings,
-    period: { startDate: Date; endDate: Date }
-) => {
-    const deductibleExpenses = expenses.filter(e => e.isDeductible);
-    const totalGrossInvoiced = incomes.reduce((sum, i) => sum + i.baseAmount, 0);
-    const totalExpensesFromInvoices = deductibleExpenses.reduce((sum, e) => sum + (e.deductibleBaseAmount ?? e.baseAmount), 0);
-
-    const totalAmortization = allInvestmentGoods.filter(g => g.isDeductible).reduce((sum, good) => {
-        const dailyAmortization = (good.acquisitionValue / good.usefulLife) / 365.25;
-        const goodStartDate = new Date(good.purchaseDate);
-        const goodEndDate = new Date(goodStartDate.getFullYear() + good.usefulLife, goodStartDate.getMonth(), goodStartDate.getDate());
-        const effectiveStartDate = goodStartDate > period.startDate ? goodStartDate : period.startDate;
-        const effectiveEndDate = goodEndDate < period.endDate ? goodEndDate : period.endDate;
-        if (effectiveEndDate > effectiveStartDate) {
-            const daysInPeriod = (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 3600 * 24) + 1;
-            return sum + (daysInPeriod * dailyAmortization);
-        }
-        return sum;
-    }, 0);
-
-    const monthsInPeriod = (period.endDate.getFullYear() - period.startDate.getFullYear()) * 12 + (period.endDate.getMonth() - period.startDate.getMonth()) + 1;
-    const cuotaAutonomo = (settings.monthlyAutonomoFee || 0) * monthsInPeriod;
-
-    const totalDeductibleExpenses = totalExpensesFromInvoices + cuotaAutonomo + totalAmortization;
-    const netProfit = totalGrossInvoiced - totalDeductibleExpenses;
-
-    const ivaRepercutido = incomes.reduce((sum, i) => sum + getCuotaIVA(i.baseAmount, i.vatRate), 0);
-    const ivaSoportadoFromExpenses = deductibleExpenses.reduce((sum, e) => sum + getCuotaIVA(e.baseAmount, e.vatRate), 0);
-    const ivaSoportadoFromGoods = allInvestmentGoods.filter(g => g.isDeductible && new Date(g.purchaseDate) >= period.startDate && new Date(g.purchaseDate) <= period.endDate).reduce((sum, g) => sum + getCuotaIVA(g.acquisitionValue, g.vatRate), 0);
-    const ivaSoportado = ivaSoportadoFromExpenses + ivaSoportadoFromGoods;
-    const vatResult = ivaRepercutido - ivaSoportado;
-    const irpfToPay = netProfit * 0.2;
-
-    return { totalGrossInvoiced, totalExpenses: totalDeductibleExpenses, netProfit, ivaRepercutido, ivaSoportado, vatResult, irpfToPay: Math.max(0, irpfToPay) };
+const addFooterToPDF = (doc: any) => {
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text('Informe generado con Gestor Total Autónomo', 14, doc.internal.pageSize.height - 10);
+        doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, { align: 'right' });
+    }
 };
 
 const addSummaryToPDF = (doc: any, summary: any, isNewPage: boolean = false) => {
@@ -64,46 +32,54 @@ const addSummaryToPDF = (doc: any, summary: any, isNewPage: boolean = false) => 
         startY = 20;
     }
 
+    // --- Resumen del Periodo ---
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('Resumen de Impuestos', 14, startY);
+    doc.text('Resumen del Periodo', 14, startY);
 
     doc.autoTable({
         startY: startY + 8,
         theme: 'plain',
         styles: { cellPadding: 2 },
         body: [
-            ['Total Ingresos (Base Imponible)', formatCurrency(summary.totalGrossInvoiced)],
-            ['Total Gastos Deducibles', formatCurrency(summary.totalExpenses)],
-            ['Rendimiento Neto', { content: formatCurrency(summary.netProfit), styles: { fontStyle: 'bold' } }],
+            ['Total Ingresos (Base Imponible)', formatCurrency(summary.period.grossInvoiced)],
+            ['Total Gastos Deducibles', formatCurrency(summary.period.totalDeductibleExpenses)],
+            ['Rendimiento Neto del Periodo', { content: formatCurrency(summary.period.netProfit), styles: { fontStyle: 'bold' } }],
             ['', ''],
-            ['IVA Repercutido', formatCurrency(summary.ivaRepercutido)],
-            ['IVA Soportado Deducible', formatCurrency(summary.ivaSoportado)],
-            ['Resultado IVA (Mod. 303)', { content: formatCurrency(summary.vatResult), styles: { fontStyle: 'bold' } }],
+            ['IVA Repercutido', formatCurrency(summary.period.ivaRepercutido)],
+            ['IVA Soportado Deducible', formatCurrency(summary.period.ivaSoportado)],
+            ['Resultado IVA (Mod. 303)', { content: formatCurrency(summary.period.vatResult), styles: { fontStyle: 'bold' } }],
+        ]
+    });
+    
+    // --- Cálculo Acumulado IRPF ---
+    let irpfStartY = (doc.lastAutoTable?.finalY || startY) + 15;
+    if (irpfStartY > 180) {
+        doc.addPage();
+        irpfStartY = 20;
+    }
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Cálculo Acumulado IRPF (Mod. 130)', 14, irpfStartY);
+
+    const model130 = summary.cumulative.model130;
+    doc.autoTable({
+        startY: irpfStartY + 8,
+        theme: 'plain',
+        styles: { cellPadding: 2 },
+        body: [
+            ['(+) Ingresos Acumulados', formatCurrency(model130.grossYTD)],
+            ['(-) Gastos Deducibles Acumulados', formatCurrency(model130.deductibleExpensesYTD)],
+            ['(=) Rendimiento Neto Acumulado', { content: formatCurrency(model130.netProfitYTD), styles: { fontStyle: 'bold' } }],
+            ['(x) 20% Pago a Cuenta', formatCurrency(model130.quoteYTD)],
+            ['(-) Retenciones Soportadas Acumuladas', formatCurrency(model130.retencionesSoportadasYTD)],
+            ['(-) Pagos de Trimestres Anteriores', formatCurrency(model130.pagosAnteriores130)],
             ['', ''],
-            ['Pago a Cuenta IRPF (Mod. 130)', { content: formatCurrency(summary.irpfToPay), styles: { fontStyle: 'bold' } }],
+            ['(=) Total a Ingresar (Mod. 130)', { content: formatCurrency(model130.result), styles: { fontStyle: 'bold' } }],
         ]
     });
 };
-
-const addFooterToPDF = (doc: any) => {
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text('Informe generado con Gestor Total Autónomo', 14, doc.internal.pageSize.height - 10);
-        doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width - 20, doc.internal.pageSize.height - 10, { align: 'right' });
-    }
-};
-
-interface SummaryOptions {
-    allExpenses: Expense[];
-    allInvestmentGoods: InvestmentGood[];
-    allIncomes: Income[];
-    settings: UserSettings;
-    period: { startDate: Date, endDate: Date };
-}
 
 // --- Individual Invoice PDF ---
 export const generateInvoicePDF = (income: Income, settings: UserSettings) => {
@@ -157,7 +133,7 @@ export const generateInvoicePDF = (income: Income, settings: UserSettings) => {
 };
 
 // --- Official Record Books PDFs ---
-export const generateIncomesPDF = (incomes: Income[], summaryOptions?: Omit<SummaryOptions, 'allIncomes'>) => {
+export const generateIncomesPDF = (incomes: Income[]) => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape' });
   doc.setFontSize(18);
@@ -171,18 +147,11 @@ export const generateIncomesPDF = (incomes: Income[], summaryOptions?: Omit<Summ
       return [ formatDate(inc.date), inc.invoiceNumber, inc.clientName, inc.clientNif || '-', formatCurrency(inc.baseAmount), `${inc.vatRate}%`, formatCurrency(vatAmount), `${inc.irpfRate}%`, formatCurrency(irpfAmount), formatCurrency(total) ];
   });
   doc.autoTable({ head: [tableColumn], body: tableRows, startY: 35, theme: 'grid', headStyles: { fillColor: [249, 115, 22] } });
-
-  if (summaryOptions) {
-    const expensesInPeriod = summaryOptions.allExpenses.filter(e => new Date(e.date) >= summaryOptions.period.startDate && new Date(e.date) <= summaryOptions.period.endDate);
-    const summary = calculateSummaryForPeriod(incomes, expensesInPeriod, summaryOptions.allInvestmentGoods, summaryOptions.settings, summaryOptions.period);
-    addSummaryToPDF(doc, summary);
-    addFooterToPDF(doc);
-  }
-
+  addFooterToPDF(doc);
   doc.save(`libro-facturas-emitidas-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const generateExpensesPDF = (expenses: Expense[], investmentGoods: InvestmentGood[], summaryOptions?: Omit<SummaryOptions, 'allExpenses'>) => {
+export const generateExpensesPDF = (expenses: Expense[], investmentGoods: InvestmentGood[]) => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape' });
   doc.setFontSize(18);
@@ -215,14 +184,7 @@ export const generateExpensesPDF = (expenses: Expense[], investmentGoods: Invest
   const allRows = [...expenseRows, ...investmentRows].sort((a,b) => new Date(a[0] as string).getTime() - new Date(b[0] as string).getTime());
 
   doc.autoTable({ head: [tableColumn], body: allRows, startY: 35, theme: 'grid', headStyles: { fillColor: [239, 68, 68] } });
-
-  if (summaryOptions) {
-    const incomesInPeriod = summaryOptions.allIncomes.filter(i => new Date(i.date) >= summaryOptions.period.startDate && new Date(i.date) <= summaryOptions.period.endDate);
-    const summary = calculateSummaryForPeriod(incomesInPeriod, expenses, summaryOptions.allInvestmentGoods, summaryOptions.settings, summaryOptions.period);
-    addSummaryToPDF(doc, summary);
-    addFooterToPDF(doc);
-  }
-
+  addFooterToPDF(doc);
   doc.save(`libro-gastos-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
@@ -235,15 +197,7 @@ export const generateComprehensivePeriodPDF = (
     transfers: Transfer[],
     settings: UserSettings,
     period: { startDate: Date; endDate: Date },
-    summary: {
-        totalGrossInvoiced: number;
-        totalExpenses: number;
-        netProfit: number;
-        vatResult: number;
-        irpfToPay: number;
-        ivaRepercutido: number;
-        ivaSoportado: number;
-    }
+    summary: any // This will be the new comprehensive summary object
 ) => {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
