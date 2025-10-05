@@ -800,6 +800,41 @@ const GlobalView: React.FC = () => {
         }), "Recordatorio guardado.");
         setSnoozingAction(null);
     };
+
+    const handleDiscardAction = useCallback((action: any) => {
+        if (action.isScheduled) {
+            const scheduledTx = action.originalItem as ScheduledTransaction & { dueDate: Date };
+            if (!scheduledTx) return;
+
+            if (window.confirm(`¿Estás seguro de que quieres descartar esta instancia de "${scheduledTx.concept}"? La próxima programación no se verá afectada.`)) {
+                saveData(prev => ({
+                    ...prev,
+                    scheduledTransactions: prev.scheduledTransactions.map(st => 
+                        st.id === scheduledTx.id 
+                            ? { ...st, lastGeneratedDate: scheduledTx.dueDate.toISOString() } 
+                            : st
+                    )
+                }), "Instancia programada descartada.");
+            }
+        } else {
+            const item = action.originalItem;
+            const itemType = action.type;
+
+            if (window.confirm(`¿Estás seguro de que quieres eliminar permanentemente este movimiento pendiente: "${item.concept}"?`)) {
+                 saveData(prev => {
+                    let updatedData = { ...prev };
+                    if (itemType === 'proIncomeManual') {
+                        updatedData.incomes = prev.incomes.filter(i => i.id !== item.id);
+                    } else if (itemType === 'proExpenseManual') {
+                        updatedData.expenses = prev.expenses.filter(e => e.id !== item.id);
+                    } else if (itemType === 'persMovementManual') {
+                        updatedData.personalMovements = prev.personalMovements.filter(pm => pm.id !== item.id);
+                    }
+                    return updatedData;
+                }, "Movimiento pendiente eliminado.");
+            }
+        }
+    }, [saveData]);
     
     const handleOpenScheduledModal = (st?: ScheduledTransaction) => {
         setScheduledToEdit(st || null);
@@ -997,7 +1032,10 @@ const GlobalView: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1 flex-shrink-0">
-                                                 <Button size="sm" variant="ghost" title="Recordar más tarde" onClick={() => handleOpenSnoozeModal(action)}>
+                                                 <Button size="sm" variant="ghost" title="Descartar" onClick={() => handleDiscardAction(action)}>
+                                                    <Icon name="X" className="w-4 h-4 text-red-500"/>
+                                                </Button>
+                                                <Button size="sm" variant="ghost" title="Recordar más tarde" onClick={() => handleOpenSnoozeModal(action)}>
                                                     <Icon name="Clock" className="w-4 h-4 text-slate-500"/>
                                                 </Button>
                                                 <Button size="sm" onClick={() => action.type === 'scheduled' ? handleConfirmScheduled(action.originalItem) : handleConfirmManual(action)}>
@@ -1022,7 +1060,10 @@ const GlobalView: React.FC = () => {
                                                 </div>
                                             </div>
                                              <div className="flex items-center gap-1 flex-shrink-0">
-                                                 <Button size="sm" variant="ghost" title="Cambiar recordatorio" onClick={() => handleOpenSnoozeModal(action)}>
+                                                 <Button size="sm" variant="ghost" title="Descartar" onClick={() => handleDiscardAction(action)}>
+                                                    <Icon name="X" className="w-4 h-4 text-red-500"/>
+                                                </Button>
+                                                <Button size="sm" variant="ghost" title="Cambiar recordatorio" onClick={() => handleOpenSnoozeModal(action)}>
                                                     <Icon name="Clock" className="w-4 h-4 text-slate-500"/>
                                                 </Button>
                                                 <Button size="sm" onClick={() => action.type === 'scheduled' ? handleConfirmScheduled(action.originalItem) : handleConfirmManual(action)}>
