@@ -229,7 +229,17 @@ const GlobalView: React.FC = () => {
     });
     
     const [isTaxesBreakdownOpen, setIsTaxesBreakdownOpen] = useState(false);
-    const [projectionPeriod, setProjectionPeriod] = useState<'this_month' | 'this_quarter' | '6_months' | '1_year' | 'custom'>('this_quarter');
+    
+    const getCurrentQuarter = (): '1T' | '2T' | '3T' | '4T' => {
+        const month = new Date().getMonth();
+        if (month < 3) return '1T';
+        if (month < 6) return '2T';
+        if (month < 9) return '3T';
+        return '4T';
+    };
+
+    const [projectionPeriod, setProjectionPeriod] = useState<'this_month' | '1T' | '2T' | '3T' | '4T' | '6_months' | '1_year' | 'custom'>(getCurrentQuarter());
+
     const [customProjectionStart, setCustomProjectionStart] = useState<Date>(new Date());
     const [customProjectionEnd, setCustomProjectionEnd] = useState<Date>(() => {
         const end = new Date();
@@ -454,26 +464,25 @@ const GlobalView: React.FC = () => {
         const pendingPersonalExpense = data.personalMovements.filter(m => m.type === 'expense' && !m.isPaid).reduce((sum, m) => sum + m.amount, 0);
         const totalPendingExpenses = pendingProfessionalExpense + pendingPersonalExpense;
 
-        // Calculate projection period for scheduled transactions
         let projectionStart: Date;
         let projectionEnd: Date;
+        const currentYear = new Date().getFullYear();
     
         if (projectionPeriod === 'custom') {
             projectionStart = new Date(customProjectionStart);
             projectionStart.setHours(0, 0, 0, 0);
             projectionEnd = new Date(customProjectionEnd);
-            projectionEnd.setHours(23, 59, 59, 999);
+        } else if (projectionPeriod.endsWith('T')) {
+            const quarter = parseInt(projectionPeriod.charAt(0));
+            projectionStart = new Date(currentYear, (quarter - 1) * 3, 1);
+            projectionEnd = new Date(currentYear, quarter * 3, 0);
         } else {
             projectionStart = new Date();
             projectionStart.setHours(0, 0, 0, 0);
-            projectionEnd = new Date(); // re-init
+            projectionEnd = new Date();
             switch (projectionPeriod) {
                 case 'this_month':
                     projectionEnd = new Date(projectionStart.getFullYear(), projectionStart.getMonth() + 1, 0);
-                    break;
-                case 'this_quarter':
-                    const currentQuarter = Math.floor(projectionStart.getMonth() / 3);
-                    projectionEnd = new Date(projectionStart.getFullYear(), currentQuarter * 3 + 3, 0);
                     break;
                 case '6_months':
                     projectionEnd.setMonth(projectionEnd.getMonth() + 6);
@@ -482,8 +491,8 @@ const GlobalView: React.FC = () => {
                     projectionEnd.setFullYear(projectionEnd.getFullYear() + 1);
                     break;
             }
-            projectionEnd.setHours(23, 59, 59, 999);
         }
+        projectionEnd.setHours(23, 59, 59, 999);
         
         let scheduledIncomeInPeriod = 0;
         let scheduledExpenseInPeriod = 0;
@@ -1083,7 +1092,10 @@ const GlobalView: React.FC = () => {
     const getProjectionPeriodLabel = useCallback(() => {
         switch (projectionPeriod) {
             case 'this_month': return 'Este Mes';
-            case 'this_quarter': return 'Este Trimestre';
+            case '1T': return '1er Trimestre';
+            case '2T': return '2º Trimestre';
+            case '3T': return '3er Trimestre';
+            case '4T': return '4º Trimestre';
             case '6_months': return '6 Meses';
             case '1_year': return '1 Año';
             case 'custom': return 'Personalizado';
@@ -1328,11 +1340,14 @@ const GlobalView: React.FC = () => {
                             <select
                                 value={projectionPeriod}
                                 onChange={(e) => setProjectionPeriod(e.target.value as any)}
-                                className="block w-auto px-3 py-1.5 text-sm bg-white/10 dark:bg-black/10 backdrop-blur-sm border border-white/20 rounded-lg shadow-inner-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+                                className="block w-auto px-3 py-1.5 text-sm bg-white/10 dark:bg-black/10 backdrop-blur-sm border border-primary-500/30 rounded-lg shadow-inner-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
                                 aria-label="Seleccionar periodo de proyección"
                             >
                                 <option value="this_month">Este Mes</option>
-                                <option value="this_quarter">Este Trimestre</option>
+                                <option value="1T">1er Trimestre</option>
+                                <option value="2T">2º Trimestre</option>
+                                <option value="3T">3er Trimestre</option>
+                                <option value="4T">4º Trimestre</option>
                                 <option value="6_months">Próximos 6 Meses</option>
                                 <option value="1_year">Próximo Año</option>
                                 <option value="custom">Personalizado</option>
