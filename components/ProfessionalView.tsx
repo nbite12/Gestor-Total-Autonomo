@@ -8,6 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { PeriodSelector } from './PeriodSelector';
 import { IncomeForm, ExpenseForm, InvestmentGoodForm } from './TransactionForms';
 import { AiModal } from './AiModal';
+import { AITaxAssistantModal } from './AITaxAssistantModal';
 import { UnsupportedModelsModal } from './ui';
 import { SegmentedControl } from './SegmentedControl';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -258,6 +259,7 @@ const ProfessionalView: React.FC = () => {
     const [isInvestmentModalOpen, setInvestmentModalOpen] = useState(false);
     const [investmentToEdit, setInvestmentToEdit] = useState<Partial<InvestmentGood> | null>(null);
     const [isAiImportModalOpen, setAiImportModalOpen] = useState(false);
+    const [isAiTaxAssistantOpen, setIsAiTaxAssistantOpen] = useState(false);
 
     const handleOpenIncomeModal = (income?: Partial<Income>) => { setIncomeToEdit(income || null); setIncomeModalOpen(true); };
     
@@ -320,8 +322,13 @@ const ProfessionalView: React.FC = () => {
                     <Icon name="Briefcase" className="w-8 h-8 text-primary-500" />
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Área Profesional</h2>
                 </div>
-                <div title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Importar factura con IA"}>
-                    <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="Sparkles" className="w-5 h-5"/> Importar con IA</Button>
+                <div className="flex flex-wrap gap-2">
+                     <Button variant="secondary" onClick={() => setIsAiTaxAssistantOpen(true)} disabled={!data.settings.geminiApiKey} title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Asistente Fiscal IA"}>
+                        <Icon name="Bot" className="w-5 h-5"/> Asistente Fiscal
+                    </Button>
+                    <div title={!data.settings.geminiApiKey ? "Configura tu API Key de Gemini en Ajustes para activar" : "Importar factura con IA"}>
+                        <Button onClick={() => setAiImportModalOpen(true)} disabled={!data.settings.geminiApiKey}><Icon name="Sparkles" className="w-5 h-5"/> Importar con IA</Button>
+                    </div>
                 </div>
             </div>
             
@@ -337,6 +344,11 @@ const ProfessionalView: React.FC = () => {
                 {activeTab === 'analisis' && <AnalisisFiscalView />}
                 {activeTab === 'pdf' && <GenerarPDFsView />}
             </div>
+            <AITaxAssistantModal
+                isOpen={isAiTaxAssistantOpen}
+                onClose={() => setIsAiTaxAssistantOpen(false)}
+                appData={data}
+            />
             <AiModal 
                 isOpen={isAiImportModalOpen} 
                 onClose={() => setAiImportModalOpen(false)} 

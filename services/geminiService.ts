@@ -270,6 +270,54 @@ export const suggestDeductibility = async (concept: string, baseAmount: number, 
     }
 };
 
+// --- NEW Conversational Tax Assistant ---
+export const askWithImageContext = async (
+    prompt: string,
+    imageFile: File | null,
+    apiKey: string,
+): Promise<string> => {
+    if (!apiKey) throw new Error("API Key de Gemini no configurada.");
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const systemInstruction = `Eres un asesor fiscal experto para autónomos en España. Tu nombre es LifeOS Assistant. Responde a las preguntas del usuario de forma clara, concisa y profesional. Si te proporcionan una imagen de un documento o borrador, úsala como contexto principal para tu respuesta. Sé didáctico y ayuda al usuario a entender los conceptos fiscales.`;
+
+    const parts: any[] = [];
+    if (imageFile) {
+        const base64Data = await fileToBase64(imageFile);
+        parts.push({
+            inlineData: {
+                mimeType: imageFile.type,
+                data: base64Data,
+            },
+        });
+    }
+
+    if (prompt) {
+        parts.push({ text: prompt });
+    }
+
+    if (parts.length === 0) {
+        throw new Error("Debes proporcionar una imagen o una pregunta.");
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts },
+            config: {
+                systemInstruction,
+            },
+        });
+
+        return response.text;
+    } catch (error) {
+        console.error("Error en askWithImageContext:", error);
+        throw new Error("No se pudo obtener la respuesta del asesor. Revisa tu conexión o la clave de API e inténtalo de nuevo.");
+    }
+};
+
+
 // --- Financial Consultant Chat ---
 const calculateBalances = (appData: AppData): { [key in MoneyLocation]: number } => {
     const balances: { [key in MoneyLocation]: number } = {
