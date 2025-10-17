@@ -237,6 +237,8 @@ const GlobalView: React.FC = () => {
         return end;
     });
 
+    const [historyModalLocation, setHistoryModalLocation] = useState<MoneyLocation | null>(null);
+
 
     const includeNetCapitalItems = settings.netCapitalToggles || {
         pendingIncome: true,
@@ -551,6 +553,93 @@ const GlobalView: React.FC = () => {
         };
 
     }, [data, moneyDistribution, includeNetCapitalItems, scheduledTransactions, getNetScheduledAmount, countOccurrences, projectionPeriod, customProjectionStart, customProjectionEnd]);
+    
+    const locationHistory = useMemo(() => {
+        if (!historyModalLocation) return [];
+
+        const initialBalance = data.settings.initialBalances?.[historyModalLocation] || 0;
+        
+        type HistoryItem = {
+            date: Date;
+            concept: string;
+            amount: number;
+        };
+
+        const transactions: HistoryItem[] = [];
+
+        data.incomes.forEach(i => {
+            if (i.isPaid && i.location === historyModalLocation && i.paymentDate) {
+                transactions.push({
+                    date: new Date(i.paymentDate),
+                    concept: i.concept,
+                    amount: i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100),
+                });
+            }
+        });
+        
+        data.expenses.forEach(e => {
+            if (e.isPaid && e.location === historyModalLocation && e.paymentDate) {
+                transactions.push({
+                    date: new Date(e.paymentDate),
+                    concept: e.concept,
+                    amount: -(e.baseAmount + (e.baseAmount * e.vatRate / 100)),
+                });
+            }
+        });
+
+        data.investmentGoods.forEach(g => {
+            if (g.isPaid && g.location === historyModalLocation && g.paymentDate) {
+                transactions.push({
+                    date: new Date(g.paymentDate),
+                    concept: g.description,
+                    amount: -(g.acquisitionValue + (g.acquisitionValue * g.vatRate / 100)),
+                });
+            }
+        });
+
+        data.personalMovements.forEach(p => {
+            if (p.isPaid && p.location === historyModalLocation && p.paymentDate) {
+                transactions.push({
+                    date: new Date(p.paymentDate),
+                    concept: p.concept,
+                    amount: p.type === 'income' ? p.amount : -p.amount,
+                });
+            }
+        });
+
+        data.transfers.forEach(t => {
+            if (t.fromLocation === historyModalLocation) {
+                transactions.push({
+                    date: new Date(t.date),
+                    concept: t.concept,
+                    amount: -t.amount,
+                });
+            }
+            if (t.toLocation === historyModalLocation) {
+                transactions.push({
+                    date: new Date(t.date),
+                    concept: t.concept,
+                    amount: t.amount,
+                });
+            }
+        });
+
+        transactions.sort((a, b) => a.date.getTime() - b.date.getTime());
+        
+        let runningBalance = initialBalance;
+        const historyWithBalance = transactions.map(t => {
+            runningBalance += t.amount;
+            return { ...t, balance: runningBalance };
+        });
+
+        return [{
+            date: null,
+            concept: 'Saldo Inicial',
+            amount: initialBalance,
+            balance: initialBalance,
+        }, ...historyWithBalance];
+
+    }, [historyModalLocation, data]);
 
     const unifiedTransactions = useMemo(() => {
         const typeLabels: { [key: string]: { label: string, color: string } } = {
@@ -1257,47 +1346,29 @@ const GlobalView: React.FC = () => {
                 )}
                 <Card className={`p-6 ${!isProfessionalModeEnabled ? 'lg:col-span-2' : ''}`}>
                     <h3 className="text-xl font-semibold mb-4">Saldos por Ubicación</h3>
-                    <div className="space-y-3">
-                        {isProfessionalModeEnabled && (
-                            <>
-                                <div className="flex justify-between items-center text-sm">
+                    <div className="space-y-1">
+                        {Object.entries(moneyDistribution).map(([location, balance]) => {
+                             if (!isProfessionalModeEnabled && (location === MoneyLocation.PRO_BANK || location === MoneyLocation.CASH_PRO)) {
+                                return null;
+                            }
+                            return (
+                                <button
+                                    key={location}
+                                    onClick={() => setHistoryModalLocation(location as MoneyLocation)}
+                                    className="w-full flex justify-between items-center text-sm p-2 transition-colors rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                                    aria-label={`Ver historial de ${location}`}
+                                >
                                     <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                                        <Icon name="Landmark" className="w-4 h-4" />
-                                        <span>{MoneyLocation.PRO_BANK}</span>
+                                        <Icon name={
+                                            location.includes('Banco') ? 'Landmark' :
+                                            location.includes('Efectivo') ? 'Wallet' : 'Bitcoin'
+                                        } className="w-4 h-4" />
+                                        <span>{location}</span>
                                     </div>
-                                    <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.PRO_BANK] || 0)}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm">
-                                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                                        <Icon name="Wallet" className="w-4 h-4" />
-                                        <span>{MoneyLocation.CASH_PRO}</span>
-                                    </div>
-                                    <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.CASH_PRO] || 0)}</span>
-                                </div>
-                                <div className="border-t dark:border-slate-700 my-2 !mt-3 !mb-3" />
-                            </>
-                        )}
-                        <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                                <Icon name="Landmark" className="w-4 h-4" />
-                                <span>{MoneyLocation.PERS_BANK}</span>
-                            </div>
-                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.PERS_BANK] || 0)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                                <Icon name="Wallet" className="w-4 h-4" />
-                                <span>{MoneyLocation.CASH}</span>
-                            </div>
-                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.CASH] || 0)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                                <Icon name="Bitcoin" className="w-4 h-4" />
-                                <span>{MoneyLocation.OTHER}</span>
-                            </div>
-                            <span className="font-semibold break-words">{formatCurrency(moneyDistribution[MoneyLocation.OTHER] || 0)}</span>
-                        </div>
+                                    <span className="font-semibold break-words">{formatCurrency(balance || 0)}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </Card>
             </div>
@@ -1455,6 +1526,36 @@ const GlobalView: React.FC = () => {
 
 
             {/* Modals for this view */}
+            <Modal
+                isOpen={!!historyModalLocation}
+                onClose={() => setHistoryModalLocation(null)}
+                title={`Historial de ${historyModalLocation}`}
+            >
+                <div className="max-h-[60vh] overflow-y-auto">
+                    {locationHistory.length > 1 ? (
+                        <div className="divide-y divide-slate-200/50 dark:divide-white/10">
+                            {locationHistory.map((item, index) => (
+                                <div key={index} className="flex justify-between items-center p-3">
+                                    <div className="flex-grow">
+                                        <p className="font-semibold">{item.concept}</p>
+                                        <p className="text-xs text-slate-500">
+                                            {item.date ? item.date.toLocaleDateString('es-ES') : 'Inicio'}
+                                        </p>
+                                    </div>
+                                    <div className="text-right ml-4 flex-shrink-0">
+                                        <p className={`font-bold ${index > 0 ? (item.amount >= 0 ? 'text-green-500' : 'text-red-500') : ''}`}>
+                                            {index > 0 && (item.amount >= 0 ? '+' : '')}{formatCurrency(item.amount)}
+                                        </p>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">{formatCurrency(item.balance)}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-center text-slate-500 py-8">No hay movimientos registrados para esta ubicación.</p>
+                    )}
+                </div>
+            </Modal>
             <TaxesBreakdownModal isOpen={isTaxesBreakdownOpen} onClose={() => setIsTaxesBreakdownOpen(false)} breakdown={netCapitalSummary.taxesBreakdown} formatCurrency={formatCurrency} projectionPeriodLabel={getProjectionPeriodLabel()} />
             <Modal isOpen={isScheduledModalOpen} onClose={() => setIsScheduledModalOpen(false)} title={scheduledToEdit ? "Editar Transacción Programada" : "Nueva Transacción Programada"}>
                 <ScheduledTransactionForm onClose={() => setIsScheduledModalOpen(false)} transactionToEdit={scheduledToEdit} />
