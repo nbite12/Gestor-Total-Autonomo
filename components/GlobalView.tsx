@@ -1179,7 +1179,40 @@ const GlobalView: React.FC = () => {
                         >
                             <div className="p-4 border-t-2 dark:border-slate-700">
                                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                                    {urgentActions.map(action => (
+                                    {urgentActions.map(action => {
+                                        const item = action.originalItem;
+                                        let amount = 0;
+                                        let isIncome = false;
+
+                                        switch (action.type) {
+                                            case 'scheduled': {
+                                                const st = item as ScheduledTransaction;
+                                                amount = getNetScheduledAmount(st);
+                                                isIncome = st.type === 'income';
+                                                break;
+                                            }
+                                            case 'proIncomeManual': {
+                                                const i = item as Income;
+                                                amount = i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100);
+                                                isIncome = true;
+                                                break;
+                                            }
+                                            case 'proExpenseManual': {
+                                                const e = item as Expense;
+                                                amount = e.baseAmount + (e.baseAmount * e.vatRate / 100);
+                                                isIncome = false;
+                                                break;
+                                            }
+                                            case 'persMovementManual': {
+                                                const p = item as PersonalMovement;
+                                                amount = p.amount;
+                                                isIncome = p.type === 'income';
+                                                break;
+                                            }
+                                        }
+                                        const displayAmount = isIncome ? Math.abs(amount) : -Math.abs(amount);
+
+                                        return (
                                         <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-red-500/10 rounded-lg border-l-4 border-red-500">
                                             <div className="flex-grow flex items-center gap-3 min-w-0">
                                                 <span className="text-xl">{action.emoji}</span>
@@ -1192,6 +1225,9 @@ const GlobalView: React.FC = () => {
                                                     </div>
                                                     <p className="text-sm text-slate-500 truncate">Vence el {action.date.toLocaleDateString('es-ES')}</p>
                                                 </div>
+                                            </div>
+                                            <div className={`font-semibold text-lg shrink-0 ${isIncome ? 'text-green-500' : 'text-red-500'}`}>
+                                                {formatCurrency(displayAmount)}
                                             </div>
                                             <div className="flex items-center gap-1 flex-shrink-0">
                                                  <Button size="sm" variant="ghost" title="Descartar" onClick={() => handleDiscardAction(action)}>
@@ -1206,8 +1242,41 @@ const GlobalView: React.FC = () => {
                                                 </Button>
                                             </div>
                                         </div>
-                                    ))}
-                                    {snoozedActions.map(action => (
+                                    )})}
+                                    {snoozedActions.map(action => {
+                                        const item = action.originalItem;
+                                        let amount = 0;
+                                        let isIncome = false;
+
+                                        switch (action.type) {
+                                            case 'scheduled': {
+                                                const st = item as ScheduledTransaction;
+                                                amount = getNetScheduledAmount(st);
+                                                isIncome = st.type === 'income';
+                                                break;
+                                            }
+                                            case 'proIncomeManual': {
+                                                const i = item as Income;
+                                                amount = i.baseAmount + (i.baseAmount * i.vatRate / 100) - (i.baseAmount * i.irpfRate / 100);
+                                                isIncome = true;
+                                                break;
+                                            }
+                                            case 'proExpenseManual': {
+                                                const e = item as Expense;
+                                                amount = e.baseAmount + (e.baseAmount * e.vatRate / 100);
+                                                isIncome = false;
+                                                break;
+                                            }
+                                            case 'persMovementManual': {
+                                                const p = item as PersonalMovement;
+                                                amount = p.amount;
+                                                isIncome = p.type === 'income';
+                                                break;
+                                            }
+                                        }
+                                        const displayAmount = isIncome ? Math.abs(amount) : -Math.abs(amount);
+                                        
+                                        return (
                                          <div key={action.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-orange-500/10 rounded-lg border-l-4 border-orange-500">
                                             <div className="flex-grow flex items-center gap-3 min-w-0">
                                                 <span className="text-xl">{action.emoji}</span>
@@ -1220,6 +1289,9 @@ const GlobalView: React.FC = () => {
                                                     </div>
                                                     <p className="text-sm text-orange-600 dark:text-orange-400 truncate">Pospuesto hasta el {action.snoozeDate.toLocaleDateString('es-ES')}</p>
                                                 </div>
+                                            </div>
+                                            <div className={`font-semibold text-lg shrink-0 ${isIncome ? 'text-green-500' : 'text-red-500'}`}>
+                                                {formatCurrency(displayAmount)}
                                             </div>
                                              <div className="flex items-center gap-1 flex-shrink-0">
                                                  <Button size="sm" variant="ghost" title="Descartar" onClick={() => handleDiscardAction(action)}>
@@ -1234,7 +1306,7 @@ const GlobalView: React.FC = () => {
                                                 </Button>
                                             </div>
                                         </div>
-                                    ))}
+                                    )})}
                                      {(urgentActions.length + snoozedActions.length) === 0 && (
                                         <p className="text-center text-slate-500 py-4">No tienes ninguna acción pendiente.</p>
                                     )}
