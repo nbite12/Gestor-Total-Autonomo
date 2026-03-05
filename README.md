@@ -39,4 +39,4 @@ Para probar la aplicación en tu entorno local, sigue estos pasos:
    npm run dev
    ```
 
-*Nota original del repositorio:* Puedes ver la aplicación en AI Studio [aquí](https://ai.studio/apps/drive/1M8I47QP2s7Q2ThoM1RPyl4r9qZRHPzo6).
+
