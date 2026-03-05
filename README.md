@@ -2,6 +2,7 @@
 </div>
 
 # Gestor Total Autónomo (LifeOS)
+AVISO: Proyecto creado con soporte de la IA y/o colaboradores a cargo del desarrallador principal Eric Munive Garcia
 
 > **Nota:** Este proyecto ha sido creado enteramente por **Eric Munive Garcia** y forma parte de un **portfolio** diseñado para demostrar habilidades técnicas a empresas y reclutadores.
 
